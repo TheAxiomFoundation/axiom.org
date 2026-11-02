@@ -10,16 +10,18 @@
  */
 
 import type { PipelineEvent } from "./pipeline-events";
+import { isReleaseCase } from "./pipeline-ingest";
 
 export const DAY_MS = 86_400_000;
 const WEEK_MS = 7 * DAY_MS;
 
 /** Display names and one-line meanings. An unknown station shows its id. */
 export const STATION_COPY: Record<string, { label: string; description: string }> = {
-  corpus_ingest: { label: "Corpus ingest", description: "Source documents enter the corpus." },
-  release_publish: { label: "Release publish", description: "A signed corpus release is uploaded." },
-  release_activate: { label: "Release activate", description: "The site starts to serve the release." },
-  target_gate: { label: "Target gate", description: "A citation is checked before it can be queued." },
+  corpus_ingest: { label: "Corpus ingest", description: "Source documents enter axiom-corpus: the PR a release is cut from, open to merge." },
+  release_publish: { label: "Release publish", description: "axiom-corpus's publish run signs and uploads the release. One visit per run." },
+  release_activate: { label: "Release activate", description: "A person activates the release: the site serves it." },
+  release_pin: { label: "Release pin", description: "The jurisdiction's rulespec repo pins the release, or a later one, in .axiom/toolchain.toml: the pin lag." },
+  target_gate: { label: "Target gate", description: "The encoder's pre-encode gate stops an empty or repealed target before a model call." },
   dispatch: { label: "Dispatch", description: "A targeted re-encode run is queued." },
   approval: { label: "Signing approval", description: "The production-signing environment waits for a person." },
   setup: { label: "Setup", description: "Checkouts, corpus fetch and identity checks before the encoder runs." },
@@ -37,15 +39,15 @@ export const STATION_COPY: Record<string, { label: string; description: string }
 
 /** The pipeline's phases, in line order, and the stations each holds. */
 export const STATION_PHASES: Array<{ id: string; label: string; stations: string[] }> = [
-  { id: "ingest", label: "Ingest", stations: ["corpus_ingest", "release_publish", "release_activate"] },
-  { id: "start", label: "Start", stations: ["target_gate", "dispatch", "approval", "setup"] },
+  { id: "ingest", label: "Ingest", stations: ["corpus_ingest", "release_publish", "release_activate", "release_pin"] },
+  { id: "start", label: "Start", stations: ["dispatch", "approval", "setup", "target_gate"] },
   { id: "encode", label: "Encode", stations: ["generate", "validate", "publish"] },
   { id: "land", label: "Land", stations: ["pr_checks", "review", "merge"] },
   { id: "serve", label: "Serve", stations: ["index", "tests", "compile", "oracle"] },
 ];
 
 /** Stations where a person acts: the time there is a person's, not a machine's. */
-export const PERSON_STATIONS = new Set(["approval", "review", "merge", "release_activate"]);
+export const PERSON_STATIONS = new Set(["approval", "review", "merge", "release_activate", "release_pin"]);
 
 export function stationPhase(id: string): string | null {
   return STATION_PHASES.find((p) => p.stations.includes(id))?.id ?? null;
@@ -134,13 +136,29 @@ export interface StationStats {
   rank: number;
   /** Where the window's cases came from and went at this station. */
   flow: StationFlow;
+  /** A station of the line with no event yet: why it is not measured. */
+  unmeasured?: string | null;
 }
 
 /**
  * Where a reason comes from: the system that wrote it. Read from the reason
  * id's prefix, which the event derivation sets (pipeline-events.ts).
  */
-export type CauseOrigin = "validator" | "encoder_text" | "workflow" | "ci_check" | "review" | "merge" | "tests_on_main" | "index" | "compile" | "oracle" | "cancel" | "unknown";
+export type CauseOrigin =
+  | "validator"
+  | "encoder_text"
+  | "workflow"
+  | "ci_check"
+  | "review"
+  | "merge"
+  | "tests_on_main"
+  | "index"
+  | "compile"
+  | "oracle"
+  | "corpus_release"
+  | "target_gate"
+  | "cancel"
+  | "unknown";
 
 export const CAUSE_ORIGINS: Record<CauseOrigin, { label: string; source: string }> = {
   validator: { label: "Validator check", source: "axiom-encode's checks on the generated RuleSpec. The rule id is the bracketed name in the encoder error of the run's last try." },
@@ -153,6 +171,8 @@ export const CAUSE_ORIGINS: Record<CauseOrigin, { label: string; source: string 
   index: { label: "Index", source: "The rulespec_files mirror: no indexed row matches the merge commit." },
   compile: { label: "Compile sweep", source: "axiom-api's nightly compile of the merged module." },
   oracle: { label: "Oracle report", source: "The axiom-oracles comparison against a reference model." },
+  corpus_release: { label: "Corpus release", source: "axiom-corpus's publish runs, corpus.scope_activation_history and the rulespec repos' toolchain pins." },
+  target_gate: { label: "Pre-encode gate", source: "The encoder record's status pre_encode_blocked: the gate stopped the target before a model call." },
   cancel: { label: "Cancelled", source: "A person or a newer run cancelled the run, or the PR was closed while its checks failed." },
   unknown: { label: "No reason recorded", source: "The record has no failed step, rule or error text." },
 };
@@ -168,6 +188,8 @@ const ORIGIN_BY_PREFIX: Record<string, CauseOrigin> = {
   index: "index",
   compile: "compile",
   oracle: "oracle",
+  release: "corpus_release",
+  gate: "target_gate",
   cancel: "cancel",
   wait: "unknown",
 };
@@ -198,6 +220,12 @@ export function causeText(cause: string): string | null {
     );
   }
   if (prefix === "wait" || cause === "unknown") return "No reason recorded";
+  if (prefix === "release") {
+    if (rest === "not-activated") return "Signed, not activated yet";
+    if (rest === "not-pinned") return "Not pinned in its rulespec repo yet";
+    if (rest.startsWith("publish-")) return `Publish run ${rest === "publish-failure" ? "failed" : rest.slice(8).replace(/_/g, " ")}`;
+  }
+  if (cause === "gate:pre-encode-blocked") return "Stopped by the pre-encode gate";
   if (cause === "infra:no-pr") return "The run passed but opened no PR";
   if (cause === "check:unknown") return "A check failed; the record does not name it";
   if (cause === "publish:in-host-run") return "Published inside another citation's run";
@@ -393,6 +421,12 @@ export interface DataTrust {
   partly_timed: Array<{ station: string; share: number }>;
   /** The first day any try record exists. */
   tries_since: string | null;
+  /** Corpus releases in the window (the ingest stations' cases). */
+  releases: number;
+  /** Stations of the line with no event, and why. */
+  unmeasured: Array<{ station: string; reason: string }>;
+  /** Sources that could not be read this time. */
+  source_errors: string[];
 }
 
 /** One validator rule over time: does the encoder stop hitting it? */
@@ -477,6 +511,13 @@ export interface FlowOptions {
   workflows?: WorkflowSignal[];
   /** Dated items to watch (waiver expiry, ...): alert within 90 days. */
   deadlines?: Array<{ label: string; at: string; href: string | null }>;
+  /**
+   * Stations of the line to show although no event reached them, with why
+   * they are not measured (a gate not live yet, a source not readable).
+   */
+  unmeasured?: Record<string, string>;
+  /** Sources that could not be read this time (a GitHub read for the ingest stations). */
+  sourceErrors?: string[];
 }
 
 /** A visit: one case at one station, from its first event to the one that ends it. */
@@ -518,6 +559,8 @@ interface Case {
 const TERMINAL = new Set(["leave", "fail", "cancel"]);
 /** A station counts as timed with this many real durations. */
 const TIMED_MIN = 10;
+/** ... or this many, at a corpus release station: a few releases a week, not hundreds of runs. */
+const TIMED_MIN_RELEASE = 3;
 
 /** Whether a jurisdiction is the scope or under it (us covers us-ca). */
 export function inJurisdiction(value: string | null, scope: string | null | undefined): boolean {
@@ -587,7 +630,7 @@ function buildCases(events: PipelineEvent[]): Map<string, Case> {
         visit.duration_ms = e.duration_ms ?? (e.attrs?.untimed ? null : t - visit.start);
         visit.ref_url = e.ref_url ?? visit.ref_url;
         open.delete(e.station);
-        if (e.kind === "fail" && e.rule_id && e.try_no != null) addRule(tryRules, e.try_no, e.rule_id);
+        if (e.kind === "fail" && e.rule_id && e.try_no != null && e.station === "validate") addRule(tryRules, e.try_no, e.rule_id);
         if (e.kind === "fail" && e.rule_id && e.try_no == null && e.station === "validate") addRule(tryRules, 0, e.rule_id);
         if (e.kind === "leave" && e.station === "validate" && e.try_no != null) passedTry = e.try_no;
       }
@@ -655,6 +698,39 @@ export function quantile(values: number[], q: number): number | null {
   return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
 }
 
+/** A station of the line no event reached: shown, with why it is not measured. */
+function placeholderStation(id: string, reason: string, rank: number, target: StationTarget | null): StationStats {
+  return {
+    id,
+    label: stationLabel(id),
+    description: STATION_COPY[id]?.description ?? "",
+    cases: 0,
+    ok: 0,
+    failed: 0,
+    cancelled: 0,
+    waived: 0,
+    yield: null,
+    tries: null,
+    wip: 0,
+    p50_ms: null,
+    p95_ms: null,
+    total_ms: 0,
+    timed_visits: 0,
+    weekly: [],
+    trend: { now: { finished: 0, ok: 0 }, before: { finished: 0, ok: 0 } },
+    timed: false,
+    timed_share: 0,
+    failures: [],
+    oldest: [],
+    over_sla: 0,
+    target,
+    position: Number.MAX_SAFE_INTEGER,
+    rank,
+    flow: EMPTY_FLOW,
+    unmeasured: reason,
+  };
+}
+
 /** Mine the event log into everything the /ops Line tab and the agent brief show. */
 export function mineFlow(events: PipelineEvent[], options: FlowOptions): FlowModel {
   const { now, days } = options;
@@ -664,20 +740,30 @@ export function mineFlow(events: PipelineEvent[], options: FlowOptions): FlowMod
   const changes = events.filter((e) => e.kind === "change");
   const all = buildCases(scoped);
   const population = options.population ?? "all";
-  const everyFactory = [...all.values()].filter((c) => c.source === "pipeline_attempts" || c.source === "failure_bundle");
+  const everyFactory = [...all.values()].filter((c) => c.source === "pipeline_attempts" || c.source === "failure_bundle" || c.source === "corpus_release");
   const populations: Record<Population, number> = { all: 0, runs: 0, prs: 0, modules: 0 };
   for (const c of everyFactory) {
-    if (c.start < from || c.start > now) continue;
+    if (c.start < from || c.start > now || isReleaseCase(c.id)) continue;
     populations.all++;
     populations[casePopulation(c.id)]++;
   }
-  const factory = population === "all" ? everyFactory : everyFactory.filter((c) => casePopulation(c.id) === population);
+  // Corpus releases feed every path: the ingest stations count them whatever the population.
+  const factory = population === "all" ? everyFactory : everyFactory.filter((c) => isReleaseCase(c.id) || casePopulation(c.id) === population);
   const windowCases = factory.filter((c) => c.start >= from && c.start <= now);
+  // Encodes: what the totals, sinks and data trust count.
+  const encodeCases = windowCases.filter((c) => !isReleaseCase(c.id));
   const targets = new Map((options.targets ?? []).map((t) => [t.station, t]));
 
   // Stations: every station any case visited, with counts over the window.
   const stationIds = new Set<string>();
-  for (const c of factory) for (const v of c.visits) stationIds.add(v.station);
+  const releaseStations = new Set<string>();
+  const encodeStations = new Set<string>();
+  for (const c of factory) {
+    for (const v of c.visits) {
+      stationIds.add(v.station);
+      (isReleaseCase(c.id) ? releaseStations : encodeStations).add(v.station);
+    }
+  }
   const stations: StationStats[] = [];
   for (const id of stationIds) {
     const visitsIn: Array<{ c: Case; v: Visit }> = [];
@@ -702,7 +788,7 @@ export function mineFlow(events: PipelineEvent[], options: FlowOptions): FlowMod
     const durations = finishedVisits.map((x) => x.v.duration_ms).filter((d): d is number => d != null && d > 0);
     // A station whose visits are points (dispatch) or carry only a read time
     // (a check rollup) has no time to show.
-    const timed = durations.length >= TIMED_MIN;
+    const timed = durations.length >= (releaseStations.has(id) && !encodeStations.has(id) ? TIMED_MIN_RELEASE : TIMED_MIN);
     const timedShare = finishedVisits.length ? durations.length / finishedVisits.length : 0;
     const trend = { now: { finished: 0, ok: 0 }, before: { finished: 0, ok: 0 } };
     const weeks = new Map<string, { finished: number; ok: number }>();
@@ -792,7 +878,8 @@ export function mineFlow(events: PipelineEvent[], options: FlowOptions): FlowMod
       const next = c.visits[i + 1];
       if (next) bump(v.station, next.station, v.end != null ? next.start - v.end : null, seen.has(next.station));
     }
-    if (c.end) {
+    // A release's line ends where encodes start: no sink.
+    if (c.end && !isReleaseCase(c.id)) {
       sinkCounts[c.end]++;
       const exitFrom = c.end === "exit:landed" ? c.visits.at(-1)!.station : c.failedAt!;
       bump(exitFrom, c.end, null, false);
@@ -806,8 +893,27 @@ export function mineFlow(events: PipelineEvent[], options: FlowOptions): FlowMod
     loop: e.back > e.cases / 2,
   }));
   edges.sort((a, b) => b.cases - a.cases);
-  const ranks = rankStations(stations, edges);
-  for (const s of stations) s.rank = ranks.get(s.id) ?? 0;
+  // Releases and encodes share no case: rank each line on its own, the
+  // corpus line first.
+  const ingest = stations.filter((s) => releaseStations.has(s.id) && !encodeStations.has(s.id));
+  const ingestIds = new Set(ingest.map((s) => s.id));
+  const ingestRanks = rankStations(ingest, edges);
+  const offset = ingest.length ? Math.max(...ingestRanks.values()) + 1 : 0;
+  const encodeRanks = rankStations(
+    stations.filter((s) => !ingestIds.has(s.id)),
+    edges
+  );
+  for (const s of stations) s.rank = ingestIds.has(s.id) ? (ingestRanks.get(s.id) ?? 0) : (encodeRanks.get(s.id) ?? 0) + offset;
+  // Stations of the line no event reached, shown with why they are not measured.
+  for (const [id, reason] of Object.entries(options.unmeasured ?? {})) {
+    if (stationIds.has(id) || !reason) continue;
+    const at = LINE_STATIONS.indexOf(id);
+    const before = stations.filter((s) => {
+      const i = LINE_STATIONS.indexOf(s.id);
+      return i >= 0 && i < at;
+    });
+    stations.push(placeholderStation(id, reason, before.length ? Math.max(...before.map((s) => s.rank)) : 0, targets.get(id) ?? null));
+  }
   stations.sort((a, b) => a.rank - b.rank || a.position - b.position);
   const flows = stationFlows(windowCases, factory, stations, edges);
   for (const s of stations) s.flow = flows.get(s.id) ?? EMPTY_FLOW;
@@ -816,19 +922,19 @@ export function mineFlow(events: PipelineEvent[], options: FlowOptions): FlowMod
   const ladder = issueLadder(ladderCases);
   const follows = followPairs(ladderCases);
   const trends = ruleTrends(everyFactory, changes, ladder, now, from);
-  const looping = loopingCitations(windowCases);
-  const retry = retryCurve(windowCases, edges);
+  const looping = loopingCitations(encodeCases);
+  const retry = retryCurve(encodeCases, edges);
 
-  const landed = windowCases.filter((c) => c.end === "exit:landed");
-  const dispatches = windowCases.filter((c) => c.visits[0]?.station === "dispatch");
+  const landed = encodeCases.filter((c) => c.end === "exit:landed");
+  const dispatches = encodeCases.filter((c) => c.visits[0]?.station === "dispatch");
   const mergedAt = (c: Case) => c.visits.find((v) => v.station === "merge" && v.outcome === "ok")?.end ?? null;
   const merged = dispatches.filter((c) => mergedAt(c) != null);
   const totals: FlowTotals = {
-    cases: windowCases.length,
+    cases: encodeCases.length,
     landed: landed.length,
     failed: sinkCounts["exit:failed"],
     cancelled: sinkCounts["exit:cancelled"],
-    open: windowCases.filter((c) => c.end == null).length,
+    open: encodeCases.filter((c) => c.end == null).length,
     dispatched: dispatches.length,
     dispatched_merged: merged.length,
     dispatched_landed: dispatches.filter((c) => c.end === "exit:landed").length,
@@ -842,9 +948,12 @@ export function mineFlow(events: PipelineEvent[], options: FlowOptions): FlowMod
     with_tries: dispatches.filter((c) => c.visits.some((v) => v.try_no != null && v.actor)).length,
     with_cost: dispatches.filter((c) => c.visits.some((v) => v.cost_usd != null)).length,
     with_issue_list: dispatches.filter((c) => c.issueCount > 0).length,
-    untimed: stations.filter((x) => !x.timed && x.id !== "dispatch").map((x) => x.id),
+    untimed: stations.filter((x) => !x.timed && !x.unmeasured && x.id !== "dispatch").map((x) => x.id),
     partly_timed: stations.filter((x) => x.timed && x.timed_share < 0.5).map((x) => ({ station: x.id, share: x.timed_share })),
     tries_since: Number.isFinite(tryStart) ? new Date(tryStart).toISOString() : null,
+    releases: windowCases.length - encodeCases.length,
+    unmeasured: stations.filter((x) => x.unmeasured).map((x) => ({ station: x.id, reason: x.unmeasured! })),
+    source_errors: options.sourceErrors ?? [],
   };
 
   const sources: Record<string, number> = {};
@@ -1651,14 +1760,14 @@ export function agentBrief(model: FlowModel, siteUrl: string): string {
   lines.push("|---|---|---|---|---|---|---|---|");
   for (const s of model.stations) {
     const top = s.failures[0] ? `${s.failures[0].rule_id} (${s.failures[0].count})` : "";
-    const time = (ms: number | null) => (s.timed ? formatDuration(ms) : "not timed");
+    const time = (ms: number | null) => (s.timed ? formatDuration(ms) : s.unmeasured ? `not measured: ${s.unmeasured}` : "not timed");
     lines.push(`| ${s.label} | ${s.cases} | ${pct(s.yield)} | ${s.wip} (${s.over_sla}) | ${time(s.p50_ms)} | ${time(s.p95_ms)} | ${trendSentence(s.trend)} | ${top} |`);
   }
   lines.push("");
   const tr = model.trust;
   lines.push("## How much these numbers can see");
   lines.push(
-    `Of ${tr.dispatched} dispatched runs: ${tr.with_tries} have per-try records (since ${tr.tries_since?.slice(0, 10) ?? "never"}), ${tr.with_cost} a recorded cost, ${tr.with_issue_list} a full issue list. Not timed: ${tr.untimed.map(stationLabel).join(", ") || "none"}.${tr.partly_timed.length ? ` Timed for part of their visits: ${tr.partly_timed.map((x) => `${stationLabel(x.station)} (${pct(x.share)})`).join(", ")}.` : ""}`
+    `Of ${tr.dispatched} dispatched runs: ${tr.with_tries} have per-try records (since ${tr.tries_since?.slice(0, 10) ?? "never"}), ${tr.with_cost} a recorded cost, ${tr.with_issue_list} a full issue list. Not timed: ${tr.untimed.map(stationLabel).join(", ") || "none"}.${tr.partly_timed.length ? ` Timed for part of their visits: ${tr.partly_timed.map((x) => `${stationLabel(x.station)} (${pct(x.share)})`).join(", ")}.` : ""}${tr.unmeasured.length ? ` Not measured: ${tr.unmeasured.map((x) => `${stationLabel(x.station)} (${x.reason})`).join(", ")}.` : ""} ${tr.releases} corpus releases in the window.`
   );
   lines.push("");
   lines.push(`Data: ${model.events} events (${Object.entries(model.sources).map(([s, n]) => `${s} ${n}`).join(", ")}). JSON: ${link("/api/ops/flow", siteUrl)}.`);
@@ -1671,9 +1780,14 @@ function link(path: string, siteUrl: string): string {
 
 /** The stations the line emits today, in line order (see docs/operations/pipeline-flow.md, "Stations"). */
 export const LINE_STATIONS = [
+  "corpus_ingest",
+  "release_publish",
+  "release_activate",
+  "release_pin",
   "dispatch",
   "approval",
   "setup",
+  "target_gate",
   "generate",
   "validate",
   "publish",

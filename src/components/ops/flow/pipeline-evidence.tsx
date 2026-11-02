@@ -23,7 +23,7 @@ export function PipelineEvidence({ model }: { model: FlowModel }) {
   const maxReached = Math.max(1, ...model.stations.map((s) => s.cases));
   return (
     <div className={styles.evidence}>
-      <Panel title="Stages" note={`Cases that reached each stage in the last ${model.window.days} days`}>
+      <Panel title="Stages">
         <PipelineDiagram phases={phases} />
         <StageTable phases={phases} maxReached={maxReached} />
       </Panel>
@@ -153,6 +153,7 @@ function StageTable({ phases, maxReached }: { phases: PhaseRow[]; maxReached: nu
 }
 
 function StageRow({ s, maxReached }: { s: StationStats; maxReached: number }) {
+  if (s.unmeasured) return <UnmeasuredRow s={s} />;
   const open = s.flow.waiting_here;
   const total = s.ok + s.failed + s.cancelled + open;
   const top = s.flow.exit_causes[0];
@@ -210,6 +211,34 @@ function StageRow({ s, maxReached }: { s: StationStats; maxReached: number }) {
             <span className={styles.sub}> · {n(top.cases)}</span>
           </>
         ) : null}
+      </td>
+    </tr>
+  );
+}
+
+/** A stage of the line with no event yet: its name, and why it is not measured. */
+function UnmeasuredRow({ s }: { s: StationStats }) {
+  const person = PERSON_STATIONS.has(s.id);
+  return (
+    <tr>
+      <th scope="row" title={s.description}>
+        <span className={styles.stage}>
+          {s.label}
+          {person ? <User size={13} aria-label="A person acts here" className={styles.person} /> : null}
+        </span>
+      </th>
+      <td>
+        <span className={styles.none}>–</span>
+      </td>
+      <td />
+      <td />
+      <td className={styles.num}>
+        <span className={styles.none}>not measured</span>
+      </td>
+      <td />
+      <td />
+      <td className={styles.reason}>
+        <span className={styles.none}>{sentence(s.unmeasured ?? "")}</span>
       </td>
     </tr>
   );
@@ -410,6 +439,17 @@ function Coverage({ model }: { model: FlowModel }) {
         }, ${n(t.with_cost)} have a model cost.`}
       </li>
       {untimed.length ? <li>Time not measured: {untimed.join(", ")}.</li> : null}
+      {t.unmeasured.length ? (
+        <li>
+          Not measured: {t.unmeasured.map((u) => `${model.stations.find((s) => s.id === u.station)?.label ?? u.station} (${u.reason})`).join(", ")}.
+        </li>
+      ) : null}
+      {t.releases ? (
+        <li>
+          {`${n(t.releases)} corpus releases in the window. Corpus ingest is the axiom-corpus PR a release is cut from, open to merge; Release publish is each run of its publish workflow; Release activate is its first activation (corpus.scope_activation_history); Release pin runs from the upload to the first pin in its rulespec repo's .axiom/toolchain.toml of it or of a release signed after it (superseded).`}
+        </li>
+      ) : null}
+      {t.source_errors.length ? <li>Not read this time: {t.source_errors.join("; ")}.</li> : null}
       {t.partly_timed.length ? (
         <li>
           Time measured for part of the visits:{" "}

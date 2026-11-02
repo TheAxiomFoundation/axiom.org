@@ -26,7 +26,19 @@ describe("stationOrderOf", () => {
   it("keeps the line's order, then adds unknown stations as they appear", () => {
     const events = [{ station: "zeta" }, { station: "validate" }, { station: "alpha" }] as Parameters<typeof stationOrderOf>[0];
     const order = stationOrderOf(events);
-    expect(order.slice(0, 5)).toEqual(["dispatch", "approval", "setup", "generate", "validate"]);
+    // The corpus line, then the encode line from dispatch.
+    expect(order.slice(0, 10)).toEqual([
+      "corpus_ingest",
+      "release_publish",
+      "release_activate",
+      "release_pin",
+      "dispatch",
+      "approval",
+      "setup",
+      "target_gate",
+      "generate",
+      "validate",
+    ]);
     expect(order.slice(-2)).toEqual(["zeta", "alpha"]);
   });
 });

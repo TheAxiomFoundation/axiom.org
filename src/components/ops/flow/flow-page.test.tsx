@@ -2,8 +2,10 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { attemptEvents } from "@/lib/axiom/pipeline-events";
 import { caseDetail, citationLanes, mineFlow } from "@/lib/axiom/pipeline-flow";
+import { ingestEvents } from "@/lib/axiom/pipeline-ingest";
 import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 import { FlowLine, flowHref, JourneyView, type FlowParams } from "./flow-page";
+import { wrapWords } from "./pipeline-diagram";
 
 // The canvases need a real browser (React Flow measures the DOM).
 vi.mock("./level-canvases", () => ({
@@ -74,9 +76,50 @@ describe("FlowLine", () => {
     expect(text).toContain("REVIEW · PERSON");
   });
 
+  it("draws the corpus line first, and a stage with no event dashed with why it is not measured", () => {
+    const releases = ingestEvents({
+      releases: [{ name: "us-rulespec-r1", signedAt: "2026-09-20T01:00:00Z" }],
+      runs: [],
+      prs: {},
+      activations: [{ release_name: "us-rulespec-r1", activated_at: "2026-09-20T05:00:00Z" }],
+      pins: [{ repo: "rulespec-us", release: "us-rulespec-r1", at: "2026-09-21T01:00:00Z", ref_url: null }],
+      toActivate: [],
+    });
+    const withIngest = mineFlow([...events, ...releases], { now: NOW, days: 30, unmeasured: { target_gate: "gate not live yet" } });
+    render(<FlowLine model={withIngest} error={null} params={params} jurisdictions={[]} />);
+    const text = screen.getByRole("figure", { name: "The pipeline as a diagram" }).textContent ?? "";
+    expect(text.indexOf("INGEST")).toBeLessThan(text.indexOf("START"));
+    expect(text).toContain("RELEASE ACTIVATE · PERSON");
+    expect(text).toContain("RELEASE PIN · PERSON");
+    expect(text).toContain("TARGET GATE");
+    expect(text).toContain("gate not live yet");
+    expect(text).toContain("not measured yet");
+    const gate = screen.getByRole("rowheader", { name: "Target gate" }).closest("tr")!;
+    expect(gate.textContent).toContain("not measured");
+    expect(gate.textContent).toContain("Gate not live yet");
+    const covers = screen.getByRole("region", { name: "What the data covers" }).textContent ?? "";
+    expect(covers).toContain("Not measured: Target gate (gate not live yet).");
+    expect(covers).toContain("1 corpus releases in the window.");
+  });
+
+  it("labels the three filters and gives the Stages panel no subtitle", () => {
+    line();
+    const filters = screen.getByRole("navigation", { name: "Window" }).closest("header")!;
+    expect(filters.textContent).toMatch(/^Window.*Runs.*Jurisdiction/);
+    expect(screen.getByRole("navigation", { name: "Jurisdiction" })).toBeTruthy();
+    const stages = screen.getByRole("region", { name: "Stages" });
+    expect(stages.querySelector("header p")).toBeNull();
+    expect(stages.textContent).not.toContain("Cases that reached");
+  });
+
+  it("wraps a stage's note into short lines", () => {
+    expect(wrapWords("needs a GitHub token to read the pin history")).toEqual(["needs a GitHub token to", "read the pin history"]);
+    expect(wrapWords("one two three four five six seven eight nine ten eleven twelve", 10, 2)).toEqual(["one two", "three fou…"]);
+  });
+
   it("switches the path and keeps the window and scope", () => {
     line({ window: 7, j: "us" });
-    const path = screen.getByRole("navigation", { name: "Path" });
+    const path = screen.getByRole("navigation", { name: "Runs" });
     expect(path.querySelector('[aria-current="page"]')?.textContent).toBe("All");
     expect(screen.getByRole("link", { name: "Hand-made PRs" }).getAttribute("href")).toBe("/ops?tab=line&window=7&j=us&pop=prs");
   });

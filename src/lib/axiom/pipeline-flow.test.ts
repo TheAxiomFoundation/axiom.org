@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { attemptEvents, type PipelineEvent } from "./pipeline-events";
 import { agentBrief, caseDetail, causeOrigin, causeText, citationLanes, formatDuration, mineFlow, quantile, rankStations, retryCutoff, ruleWords, splitMessage, trendSentence, type FlowEdge } from "./pipeline-flow";
 import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
+import { ingestEvents, type IngestInputs } from "./pipeline-ingest";
 
 const NOW = Date.parse("2026-09-30T12:00:00Z");
 
@@ -279,5 +280,77 @@ describe("rankStations", () => {
     const stations = ["dispatch", "setup", "custom"].map((id) => ({ id, cases: 5 }));
     const rank = rankStations(stations, [edge("dispatch", "setup")]);
     expect([rank.get("dispatch"), rank.get("setup"), rank.get("custom")]).toEqual([0, 1, 0]);
+  });
+});
+
+describe("mineFlow with corpus releases", () => {
+  const hour = 3_600_000;
+  const iso = (ms: number) => new Date(ms).toISOString();
+  const base = Date.parse("2026-09-20T00:00:00Z");
+  // Four releases, each published an hour after its commit and pinned a day later.
+  const releases: IngestInputs = {
+    releases: [1, 2, 3, 4].map((i) => ({ name: `us-rulespec-r${i}`, signedAt: iso(base + i * hour) })),
+    runs: [1, 2, 3, 4].map((i) => ({
+      id: i,
+      url: `https://github.com/run/${i}`,
+      headSha: `s${i}`,
+      commitAt: iso(base + i * hour),
+      commitMessage: `Merge pull request #${i} from x`,
+      createdAt: iso(base + i * hour + 60_000),
+      updatedAt: iso(base + (i + 1) * hour),
+      conclusion: "success",
+    })),
+    prs: {},
+    activations: [],
+    pins: [1, 2, 3, 4].map((i) => ({ repo: "rulespec-us", release: `us-rulespec-r${i}`, at: iso(base + (i + 25) * hour), ref_url: null })),
+    toActivate: [],
+  };
+  const events = [...log(), ...ingestEvents(releases)];
+  const model = mineFlow(events, { now: NOW, days: 30, unmeasured: { target_gate: "gate not live yet", release_pin: "ignored: it has events" } });
+
+  it("ranks the corpus line before the encode line, and shows a station with no event only with a reason", () => {
+    const ids = model.stations.map((s) => s.id);
+    expect(ids.slice(0, 5)).toEqual(["corpus_ingest", "release_publish", "release_pin", "dispatch", "approval"]);
+    const gate = model.stations.find((s) => s.id === "target_gate")!;
+    expect(gate).toMatchObject({ cases: 0, unmeasured: "gate not live yet", timed: false });
+    expect(ids.indexOf("target_gate")).toBeGreaterThan(ids.indexOf("setup"));
+    expect(model.stations.find((s) => s.id === "release_pin")?.unmeasured).toBeUndefined();
+    expect(model.trust.unmeasured).toEqual([{ station: "target_gate", reason: "gate not live yet" }]);
+    expect(model.trust.untimed).not.toContain("target_gate");
+  });
+
+  it("times a release station from three releases, and counts the pin lag", () => {
+    const pin = model.stations.find((s) => s.id === "release_pin")!;
+    expect(pin).toMatchObject({ cases: 4, ok: 4, timed: true, p50_ms: 24 * hour });
+    expect(model.stations.find((s) => s.id === "release_publish")).toMatchObject({ timed: true, cases: 4 });
+    // Corpus ingest without the PRs: points, not measured.
+    expect(model.trust.untimed).toContain("corpus_ingest");
+  });
+
+  it("keeps releases out of the totals, sinks and populations, and in every path", () => {
+    const encodes = mineFlow(log(), { now: NOW, days: 30 });
+    expect(model.totals).toEqual(encodes.totals);
+    expect(model.sinks).toEqual(encodes.sinks);
+    expect(model.populations).toEqual(encodes.populations);
+    expect(model.trust.releases).toBe(4);
+    const runs = mineFlow(events, { now: NOW, days: 30, population: "runs" });
+    expect(runs.stations.find((s) => s.id === "release_pin")?.cases).toBe(4);
+  });
+
+  it("names the release and gate reasons and their sources", () => {
+    expect(causeText("release:not-pinned")).toBe("Not pinned in its rulespec repo yet");
+    expect(causeText("release:not-activated")).toBe("Signed, not activated yet");
+    expect(causeText("release:publish-failure")).toBe("Publish run failed");
+    expect(causeText("release:publish-timed_out")).toBe("Publish run timed out");
+    expect(causeText("gate:pre-encode-blocked")).toBe("Stopped by the pre-encode gate");
+    expect(causeOrigin("release:not-pinned")).toBe("corpus_release");
+    expect(causeOrigin("gate:pre-encode-blocked")).toBe("target_gate");
+  });
+
+  it("tells agents which stations are not measured, and how many releases there were", () => {
+    const brief = agentBrief(model, "https://axiom.org");
+    expect(brief).toContain("Not measured: Target gate (gate not live yet).");
+    expect(brief).toContain("4 corpus releases in the window.");
+    expect(brief).toContain("not measured: gate not live yet");
   });
 });

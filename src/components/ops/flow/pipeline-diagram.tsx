@@ -19,6 +19,21 @@ interface Placed {
   y: number;
 }
 
+/** A short note in lines of at most `width` characters, at most `max` lines. */
+export function wrapWords(text: string, width = 26, max = 2): string[] {
+  const lines: string[] = [];
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    const last = lines.at(-1);
+    if (last != null && last.length + 1 + word.length <= width) lines[lines.length - 1] = `${last} ${word}`;
+    else lines.push(word);
+  }
+  if (lines.length > max) {
+    lines.length = max;
+    lines[max - 1] = `${lines[max - 1].slice(0, width - 1)}…`;
+  }
+  return lines;
+}
+
 /** Line width for a flow of `cases`, on a square-root scale so small flows stay visible. */
 function flowWidth(cases: number, max: number): number {
   return cases > 0 ? 1.5 + 9 * Math.sqrt(cases / max) : 0;
@@ -71,6 +86,8 @@ export function PipelineDiagram({ phases }: { phases: PhaseRow[] }) {
               const from = row[i];
               const y = from.y + NODE_H / 2;
               const d = `M ${from.x + NODE_W} ${y} L ${to.x - 6} ${y}`;
+              // The line runs through a stage that is not measured: a dashed connector, no width.
+              if (from.s.unmeasured || to.s.unmeasured) return <path key={`${from.s.id}-${to.s.id}`} d={d} className={styles.ghostFlow} markerEnd="url(#ops-arrow)" />;
               return <Flow key={`${from.s.id}-${to.s.id}`} d={d} width={flowWidth(to.s.cases, max)} cases={to.s.cases} label={to.s.label} />;
             })
           )}
@@ -119,6 +136,11 @@ export function PipelineDiagram({ phases }: { phases: PhaseRow[] }) {
         <span>
           <i className={styles.keyExit} /> left the line there
         </span>
+        {all.some((p) => p.s.unmeasured) ? (
+          <span>
+            <i className={styles.keyGhost} /> not measured yet
+          </span>
+        ) : null}
       </figcaption>
     </figure>
   );
@@ -136,6 +158,7 @@ function Flow({ d, width, cases, label }: { d: string; width: number; cases: num
 }
 
 function Node({ s, x, y }: Placed) {
+  if (s.unmeasured) return <GhostNode s={s} x={x} y={y} />;
   const finished = s.ok + s.failed + s.cancelled;
   const left = s.flow.failed_here + s.flow.cancelled_here;
   const top = s.flow.exit_causes[0];
@@ -179,6 +202,32 @@ function Node({ s, x, y }: Placed) {
           </text>
         </g>
       ) : null}
+    </g>
+  );
+}
+
+/** A stage of the line no event reached yet: dashed, with why it is not measured. */
+function GhostNode({ s, x, y }: Placed) {
+  const person = PERSON_STATIONS.has(s.id);
+  return (
+    <g>
+      <title>{`${s.label}: ${s.description} Not measured: ${s.unmeasured}.`}</title>
+      <rect x={x} y={y} width={NODE_W} height={NODE_H} rx={12} className={styles.nodeGhost} />
+      <text x={x + 14} y={y + 20} className={person ? styles.nodeLabelPerson : styles.nodeLabel}>
+        {s.label.toUpperCase()}
+        {person ? " · PERSON" : ""}
+      </text>
+      <text x={x + 14} y={y + 48} className={styles.nodeGhostCount}>
+        —
+      </text>
+      <text x={x + 14} y={y + 66} className={styles.nodeLine}>
+        not measured
+      </text>
+      {wrapWords(s.unmeasured ?? "").map((line, i) => (
+        <text key={i} x={x + 14} y={y + 82 + i * 13} className={styles.nodeGhostNote}>
+          {line}
+        </text>
+      ))}
     </g>
   );
 }

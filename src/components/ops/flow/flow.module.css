@@ -64,6 +64,37 @@
   align-items: center;
 }
 
+/* The Pipeline tab's filters: space from the tab bar above and the first
+   panel below, three labelled groups that wrap at narrow widths. */
+.filters {
+  margin: 24px 0 32px;
+}
+
+.filters .controls {
+  gap: 12px 24px;
+  align-items: flex-end;
+}
+
+.control {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.controlLabel {
+  font-family: var(--font-mono), monospace;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-ink-muted);
+}
+
+.control .seg {
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
 .seg {
   display: inline-flex;
   border: 1px solid var(--color-rule);
