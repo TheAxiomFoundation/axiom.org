@@ -132,6 +132,15 @@ const COMPARE_SENTENCE =
   /\b[Pp]rograms are compared through their outputs later, where another calculator covers them/;
 const WAIVER_LINE =
   "On October 2, 2026 the published § 2017(a) module was one of 1,940 rulespec-us modules on the validation waiver list, whose checks CI skipped.";
+const STILL_WAIVER_LINE =
+  "On October 2, 2026, CI skipped the checks on 1,940 rulespec-us modules on the validation waiver list, the published § 2017(a) module among them.";
+// The reduced-motion still's whole label, pinned so a sentence added
+// anywhere fails. It describes what the still draws (scene II alone): the
+// title, § 2017's three sections, the open workbench, its four stamped
+// gates and the other sections' two ticks, then the waiver disclosure.
+const STILL_LABEL =
+  "One provision, encoded — an illustration. § 2017 of Title 7 appears as three sections, with one open in a workbench. The workbench holds that section's RuleSpec: id, citation, typed inputs and output, and the formula allotment equals tfp minus 0.30 times net income, with every value citing its source words. It also shows four stamped gates (run, checks, compare and AI review), and the other two sections show two ticks, for run and checks. " +
+  STILL_WAIVER_LINE;
 // Every edit to the label changes a claim, so each one has to change here too.
 const STRIP_LABEL =
   "The Axiom pipeline as five equal stations. The intake: scraping pipelines (eCFR, USLM, state codes, laws-lois) fill the database — nothing ever leaves. The corpus, word for word, with § 2017 pulled forward. One provision at a time feeds the encoding loop, where encoders draft (30 per centum becomes 0.30) and the run and checks validators send failing drafts back. The encoder applies a draft only once it compiles and passes its own tests. The AI review's score does not block apply. The RuleSpec snap_allotment plugs into the rules graph — tfp and income feed it, benefit flows out — which compiles into a program artifact, powering the chatbot, dashboards, and APIs. Programs are compared through their outputs later, where another calculator covers them. On October 2, 2026 the published § 2017(a) module was one of 1,940 rulespec-us modules on the validation waiver list, whose checks CI skipped.";
@@ -164,9 +173,15 @@ describe.each([
         "encoder drafts must pass their tests — programs compared where another calculator covers them",
       );
     }
-    expect(label).toContain(
-      "The encoder applies a draft only once it compiles and passes its own tests; programs are compared through their outputs later, where another calculator covers them.",
-    );
+    // The still draws no encoder or comparison, so only the film's label
+    // states them.
+    if (motion) {
+      expect(label).toContain(
+        "The encoder applies a draft only once it compiles and passes its own tests; programs are compared through their outputs later, where another calculator covers them.",
+      );
+    } else {
+      expect(label).not.toMatch(/encoder|compared/i);
+    }
     for (const text of [...captions, label, ...words]) {
       expect(text).not.toMatch(/four ways|walked through the four gates/i);
       for (const clause of clauses(text)) {
@@ -191,7 +206,7 @@ describe.each([
     expect(gates[0]).toMatch(
       motion
         ? /^In this illustration the workbench stamps four gates/
-        : /^In this illustration the workbench shows four stamped gates/,
+        : /^It also shows four stamped gates/,
     );
     expect(gates[0]).toContain("and AI review");
     // The label narrates the redraft only where the film plays it.
@@ -203,9 +218,7 @@ describe.each([
       expect(redraft?.getAttribute("opacity")).toBe("0");
       expect(draftFormula?.getAttribute("opacity")).toBe("0");
     }
-    expect(label).toContain(
-      "On October 2, 2026 the published § 2017(a) module was one of 1,940 rulespec-us modules on the validation waiver list, whose checks CI skipped.",
-    );
+    expect(label).toContain(motion ? WAIVER_LINE : STILL_WAIVER_LINE);
     expect(label).toContain(
       motion
         ? "The other two sections are stamped run and checks."
@@ -229,6 +242,97 @@ describe.each([
     expect(words.join(" ")).not.toContain("✓✓✓");
   });
 });
+
+// The still renders scene II alone (Scene returns null unless staticVisible,
+// and only SceneProvision sets it), so its label describes scene II alone.
+// Camera moves and the later scenes belong to the film.
+const FILM_ONLY_NARRATION = [
+  /continuous shot/i,
+  /\bcamera\b/i,
+  /backs out/i,
+  /keep coming/i,
+  /\bgraph\b/i,
+  /output cards?/i,
+  /\$478/,
+  /registry/i,
+  /snapshot/i,
+  /full distance/i,
+  /ghost cards/i,
+  /co-snap/i,
+];
+
+describe("journey film still label", () => {
+  afterEach(() => {
+    vi.resetModules();
+    vi.unstubAllGlobals();
+  });
+
+  it("says the pinned label, and only scene II's title is on screen", async () => {
+    const { label, names } = await renderFilm({ motion: false });
+    expect(names).toEqual(["One provision, encoded — an illustration"]);
+    expect(label).toBe(STILL_LABEL);
+  });
+
+  it("narrates no camera move, later scene, registry number or certification", async () => {
+    const { label } = await renderFilm({ motion: false });
+    for (const pattern of FILM_ONLY_NARRATION) expect(label).not.toMatch(pattern);
+    expect(label).not.toMatch(/\bcertified\b|\bsigned\b|\bsealed\b/i);
+  });
+
+  it("states no fact the film's label does not (differential)", async () => {
+    // The two labels word scene II differently, so they are compared on the
+    // facts they share: every number, date and identifier in the still's
+    // label must appear in the film's, so neither can drift on a fact.
+    const still = (await renderFilm({ motion: false })).label;
+    vi.resetModules();
+    const film = (await renderFilm({ motion: true })).label;
+    const facts = stillFacts(still);
+    expect(facts).toEqual(
+      expect.arrayContaining([
+        "2017",
+        "Title 7",
+        "tfp",
+        "0.30",
+        "October 2, 2026",
+        "1,940",
+        "rulespec-us",
+        "§ 2017(a)",
+        ...GATES,
+      ]),
+    );
+    for (const fact of facts) expect(film, fact).toContain(fact);
+    // A changed fact in the still's label is caught.
+    for (const [from, to] of [
+      ["1,940", "1,941"],
+      ["0.30", "0.35"], // not 0.03: the film narrates that draft
+      ["October 2, 2026", "October 3, 2026"],
+      ["AI review", "human review"],
+    ]) {
+      const drifted = still.replace(from, to);
+      expect(stillFacts(drifted).every((fact) => film.includes(fact))).toBe(false);
+    }
+  });
+});
+
+const GATES = ["run", "checks", "compare", "AI review"];
+
+/** Numbers, dates, citations, identifiers and gate names in a label. */
+function stillFacts(label: string): string[] {
+  const patterns = [
+    /[A-Z][a-z]+ \d{1,2}, \d{4}/g, // dates
+    /§ \d+(?:\([a-z0-9]+\))*/g, // citations
+    /Title \d+/g,
+    /\b\d[\d,.]*\d\b|\b\d\b/g, // numbers
+    /\brulespec-[a-z-]+\b/g,
+    /\btfp\b|\bnet income\b/g,
+    /\b[a-z]+ review\b|\bAI review\b|\bcompare\b|\bchecks\b|\brun\b/g,
+  ];
+  const facts = new Set<string>();
+  for (const pattern of patterns) {
+    for (const match of label.match(pattern) ?? []) facts.add(match);
+  }
+  return [...facts];
+}
 
 describe.each([
   { mode: "animated", motion: true },
@@ -352,11 +456,15 @@ describe.each([
     const film = await renderFilm({ motion });
     const compare = strip.words.filter((word) => word === "compare");
     expect(new Set([...strip.chipNames, ...compare])).toEqual(new Set(film.chips));
-    expect(film.label).toMatch(COMPARE_SENTENCE);
+    // The still's label names no comparison and words its waiver line
+    // for the still; its facts match the film's (the still-label tests).
     if (motion) {
+      expect(film.label).toMatch(COMPARE_SENTENCE);
       expect(film.captions.join("\n")).toContain(COMPARE_CAPTION);
+      expect(film.label).toContain(WAIVER_LINE);
+    } else {
+      expect(film.label).toContain(STILL_WAIVER_LINE);
     }
-    expect(film.label).toContain(WAIVER_LINE);
     expect(strip.label).toContain(WAIVER_LINE);
   });
 });
