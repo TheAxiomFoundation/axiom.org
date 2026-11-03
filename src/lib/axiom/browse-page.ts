@@ -266,6 +266,22 @@ function dedupeBySegment(nodes: TreeNode[]): TreeNode[] {
   });
 }
 
+/** At a doc type's root, numbered segments (Titles) come first in
+ *  numeric order, whether the index lists them or they were folded from
+ *  orphans; every other segment follows in the order it already had. */
+function numericFirst(segments: string[], nodes: TreeNode[]): TreeNode[] {
+  if (segments.length !== 2) return nodes;
+  const isNumber = (node: TreeNode) => /^\d+$/.test(node.segment);
+  const numbered = nodes
+    .filter(isNumber)
+    .sort(
+      (a, b) =>
+        Number(a.segment) - Number(b.segment) ||
+        a.segment.localeCompare(b.segment),
+    );
+  return [...numbered, ...nodes.filter((node) => !isNumber(node))];
+}
+
 /** Browse depth: jurisdiction (1), doc type (2), title (3). */
 export const MAX_BROWSE_SEGMENTS = 3;
 
@@ -380,7 +396,10 @@ export async function getBrowsePageData(
       return node;
     });
 
-  const nodes = dedupeBySegment(positioned.filter((n) => !isPlumbingNode(n)));
+  const nodes = numericFirst(
+    segments,
+    dedupeBySegment(positioned.filter((n) => !isPlumbingNode(n))),
+  );
   const deadline = Date.now() + ENCODED_BUDGET_MS;
   const scan = await scanEncoded(segments, nodes, deadline).catch(
     () => EMPTY_SCAN

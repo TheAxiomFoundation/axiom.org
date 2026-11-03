@@ -201,6 +201,65 @@ describe("getBrowsePageData", () => {
     );
   });
 
+  it("orders every numeric segment at the doc-type root numerically, listed or folded", async () => {
+    // Once a Title row is ingested it is a listed row, not a folded one;
+    // the list must still read 7, 42, 45. Other segments follow in the
+    // index's order.
+    loadTreeNodesMock.mockResolvedValue({
+      nodes: [
+        {
+          segment: "42",
+          label: "Title 42 — Public Health",
+          hasChildren: true,
+          nodeType: "title",
+          rule: { citation_path: "us/regulation/42" },
+        },
+        { segment: "cms", label: "CMS", hasChildren: true, nodeType: "container" },
+        orphan("a", "a", "us/regulation/7/273/2/a"),
+        { segment: "5a", label: "5A", hasChildren: true, nodeType: "container" },
+        orphan("b", "b", "us/regulation/45/164/b"),
+      ],
+      hasMore: false,
+    });
+    const data = (await getBrowsePageData(["us", "regulation"])) as BrowsePageData;
+    expect(data.nodes.map((node) => node.segment)).toEqual(["7", "42", "45", "cms", "5a"]);
+  });
+
+  it("orders numeric segments numerically whatever the index order (property)", async () => {
+    const fc = (await import("fast-check")).default;
+    await fc.assert(
+      fc.asyncProperty(
+        fc.uniqueArray(fc.integer({ min: 1, max: 60 }), { minLength: 1, maxLength: 10 }),
+        fc.uniqueArray(fc.constantFrom("cms", "5a", "irs", "subpart-c"), { maxLength: 4 }),
+        fc.array(fc.boolean(), { minLength: 10, maxLength: 10 }),
+        async (titles, others, listed) => {
+          const nodes = titles.map((t, i) =>
+            listed[i]
+              ? {
+                  segment: String(t),
+                  label: `Title ${t}`,
+                  hasChildren: true,
+                  nodeType: "title",
+                  rule: { citation_path: `us/regulation/${t}` },
+                }
+              : orphan("a", "a", `us/regulation/${t}/1/a`),
+          );
+          const shuffled = [...others.map((o) => ({ segment: o, label: o, hasChildren: true, nodeType: "container" })), ...nodes].reverse();
+          loadTreeNodesMock.mockResolvedValue({ nodes: shuffled, hasMore: false });
+          const data = (await getBrowsePageData(["us", "regulation"])) as BrowsePageData;
+          const segs = data.nodes.map((node) => node.segment);
+          const numeric = segs.filter((seg) => /^\d+$/.test(seg));
+          expect(numeric).toEqual([...titles].sort((a, b) => a - b).map(String));
+          expect(segs.slice(0, numeric.length)).toEqual(numeric);
+          // Non-numeric rows keep their relative order from the index.
+          const rest = segs.slice(numeric.length);
+          expect(rest).toEqual(shuffled.map((n) => n.segment).filter((seg) => others.includes(seg)));
+        },
+      ),
+      { seed: 393, numRuns: 60 },
+    );
+  });
+
   it("keeps the index's own label on a Title row it does list", async () => {
     loadTreeNodesMock.mockResolvedValue({
       nodes: [
