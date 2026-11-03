@@ -9,6 +9,7 @@
  * encodings.pipeline_station_targets. Only the display names below are copy.
  */
 
+import { classifyFailure, FAILURE_CLASS_COPY, FAILURE_CLASSES, type FailureBasis, type FailureClassId } from "./failure-class";
 import type { PipelineEvent } from "./pipeline-events";
 import { isReleaseCase } from "./pipeline-ingest";
 
@@ -37,9 +38,14 @@ export const STATION_COPY: Record<string, { label: string; description: string }
   oracle: { label: "Oracle", description: "The axiom-oracles comparison against a reference model." },
 };
 
-/** The pipeline's phases, in line order, and the stations each holds. */
-export const STATION_PHASES: Array<{ id: string; label: string; stations: string[] }> = [
-  { id: "ingest", label: "Ingest", stations: ["corpus_ingest", "release_publish", "release_activate", "release_pin"] },
+/**
+ * The pipeline's phases, in line order, and the stations each holds.
+ * `parallel` names stations that both follow the station before them and
+ * do not wait for each other: a release is activated and pinned
+ * independently, so the diagram draws them side by side.
+ */
+export const STATION_PHASES: Array<{ id: string; label: string; stations: string[]; parallel?: string[] }> = [
+  { id: "ingest", label: "Ingest", stations: ["corpus_ingest", "release_publish", "release_activate", "release_pin"], parallel: ["release_activate", "release_pin"] },
   { id: "start", label: "Start", stations: ["dispatch", "approval", "setup", "target_gate"] },
   { id: "encode", label: "Encode", stations: ["generate", "validate", "publish"] },
   { id: "land", label: "Land", stations: ["pr_checks", "review", "merge"] },
@@ -461,6 +467,8 @@ export interface FlowModel {
   edges: FlowEdge[];
   sinks: Array<{ id: SinkId; label: string; cases: number }>;
   ladder: IssueLadder;
+  /** The window's failed encode cases by failure class, most first. */
+  failure_classes: FailureClassRow[];
   retry: RetryCurve | null;
   trends: RuleTrend[];
   follows: FollowPair[];
@@ -538,6 +546,8 @@ interface Visit {
   message: string | null;
   /** The end is when the visit was read (a nightly sweep), not when it finished. */
   readTime: boolean;
+  /** The failure class the encoder recorded on the ending event (attrs.failure_class). */
+  recordedClass: { class?: unknown; subclass?: unknown } | null;
 }
 
 interface Case {
@@ -606,7 +616,7 @@ function buildCases(events: PipelineEvent[]): Map<string, Case> {
         }
       }
       if (!visit) {
-        visit = { station: e.station, start: t, end: null, outcome: "open", try_no: e.try_no, rule_id: null, reason: null, ref_url: e.ref_url, duration_ms: null, waived: false, actor: e.actor, cost_usd: null, message: null, readTime: false };
+        visit = { station: e.station, start: t, end: null, outcome: "open", try_no: e.try_no, rule_id: null, reason: null, ref_url: e.ref_url, duration_ms: null, waived: false, actor: e.actor, cost_usd: null, message: null, readTime: false, recordedClass: null };
         visits.push(visit);
         open.set(e.station, visit);
         if (e.kind !== "enter" && TERMINAL.has(e.kind)) unentered.set(e.station, visit);
@@ -627,6 +637,8 @@ function buildCases(events: PipelineEvent[]): Map<string, Case> {
         visit.cost_usd = e.cost_usd != null ? Number(e.cost_usd) : null;
         visit.message = e.message;
         visit.readTime = Boolean(e.attrs?.read_time);
+        const recorded = e.attrs?.failure_class;
+        visit.recordedClass = recorded && typeof recorded === "object" ? (recorded as Visit["recordedClass"]) : null;
         visit.duration_ms = e.duration_ms ?? (e.attrs?.untimed ? null : t - visit.start);
         visit.ref_url = e.ref_url ?? visit.ref_url;
         open.delete(e.station);
@@ -920,6 +932,7 @@ export function mineFlow(events: PipelineEvent[], options: FlowOptions): FlowMod
 
   const ladderCases = [...all.values()].filter((c) => c.start <= now && (c.source === "local_ab" || c.start >= from));
   const ladder = issueLadder(ladderCases);
+  const failure_classes = failureClassRows(encodeCases);
   const follows = followPairs(ladderCases);
   const trends = ruleTrends(everyFactory, changes, ladder, now, from);
   const looping = loopingCitations(encodeCases);
@@ -968,6 +981,7 @@ export function mineFlow(events: PipelineEvent[], options: FlowOptions): FlowMod
     edges,
     sinks: (Object.keys(sinkCounts) as SinkId[]).filter((id) => sinkCounts[id] > 0).map((id) => ({ id, label: SINK_LABELS[id], cases: sinkCounts[id] })),
     ladder,
+    failure_classes,
     retry,
     trends,
     follows,
@@ -1066,6 +1080,50 @@ function causeList(items: Array<{ cause: string; c: Case; v: Visit }>, limit = 6
     .map(({ at: _at, ids, ...rest }) => ({ ...rest, cases: ids.size }))
     .sort((a, b) => b.cases - a.cases || a.cause.localeCompare(b.cause))
     .slice(0, limit);
+}
+
+export interface FailureClassRow {
+  id: FailureClassId;
+  label: string;
+  owner: string;
+  cases: number;
+  /** How many cases got the class from each basis. */
+  basis: Record<FailureBasis, number>;
+  /** The stage and reason of the class's cases, most first. */
+  causes: Array<{ station: string; cause: string; cases: number }>;
+}
+
+const CLASS_CAUSES = 3;
+
+/** The failed cases by failure class, from the visit each one failed at. */
+export function failureClassRows(cases: Case[]): FailureClassRow[] {
+  const rows = new Map<FailureClassId, FailureClassRow & { byCause: Map<string, { station: string; cause: string; cases: number }> }>();
+  for (const c of cases) {
+    if (c.end !== "exit:failed" || !c.failedAt) continue;
+    const v = [...c.visits].reverse().find((x) => x.station === c.failedAt && x.outcome === "fail");
+    if (!v) continue;
+    const fc = classifyFailure({ station: v.station, rule_id: v.rule_id, message: v.message, recorded: v.recordedClass });
+    let row = rows.get(fc.id);
+    if (!row) {
+      row = { id: fc.id, ...FAILURE_CLASS_COPY[fc.id], cases: 0, basis: { encoder: 0, rule: 0, text: 0 }, causes: [], byCause: new Map() };
+      rows.set(fc.id, row);
+    }
+    row.cases++;
+    if (fc.basis) row.basis[fc.basis]++;
+    const cause = v.rule_id ?? "unknown";
+    const key = `${v.station}\u0000${cause}`;
+    const entry = row.byCause.get(key) ?? { station: v.station, cause, cases: 0 };
+    entry.cases++;
+    row.byCause.set(key, entry);
+  }
+  const order = new Map(FAILURE_CLASSES.map((id, i) => [id, i]));
+  return [...rows.values()]
+    .map(({ byCause, ...row }) => ({
+      ...row,
+      causes: [...byCause.values()].sort((a, b) => b.cases - a.cases || a.cause.localeCompare(b.cause)).slice(0, CLASS_CAUSES),
+    }))
+    // Not classified last; the rest by size.
+    .sort((a, b) => Number(a.id === "unknown") - Number(b.id === "unknown") || b.cases - a.cases || order.get(a.id)! - order.get(b.id)!);
 }
 
 /**

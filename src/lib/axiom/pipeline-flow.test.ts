@@ -87,6 +87,33 @@ describe("mineFlow", () => {
     expect(model.ladder.stubborn).toEqual([]);
   });
 
+  it("sorts the failed cases into failure classes by the visit each failed at", () => {
+    // Cases 1 and 2 failed validation on a named rule; case 4 was cancelled, which is no failure.
+    expect(model.failure_classes).toEqual([
+      {
+        id: "rejected",
+        label: "Validator rejected the output",
+        owner: "Encoder or validator",
+        cases: 2,
+        basis: { encoder: 0, rule: 2, text: 0 },
+        causes: [
+          { station: "validate", cause: "r:deferral", cases: 1 },
+          { station: "validate", cause: "r:tests", cases: 1 },
+        ],
+      },
+    ]);
+  });
+
+  it("takes a failure class the encoder recorded on the event first", () => {
+    const events = log().map((e) => (e.case_id === "1" && e.kind === "fail" ? { ...e, attrs: { ...e.attrs, failure_class: { class: "dependency", subclass: null } } } : e));
+    const rows = mineFlow(events, { now: NOW, days: 30 }).failure_classes;
+    // Equal counts keep the class order.
+    expect(rows.map((r) => [r.id, r.cases, r.basis.encoder])).toEqual([
+      ["rejected", 1, 0],
+      ["dependency", 1, 1],
+    ]);
+  });
+
   it("measures the retry loop: pass rate and cost by try", () => {
     expect(model.retry?.judge).toBe("validate");
     expect(model.retry?.work).toBe("generate");

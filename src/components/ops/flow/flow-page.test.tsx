@@ -1,11 +1,11 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { attemptEvents } from "@/lib/axiom/pipeline-events";
-import { caseDetail, citationLanes, mineFlow } from "@/lib/axiom/pipeline-flow";
+import { caseDetail, citationLanes, mineFlow, type StationStats } from "@/lib/axiom/pipeline-flow";
 import { ingestEvents } from "@/lib/axiom/pipeline-ingest";
 import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 import { FlowLine, flowHref, JourneyView, type FlowParams } from "./flow-page";
-import { wrapWords } from "./pipeline-diagram";
+import { layoutRows, wrapWords } from "./pipeline-diagram";
 
 // The canvases need a real browser (React Flow measures the DOM).
 vi.mock("./level-canvases", () => ({
@@ -76,6 +76,14 @@ describe("FlowLine", () => {
     expect(text).toContain("REVIEW · PERSON");
   });
 
+  it("lists the failed cases by failure class, with who owns the fix", () => {
+    line();
+    const table = screen.getByRole("table", { name: "Failure classes" });
+    const row = within(table).getByRole("rowheader", { name: "Validator rejected the output" }).closest("tr")!;
+    expect(row.textContent).toContain("Encoder or validator");
+    expect(row.textContent).toContain("stage or rule");
+  });
+
   it("draws the corpus line first, and a stage with no event dashed with why it is not measured", () => {
     const releases = ingestEvents({
       releases: [{ name: "us-rulespec-r1", signedAt: "2026-09-20T01:00:00Z" }],
@@ -91,6 +99,8 @@ describe("FlowLine", () => {
     expect(text.indexOf("INGEST")).toBeLessThan(text.indexOf("START"));
     expect(text).toContain("RELEASE ACTIVATE · PERSON");
     expect(text).toContain("RELEASE PIN · PERSON");
+    // Activate and pin do not wait for each other: one column, side by side.
+    expect(text).toContain("IN PARALLEL");
     expect(text).toContain("TARGET GATE");
     expect(text).toContain("gate not live yet");
     expect(text).toContain("not measured yet");
@@ -110,6 +120,21 @@ describe("FlowLine", () => {
     const stages = screen.getByRole("region", { name: "Stages" });
     expect(stages.querySelector("header p")).toBeNull();
     expect(stages.textContent).not.toContain("Cases that reached");
+  });
+
+  it("stacks parallel stages in one column and makes their row taller", () => {
+    const stage = (id: string) => ({ id }) as StationStats;
+    const [ingest, start] = layoutRows([
+      { id: "ingest", label: "Ingest", stations: ["a", "b", "c", "d"].map(stage), parallel: ["c", "d"] },
+      { id: "start", label: "Start", stations: ["e", "f"].map(stage) },
+    ]);
+    expect(ingest.cols.map((col) => col.map((p) => p.s.id))).toEqual([["a"], ["b"], ["c", "d"]]);
+    expect(ingest.cols[2][0].x).toBe(ingest.cols[2][1].x);
+    expect(ingest.cols[2][1].y).toBeGreaterThan(ingest.cols[2][0].y);
+    // A single stage sits halfway down the taller row.
+    expect(ingest.cols[0][0].y).toBe((ingest.cols[2][0].y + ingest.cols[2][1].y) / 2);
+    expect(start.top).toBeGreaterThan(ingest.top + ingest.height);
+    expect(start.height).toBeLessThan(ingest.height);
   });
 
   it("wraps a stage's note into short lines", () => {
