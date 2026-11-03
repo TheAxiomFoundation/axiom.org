@@ -241,6 +241,32 @@ it("drops a number typed into the zone's census field once the catalog types the
   fireEvent.click(screen.getByRole("button", { name: "Run household" }));
   await waitFor(() => expect(requests).toHaveLength(1));
   expect(requests[0]!.facts).toEqual({ wcc_proposed_supermarket_gfa_m2: 2000 });
+  // The household no longer states the number, not only the run.
+  fireEvent.click(screen.getByRole("button", { name: "Run" }));
+  expect(await screen.findByText(/^1 household inputs answered/)).toBeTruthy();
+});
+
+it("never sends the census field's number from the commit that first shows the zone as a select", async () => {
+  const requests = stubRuns([{}]);
+  let deliver!: (value: RootCatalog) => void;
+  vi.mocked(fetchRootCatalog).mockImplementation(() => new Promise((resolve) => { deliver = resolve; }));
+  render(<GraphViewerApp />);
+  await openActivityStatus();
+  fireEvent.change(await screen.findByRole("spinbutton", { name: /supermarket zone/i }), { target: { value: "5" } });
+  fireEvent.change(screen.getByRole("spinbutton", { name: /supermarket gfa/i }), { target: { value: "2000" } });
+  // Press Run as the select appears: the prune has not run yet.
+  let pressed = false;
+  const observer = new MutationObserver(() => {
+    const run = screen.queryByRole("button", { name: "Run household" }) as HTMLButtonElement | null;
+    if (pressed || !run || run.disabled || !screen.queryByRole("combobox", { name: /supermarket zone/i })) return;
+    pressed = true;
+    run.click();
+  });
+  observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+  await act(async () => deliver(wellingtonCatalog));
+  await waitFor(() => expect(requests).toHaveLength(1));
+  observer.disconnect();
+  expect(requests[0]!.facts).toEqual({ wcc_proposed_supermarket_gfa_m2: 2000 });
 });
 
 it("never sends an added person's number for the zone once a re-read catalog types the zone as text", async () => {
@@ -289,6 +315,8 @@ it("never sends an added person's number for the zone once a re-read catalog typ
   observer.disconnect();
   expect(requests[0]!.people).toEqual({ person_2: { wcc_supermarket_zone: 5, wcc_proposed_supermarket_gfa_m2: 2000 } });
   expect(requests[1]!.people).toEqual({ person_2: { wcc_proposed_supermarket_gfa_m2: 2000 } });
+  // Person 2 no longer states the number either.
+  expect(await screen.findByText(/^1 household inputs answered/)).toBeTruthy();
 });
 
 it("keeps the zone in the results strip when Other… opens its field", async () => {
