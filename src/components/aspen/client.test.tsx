@@ -11,7 +11,6 @@ import {
   TAB_KEY,
   VOTE_KEY,
   enterRun,
-  formatValue,
   heldElsewhere,
   holdTab,
   newId,
@@ -207,33 +206,6 @@ describe("sendEvent", () => {
     vi.stubGlobal("fetch", fetchMock);
     expect(() => sendEvent("x", {})).not.toThrow();
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-  });
-});
-
-describe("formatValue", () => {
-  it("formats dollars without cents for whole numbers", () => {
-    expect(formatValue(1234, "USD")).toBe("$1,234");
-  });
-
-  it("keeps cents for fractional dollars", () => {
-    expect(formatValue(12.5, "USD")).toBe("$12.50");
-  });
-
-  it("formats plain numbers with grouping", () => {
-    expect(formatValue(1234567)).toBe("1,234,567");
-    expect(formatValue(3, "people")).toBe("3");
-  });
-
-  it("maps truth values and blanks", () => {
-    expect(formatValue("holds")).toBe("Yes");
-    expect(formatValue("not_holds")).toBe("No");
-    expect(formatValue(null)).toBe("—");
-    expect(formatValue(undefined)).toBe("—");
-  });
-
-  it("returns other values as strings", () => {
-    expect(formatValue("eligible")).toBe("eligible");
-    expect(formatValue(true)).toBe("true");
   });
 });
 

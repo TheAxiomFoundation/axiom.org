@@ -129,19 +129,6 @@ export function StepFrame({
   );
 }
 
-export function Eyebrow({ children, className }: { children: ReactNode; className?: string }) {
-  return (
-    <span
-      className={cn(
-        "block font-body font-medium text-[0.82rem] text-[var(--color-ink-muted)]",
-        className,
-      )}
-    >
-      {children}
-    </span>
-  );
-}
-
 export function StageHeading({
   eyebrow,
   title,
