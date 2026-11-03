@@ -10,7 +10,7 @@ vi.mock("@/lib/axiom/cited-by-limits", () => ({
 
 import { EncodingRail } from "./encoding-rail";
 
-function renderOverflow(unit: "rules" | "modules") {
+function renderOverflow(unit: "rules" | "modules", count = 2) {
   render(
     <EncodingRail
       encoding={null}
@@ -22,7 +22,7 @@ function renderOverflow(unit: "rules" | "modules") {
       outgoing={[]}
       incoming={[]}
       citedByFiles={[]}
-      citedByOverflow={2}
+      citedByOverflow={count}
       citedByOverflowUnit={unit}
     />,
   );
@@ -42,3 +42,16 @@ describe("EncodingRail overflow bounds", () => {
     );
   });
 });
+
+// One left out reads in the singular; any other count in the plural.
+describe.each([
+  { unit: "rules" as const, one: "rule cites", many: "rules cite", tail: "first 7 by rank and module path." },
+  { unit: "modules" as const, one: "module cites", many: "modules cite", tail: "first 3 by module path." },
+])("EncodingRail overflow note in $unit", ({ unit, one, many, tail }) => {
+  it.each([1, 2, 42])("agrees with a count of %i", (count) => {
+    expect(renderOverflow(unit, count)).toBe(
+      `${count} more ${count === 1 ? one : many} this provision. This view shows the ${tail}`,
+    );
+  });
+});
+

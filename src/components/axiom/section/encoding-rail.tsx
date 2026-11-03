@@ -342,8 +342,8 @@ export function EncodingRail({
                       count also covers the section's own module, so the
                       note does not say "other modules". */}
                   {citedByOverflowUnit === "modules"
-                    ? `${citedByOverflow} more modules cite this provision. This view shows the first ${MAX_CITED_BY_MODULES} by module path.`
-                    : `${citedByOverflow} more rules cite this provision. This view shows the first ${MAX_CITED_RULES} by rank and module path.`}
+                    ? `${citedByOverflow} more ${citedByOverflow === 1 ? "module cites" : "modules cite"} this provision. This view shows the first ${MAX_CITED_BY_MODULES} by module path.`
+                    : `${citedByOverflow} more ${citedByOverflow === 1 ? "rule cites" : "rules cite"} this provision. This view shows the first ${MAX_CITED_RULES} by rank and module path.`}
                 </p>
               )}
             </div>
