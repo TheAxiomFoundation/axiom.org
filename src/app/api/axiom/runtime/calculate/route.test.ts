@@ -1,5 +1,6 @@
 import { compositionScope } from "@/lib/axiom/runtime/composition-readiness";
 import { describeRelation } from "@/lib/axiom/runtime/relation-roles";
+import fc from "fast-check";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const {
@@ -74,7 +75,7 @@ describe("POST /api/axiom/runtime/calculate (run-by-root)", () => {
     const response = await POST(
       post({
         root: "us:statutes/7/2014/e/6/A",
-        facts: { household_size: 2, bogus: "nope" },
+        facts: { household_size: 2, bogus: { nope: true } },
         variables: ["net_income"],
       })
     );
@@ -93,6 +94,77 @@ describe("POST /api/axiom/runtime/calculate (run-by-root)", () => {
     expect(getRuntimePackageMock).not.toHaveBeenCalled();
   });
 
+  it("passes text facts through verbatim, up to 1,024 characters (a Wellington zone)", async () => {
+    const root = "nz:regulations/rma_district_plans/wellington_city/supermarket_zoning";
+    runCalculateRootMock.mockResolvedValue({
+      kind: "ok",
+      result: { outputs: { wcc_supermarket_activity_status: "Restricted Discretionary" }, trace: [] },
+    });
+    const longest = "x".repeat(1024);
+    const response = await POST(
+      post({
+        root,
+        facts: {
+          wcc_supermarket_zone: "MUZ",
+          wcc_proposed_supermarket_gfa_m2: 2000,
+          longest,
+          too_long: "x".repeat(1025),
+        },
+        variables: ["wcc_supermarket_activity_status"],
+      })
+    );
+    expect(response.status).toBe(200);
+    expect(runCalculateRootMock).toHaveBeenCalledWith({
+      root,
+      facts: { wcc_supermarket_zone: "MUZ", wcc_proposed_supermarket_gfa_m2: 2000, longest },
+      variables: ["wcc_supermarket_activity_status"],
+    });
+    expect(await response.json()).toMatchObject({
+      outputs: { wcc_supermarket_activity_status: "Restricted Discretionary" },
+      applied: ["wcc_supermarket_zone", "wcc_proposed_supermarket_gfa_m2", "longest"],
+      dropped: ["too_long"],
+    });
+  });
+
+  it("forwards exactly the well-formed facts and reports every other key (property)", async () => {
+    const value = fc.oneof(
+      fc.double(),
+      fc.boolean(),
+      fc.string({ maxLength: 8 }),
+      fc.string({ minLength: 1020, maxLength: 1030 }),
+      fc.constant(null),
+      fc.array(fc.integer(), { maxLength: 2 }),
+      fc.dictionary(fc.string({ maxLength: 3 }), fc.integer(), { maxKeys: 2 })
+    );
+    const key = fc.oneof(
+      fc.stringMatching(/^[a-zA-Z_][a-zA-Z0-9_]{0,15}$/),
+      fc.constantFrom("bad-key", "1st", "", "a b", "zone.code")
+    ).filter((name) => name !== "__proto__");
+    const facts = fc.uniqueArray(fc.tuple(key, value), { selector: ([name]) => name, maxLength: 12 });
+    runCalculateRootMock.mockResolvedValue({ kind: "ok", result: { outputs: {}, trace: [] } });
+    await fc.assert(
+      fc.asyncProperty(facts, async (entries) => {
+        _resetRunRouteState();
+        runCalculateRootMock.mockClear();
+        // What arrives is what JSON carries: NaN and ±Infinity become null.
+        const sent = JSON.parse(JSON.stringify(Object.fromEntries(entries))) as Record<string, unknown>;
+        const response = await POST(post({ root: "us:statutes/7/2014/e/6/A", facts: sent, variables: [] }));
+        expect(response.status).toBe(200);
+        const wellFormed = ([name, item]: [string, unknown]) =>
+          /^[a-zA-Z_][a-zA-Z0-9_]{0,511}$/.test(name) &&
+          (typeof item === "boolean" ||
+            (typeof item === "number" && Number.isFinite(item)) ||
+            (typeof item === "string" && item.length <= 1024));
+        const kept = Object.entries(sent).filter(wellFormed);
+        const body = await response.json();
+        expect(runCalculateRootMock.mock.calls[0]![0].facts).toEqual(Object.fromEntries(kept));
+        expect(body.applied).toEqual(kept.map(([name]) => name));
+        expect(body.dropped).toEqual(Object.keys(sent).filter((name) => !kept.some(([k]) => k === name)));
+      }),
+      { numRuns: 150, seed: 2026110313 }
+    );
+  });
+
   it("sanitizes extra members like facts and forwards them as people", async () => {
     runCalculateRootMock.mockResolvedValue({
       kind: "ok",
@@ -103,7 +175,7 @@ describe("POST /api/axiom/runtime/calculate (run-by-root)", () => {
         root: "us:statutes/26/32",
         facts: { age: 40 },
         people: {
-          person_2: { age: 38, bogus: "nope" },
+          person_2: { age: 38, bogus: ["nope"] },
           person_13: { age: 1 }, // beyond the member-id bound
           "not-a-member": { age: 2 },
         },
@@ -216,6 +288,25 @@ describe("POST /api/axiom/runtime/calculate (run-by-root)", () => {
     expect(data.period).toBe("2026-01");
     expect(data.applied).toEqual(["household_size"]);
     expect(runCalculateRootMock).not.toHaveBeenCalled();
+  });
+
+  it("grafts a text answer onto a text input only, never a number slot", async () => {
+    getRuntimePackageMock.mockResolvedValue({
+      sample_request: { household: { entities: { unit: { u1: {} } } } },
+      default_outputs: ["activity_status"],
+      entities: [
+        { entity: "unit", inputs: [{ name: "zone", dtype: "text" }, { name: "household_size", dtype: "integer" }] },
+      ],
+    });
+    runCalculateMock.mockResolvedValue({ outputs: { activity_status: "Permitted" }, trace: [] });
+    const response = await POST(
+      post({ jurisdiction: "nz", program_id: "zoning", values: { zone: "MUZ", household_size: "3" } })
+    );
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.applied).toEqual(["zone"]);
+    expect(data.dropped).toEqual(["household_size"]);
+    expect(runCalculateMock.mock.calls[0]![0].household.entities.unit.u1).toEqual({ zone: "MUZ" });
   });
 });
 
@@ -404,7 +495,7 @@ describe("per-request instances (26 USC 22 payments of the tax unit)", () => {
   const instances = {
     Payment: {
       payment_1: { payment_amount: 400 },
-      payment_2: { payment_amount: 1000, payment_received_as_pension_annuity_or_similar_allowance: true, note: "x" },
+      payment_2: { payment_amount: 1000, payment_received_as_pension_annuity_or_similar_allowance: true, note: ["x"] },
     },
   };
   /** The runtime's root-inputs payload for §22 (axiom-api#268). */

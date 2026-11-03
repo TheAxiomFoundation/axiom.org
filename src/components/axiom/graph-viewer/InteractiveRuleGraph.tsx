@@ -22,6 +22,7 @@ import dagre from "dagre";
 import { graphFitViewport, MAX_GRAPH_ZOOM } from "./zoom-bounds";
 import { inputContextSubgraph, dependencySubgraph, scopeRootFor, upstreamIds, upstreamNodeIds } from "./focus-layout";
 import type { DashboardSpec, ParameterRule, TraceNode } from "./types";
+import type { ScenarioValue } from "./input-meta";
 import {
   evalAst,
   parseFormula,
@@ -1583,7 +1584,7 @@ const OutputNode = ({ data }: NodeProps) => {
 };
 
 function InlineAnswer({ legalId }: { legalId: string }) {
-  const { values, answered, onChange } = useContext(InputEditContext);
+  const { values, answered, onChange, textChoices } = useContext(InputEditContext);
   const fragment = legalId.split("#").pop() ?? "";
   if (!onChange || !fragment.startsWith("input.")) return null;
   const name = fragment.slice("input.".length);
@@ -1608,6 +1609,29 @@ function InlineAnswer({ legalId }: { legalId: string }) {
           onChange={(event) => onChange(name, event.target.checked)}
           aria-label="Answer"
         />
+      ) : typeof value === "string" ? (
+        textChoices?.[name]?.length ? (
+          <select
+            value={value}
+            onChange={(event) => onChange(name, event.target.value)}
+            aria-label="Answer"
+          >
+            <option value="">answer…</option>
+            {textChoices[name]!.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <input
+            type="text"
+            value={value}
+            placeholder="answer…"
+            onChange={(event) => onChange(name, event.target.value)}
+            aria-label="Answer"
+          />
+        )
       ) : (
         <input
           type="number"
@@ -1642,27 +1666,32 @@ function useAnswerBoxPopulated(legalId: string): boolean {
   const name = fragment.slice("input.".length);
   if (!(name in values)) return false;
   const value = values[name];
-  // A checkbox always displays its state; a number box counts once typed.
-  return typeof value === "boolean" || !Number.isNaN(value as number);
+  // A checkbox always displays its state; a number or text box counts
+  // once typed.
+  return typeof value === "boolean" ||
+    (typeof value === "string" ? value !== "" : !Number.isNaN(value));
 }
 
 /** Inline value editing on Question cards — provided by the app so
- *  the canvas itself is a form: type a number, flip a toggle, run. */
+ *  the canvas itself is a form: type a number, flip a toggle, pick a
+ *  zone, run. A text question's value is a string ("" unanswered). */
 export const InputEditContext = createContext<{
-  values: Record<string, number | boolean>;
+  values: Record<string, ScenarioValue>;
   answered: Set<string>;
   /** Registry defaults by bare name — an unanswered card names the
    *  value that held for the run. */
-  defaults?: Record<string, number | boolean>;
+  defaults?: Record<string, ScenarioValue>;
+  /** A text question's closed domain, offered as a select. */
+  textChoices?: Record<string, string[]>;
   /** Person-level answers per household member (present only when
    *  the scenario carries extra members): the card shows every
    *  member's value; editing beyond Person 1 lives in the inspector
    *  and the run panel. */
   memberValues?: Record<
     string,
-    Array<{ label: string; value: number | boolean | null }>
+    Array<{ label: string; value: ScenarioValue | null }>
   >;
-  onChange: ((name: string, value: number | boolean) => void) | null;
+  onChange: ((name: string, value: ScenarioValue) => void) | null;
 }>({ values: {}, answered: new Set(), onChange: null });
 
 /** Compact per-member answer line on a question card: "P1 40 · P2 38
@@ -1677,13 +1706,16 @@ function MemberAnswers({ name }: { name: string | null }) {
         <span key={row.label}>
           {row.label}{" "}
           {row.value === null ||
+          row.value === "" ||
           (typeof row.value === "number" && Number.isNaN(row.value))
             ? "—"
             : typeof row.value === "boolean"
               ? row.value
                 ? "✓"
                 : "✗"
-              : row.value.toLocaleString("en-US", { maximumFractionDigits: 6 })}
+              : typeof row.value === "string"
+                ? row.value
+                : row.value.toLocaleString("en-US", { maximumFractionDigits: 6 })}
         </span>
       ))}
     </div>
@@ -1742,7 +1774,7 @@ const InputNode = ({ data }: NodeProps) => {
           default rather than an answer. */}
       {d.showValues && settable && !isAnswered && (
         <div className="irg-default-chip">
-          {inputName && defaults && inputName in defaults
+          {inputName && defaults && inputName in defaults && defaults[inputName] !== ""
             ? `default — ${String(defaults[inputName])}`
             : "using default"}
         </div>

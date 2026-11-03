@@ -11,6 +11,8 @@
  * server props, never this module.
  */
 
+import type { ScenarioValue } from "./relation-roles";
+
 // The hosted API's canonical host. api.axiom.org is an alias the API owns,
 // so a rename on the hosting side cannot break this default the way the old
 // axiom-api-eta.vercel.app name could.
@@ -381,11 +383,11 @@ export type RootCalculateOutcome =
  */
 export async function runCalculateRoot(request: {
   root: string;
-  facts: Record<string, number | boolean>;
+  facts: Record<string, ScenarioValue>;
   /** Additional household members (person_2, …) with their own
    *  Person-level answers; the flat facts remain person_1. Omitted
    *  for single-filer runs so older upstreams see the old shape. */
-  people?: Record<string, Record<string, number | boolean>>;
+  people?: Record<string, Record<string, ScenarioValue>>;
   variables?: string[];
   /** Explicit relation membership (`household.relations`, axiom-api#267):
    *  one entry per relation, each the complete membership of that relation
@@ -395,7 +397,7 @@ export async function runCalculateRoot(request: {
   /** Per-request instances (`household.instances`, axiom-api#268): kind →
    *  scenario key → answers. Every kind the scope allocates is sent, `{}`
    *  for none, so flat facts never stand in for an instance. */
-  instances?: Record<string, Record<string, Record<string, number | boolean>>>;
+  instances?: Record<string, Record<string, Record<string, ScenarioValue>>>;
 }): Promise<RootCalculateOutcome> {
   if (!isRuntimeApiConfigured()) return { kind: "failed" };
   const key = process.env.AXIOM_RUNTIME_API_KEY;

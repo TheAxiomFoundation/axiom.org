@@ -9,6 +9,7 @@ import {
   upstreamRelationsMatch,
   type InstanceAnswers,
   type InstanceKeys,
+  type ScenarioValue,
 } from "@/lib/axiom/runtime/relation-roles";
 import { NextResponse } from "next/server";
 import {
@@ -22,14 +23,15 @@ import { clientKey, isRateLimited } from "../run/limiter";
 
 export const dynamic = "force-dynamic";
 
-/** Scenario values / facts: keep well-formed number-or-boolean
- *  entries, report the type-rejected keys (silent filtering hid
+/** Scenario values / facts: keep well-formed number, boolean or
+ *  bounded text entries (a text slot's answer, e.g. a zone code
+ *  "MUZ"), report the type-rejected keys (silent filtering hid
  *  client bugs). */
 function sanitizeValues(raw: unknown): {
-  sanitized: Record<string, number | boolean>;
+  sanitized: Record<string, ScenarioValue>;
   rejected: string[];
 } {
-  const sanitized: Record<string, number | boolean> = {};
+  const sanitized: Record<string, ScenarioValue> = {};
   const rejected: string[] = [];
   if (raw && typeof raw === "object") {
     for (const [key, value] of Object.entries(
@@ -37,8 +39,11 @@ function sanitizeValues(raw: unknown): {
     )) {
       if (!INPUT_NAME_RE.test(key)) { rejected.push(key); continue; }
       if (
-        (typeof value !== "number" && typeof value !== "boolean") ||
-        (typeof value === "number" && !Number.isFinite(value))
+        (typeof value !== "number" &&
+          typeof value !== "boolean" &&
+          typeof value !== "string") ||
+        (typeof value === "number" && !Number.isFinite(value)) ||
+        (typeof value === "string" && value.length > MAX_TEXT_LENGTH)
       ) {
         rejected.push(key);
         continue;
@@ -62,6 +67,7 @@ const VARIABLE_RE = /^[\w.:#/–-]{1,1024}$/;
 const ROOT_RE = /^[a-z]{2}(?:-[a-z]{2,3})?:[\w./–-]{1,200}$/;
 const MAX_VALUES = 64;
 const MAX_VARIABLES = 96;
+const MAX_TEXT_LENGTH = 1024;
 
 /**
  * Scenario execution for the Plane. The caller names a program,
@@ -130,7 +136,7 @@ export async function POST(request: Request) {
     // members contract an added person with no answers is still a
     // person, but only when the caller actually sent an object (a
     // scalar must never fabricate a household member).
-    let people: Record<string, Record<string, number | boolean>> | undefined;
+    let people: Record<string, Record<string, ScenarioValue>> | undefined;
     if (body.people && typeof body.people === "object") {
       people = {};
       for (const [member, values] of Object.entries(
@@ -326,6 +332,9 @@ export async function POST(request: Request) {
     if (!container) continue;
     for (const input of entity.inputs ?? []) {
       if (!(input.name in values)) continue;
+      // Text only answers a text input: the runtime coerces a string in a
+      // number or bool slot ("false" becomes true) instead of refusing it.
+      if (typeof values[input.name] === "string" && input.dtype !== "text") continue;
       for (const instance of Object.values(container)) {
         instance[input.name] = values[input.name];
       }
