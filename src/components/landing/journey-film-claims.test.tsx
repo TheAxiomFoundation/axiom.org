@@ -230,65 +230,6 @@ describe.each([
   });
 });
 
-// The still renders scene II alone (Scene returns null unless staticVisible,
-// and only SceneProvision sets it), so its label describes scene II alone.
-// Camera moves and the later scenes belong to the film.
-const FILM_ONLY_NARRATION = [
-  /continuous shot/i,
-  /\bcamera\b/i,
-  /backs out/i,
-  /keep coming/i,
-  /\bgraph\b/i,
-  /output cards?/i,
-  /\$478/,
-  /registry/i,
-  /snapshot/i,
-  /full distance/i,
-  /ghost cards/i,
-  /co-snap/i,
-];
-
-describe("journey film still label", () => {
-  afterEach(() => {
-    vi.resetModules();
-    vi.unstubAllGlobals();
-  });
-
-  it("describes only what the still shows", async () => {
-    const { label, names } = await renderFilm({ motion: false });
-    for (const pattern of FILM_ONLY_NARRATION) expect(label).not.toMatch(pattern);
-    // What the still draws: § 2017 segmented and encoded, the scene title,
-    // the four stamped gates, the two ticks and the dated waiver line.
-    expect(names).toEqual(["One provision, encoded — an illustration"]);
-    expect(label).toMatch(/^One provision, encoded — an illustration\. /);
-    expect(label).toContain("§ 2017 of Title 7: the statute is segmented into sections");
-    expect(label).toContain("allotment equals tfp minus 0.30 times net income");
-    expect(label).toContain("the workbench shows four stamped gates");
-    expect(label).toContain("the other two sections show two ticks, for run and checks.");
-    expect(label).toMatch(/On October 2, 2026 the published § 2017\(a\) module was one of 1,940 rulespec-us modules on the validation waiver list, whose checks CI skipped\.$/);
-  });
-
-  it("shares every sentence it has with the film's label", async () => {
-    // Differential: the still's label is the film's scene II narration less
-    // the camera and the gate beats the still never plays, so wherever the
-    // two describe the same thing they say it in the same words.
-    const still = (await renderFilm({ motion: false })).label;
-    vi.resetModules();
-    const film = (await renderFilm({ motion: true })).label;
-    const gateSentence = /^In this illustration the workbench/;
-    const sentences = still
-      .replace(/^One provision, encoded — an illustration\. One provision, /, "")
-      .split(/(?<=\.)\s+/)
-      .filter((sentence) => !gateSentence.test(sentence));
-    expect(sentences.length).toBeGreaterThan(2);
-    for (const sentence of sentences) expect(film).toContain(sentence);
-    // The animated label keeps its full narration.
-    for (const pattern of [/continuous shot/, /camera backs out/, /registry snapshot/]) {
-      expect(film).toMatch(pattern);
-    }
-  });
-});
-
 describe.each([
   { mode: "animated", motion: true },
   { mode: "reduced-motion still", motion: false },

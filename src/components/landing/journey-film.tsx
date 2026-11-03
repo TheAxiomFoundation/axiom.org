@@ -765,17 +765,6 @@ const GATE_STORY = STATIC
   ? "In this illustration the workbench shows four stamped gates — run, checks, compare, and AI review — and the other two sections show two ticks, for run and checks."
   : "In this illustration the workbench stamps four gates — run, checks, compare, and AI review; one draft reads 0.03 for thirty per centum, disagrees with another calculator at compare, is redrafted to 0.30, and passes. The other two sections are stamped run and checks.";
 
-// Scene II's narration, shared word for word by the film's label and the
-// still's, so the two never drift apart where they describe the same thing.
-const SCENE2_STORY = `§ 2017 of Title 7: the statute is segmented into sections, each section encoded into a RuleSpec — id, citation, typed inputs and output, and the formula allotment equals tfp minus 0.30 times net income, every value citing its source words. The encoder applies a draft only once it compiles and passes its own tests; programs are compared through their outputs later, where another calculator covers them. ${GATE_STORY} On October 2, 2026 the published § 2017(a) module was one of 1,940 rulespec-us modules on the validation waiver list, whose checks CI skipped.`;
-
-// The still renders scene II alone (only SceneProvision is staticVisible), so
-// its label stops there: no camera, and none of the later scenes. The film's
-// label goes on through the graph and the registry snapshot it plays.
-const FILM_LABEL = STATIC
-  ? `${SCENE2_NAME}. One provision, ${SCENE2_STORY}`
-  : `One continuous shot. The camera opens on one provision, ${SCENE2_STORY} The encoded rules then join the axiom graph as nodes — typed, cited, connected to the concepts they draw on; on the graph's output layer, two composed nodes declare their types and show illustrative output cards: snap/benefit, money per month, $478, and snap/eligible, boolean, yes. Then the camera backs out and the same cards keep coming: co-snap's own rules join around the hero graph — snap_maximum_allotment, the deductions, the eligibility tests, real names from its recorded outputs — then each runtime package in the ${snapshotMonth()} registry snapshot arrives as its own group of identical cards, from us-sc-snap to us-oasdi-wage-tax. At full distance the encoded graph sits among the ghost cards of everything not yet encoded, and the caption reads: ${snapshotMonth()} registry snapshot — ${registrySummary()}. The snapshot predates the registry's 2026-07-28 production cutover, and package outputs can count a shared rule more than once, so this is not a unique-rule or certification count.`;
-
 // helper: initial opacity for elements that animate in (visible in static)
 function O2() {
   return STATIC ? 1 : 0;
@@ -1399,7 +1388,7 @@ export function JourneyFilm({
         className="lsk"
         viewBox="0 0 1420 700"
         role="img"
-        aria-label={FILM_LABEL}
+        aria-label={`One continuous shot. The camera opens on one provision, § 2017 of Title 7: the statute is segmented into sections, each section encoded into a RuleSpec — id, citation, typed inputs and output, and the formula allotment equals tfp minus 0.30 times net income, every value citing its source words. The encoder applies a draft only once it compiles and passes its own tests; programs are compared through their outputs later, where another calculator covers them. ${GATE_STORY} On October 2, 2026 the published § 2017(a) module was one of 1,940 rulespec-us modules on the validation waiver list, whose checks CI skipped. The encoded rules then join the axiom graph as nodes — typed, cited, connected to the concepts they draw on; on the graph's output layer, two composed nodes declare their types and show illustrative output cards: snap/benefit, money per month, $478, and snap/eligible, boolean, yes. Then the camera backs out and the same cards keep coming: co-snap's own rules join around the hero graph — snap_maximum_allotment, the deductions, the eligibility tests, real names from its recorded outputs — then each runtime package in the ${snapshotMonth()} registry snapshot arrives as its own group of identical cards, from us-sc-snap to us-oasdi-wage-tax. At full distance the encoded graph sits among the ghost cards of everything not yet encoded, and the caption reads: ${snapshotMonth()} registry snapshot — ${registrySummary()}. The snapshot predates the registry's 2026-07-28 production cutover, and package outputs can count a shared rule more than once, so this is not a unique-rule or certification count.`}
       >
         <Defs />
         <g clipPath="url(#jw-stage)">
