@@ -657,6 +657,27 @@ describe("getSectionEncoding", () => {
     expect(result.citedByFiles.map((file) => file.jurisdiction)).toEqual(["us-co"]);
   });
 
+  it("carries a fallback module's own jurisdiction, not the provision's", async () => {
+    configureMirror({
+      ruleCitations: { data: null, error: { message: "rule_citations is unavailable" } },
+      citedByFallback: {
+        data: [
+          {
+            citation_path: "us-co/policy/snap/fy-2026-benefit-calculation",
+            file_path: "policies/cdhs/snap/fy-2026-benefit-calculation.yaml",
+            raw_yaml: citedByYaml(["co_snap_value"], SECTION),
+          },
+        ],
+        count: 1,
+        error: null,
+      },
+    });
+
+    const result = await getSectionEncoding("rule-1", SECTION);
+    expect(SECTION.split("/")[0]).toBe("us");
+    expect(result.citedByFiles.map((file) => file.jurisdiction)).toEqual(["us-co"]);
+  });
+
   it("counts the fallback's overflow in modules", async () => {
     configureMirror({
       ruleCitations: { data: null, error: { message: "rule_citations is unavailable" } },

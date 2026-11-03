@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import type { RuleEncodingData, RuleReference } from "@/lib/supabase";
 import type { InlineReference } from "@/lib/axiom/inline-references";
+import { MAX_CITED_BY_MODULES, MAX_CITED_RULES } from "@/lib/axiom/cited-by-limits";
 import {
   refsForChunk,
   type EncodedRuleLink,
@@ -108,7 +109,7 @@ export function EncodingRail({
   programs?: ProvisionProgramCoverage[];
   /** Rule name → repo file path; enables per-rule graph links. */
   ruleFiles?: Record<string, string>;
-  /** Policy-rooted modules with rules grounded in this provision. */
+  /** Policy-rooted modules with rules that cite this provision. */
   citedByFiles?: SectionPageData["citedByFiles"];
   /** Citing rules beyond the bounded lookup (not shown). */
   citedByOverflow?: number;
@@ -335,9 +336,12 @@ export function EncodingRail({
                   data-testid="rail-cited-by-overflow"
                   className="mt-3 text-xs text-[var(--color-ink-muted)]"
                 >
+                  {/* Every counted rule or module cites this provision: an
+                      index row is one rule citation of it, and a fallback
+                      module lists it in value_citation_paths. */}
                   {citedByOverflowUnit === "modules"
-                    ? `${citedByOverflow} more modules are grounded in this provision. This view shows the first 60 by module path.`
-                    : `${citedByOverflow} more rules in other modules are grounded in this provision. This view shows the first 120 by rank and module path.`}
+                    ? `${citedByOverflow} more modules cite this provision. This view shows the first ${MAX_CITED_BY_MODULES} by module path.`
+                    : `${citedByOverflow} more rules in other modules cite this provision. This view shows the first ${MAX_CITED_RULES} by rank and module path.`}
                 </p>
               )}
             </div>

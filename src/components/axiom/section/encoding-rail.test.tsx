@@ -1,3 +1,4 @@
+import { MAX_CITED_BY_MODULES, MAX_CITED_RULES } from "@/lib/axiom/cited-by-limits";
 import {
   render,
   screen,
@@ -436,7 +437,7 @@ describe("EncodingRail", () => {
     );
 
     expect(screen.getByTestId("rail-cited-by-overflow")).toHaveTextContent(
-      "42 more rules in other modules are grounded in this provision. This view shows the first 120 by rank and module path.",
+      `42 more rules in other modules cite this provision. This view shows the first ${MAX_CITED_RULES} by rank and module path.`,
     );
   });
 
@@ -458,7 +459,7 @@ describe("EncodingRail", () => {
     );
 
     expect(screen.getByTestId("rail-cited-by-overflow")).toHaveTextContent(
-      "1 more rules in other modules are grounded in this provision. This view shows the first 120 by rank and module path.",
+      `1 more rules in other modules cite this provision. This view shows the first ${MAX_CITED_RULES} by rank and module path.`,
     );
   });
 
@@ -519,7 +520,7 @@ describe("EncodingRail", () => {
     );
 
     expect(screen.getByTestId("rail-cited-by-overflow")).toHaveTextContent(
-      "7 more modules are grounded in this provision. This view shows the first 60 by module path.",
+      `7 more modules cite this provision. This view shows the first ${MAX_CITED_BY_MODULES} by module path.`,
     );
   });
 

@@ -1,4 +1,5 @@
 import yaml from "js-yaml";
+import { MAX_CITED_BY_MODULES, MAX_CITED_RULES } from "@/lib/axiom/cited-by-limits";
 import {
   getRuleEncoding,
   supabaseEncodings,
@@ -60,7 +61,7 @@ export interface SectionEncoding {
    * durable legal ID. Feeds per-rule graph links.
    */
   ruleFiles: Record<string, string>;
-  /** Rules in modules grounded in this provision, grouped by their
+  /** Rules that cite this provision, grouped by their
    *  module citation path in materialized rank order. */
   citedByFiles: Array<{
     citationPath: string;
@@ -93,7 +94,7 @@ export type CitedByOverflowUnit = "rules" | "modules";
 /** Bound on files merged per section; deep regulation trees stay
  *  bounded. 26 USC 32 has 2 files today. */
 const MAX_SECTION_FILES = 60;
-export const MAX_CITED_RULES = 120;
+export { MAX_CITED_RULES };
 const QUERY_TIMEOUT_MS = 4000;
 
 interface SectionFile {
@@ -598,7 +599,7 @@ async function listCitedByFiles(citationPath: string): Promise<CitedByLookup> {
       )
         .contains("value_citation_paths", [citationPath])
         .order("citation_path", { ascending: true })
-        .limit(MAX_SECTION_FILES),
+        .limit(MAX_CITED_BY_MODULES),
       QUERY_TIMEOUT_MS,
       null,
     );
