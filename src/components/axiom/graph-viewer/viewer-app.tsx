@@ -56,7 +56,7 @@ import {
 } from "./compose-filter";
 import { buildRunRequestBody, classifyRunRefusal, mergeRunBatches, runValueMaps, scenarioKey, traceRootIds, TRACE_BATCH_SIZE, type RunPayload } from "./run-request";
 import { AnswerControl } from "./answer-control";
-import { answerKind, catalogAnswerMeta, censusAnswerMeta, fittingAnswers, type AnswerMeta, type ScenarioValue } from "./input-meta";
+import { answerKind, catalogAnswerMeta, censusAnswerMeta, fittingAnswers, ownEntry, type AnswerMeta, type ScenarioValue } from "./input-meta";
 import { trackAxiomEvent } from "@/lib/analytics";
 import {
   DEFAULT_LAUNCHER_MODE,
@@ -291,6 +291,8 @@ export function GraphViewerApp({
     /** The relation roles this run used, so a stale result is explained by
      *  the roles that produced it, not the ones being edited. */
     submittedRoles?: RoleMembership;
+    /** The answers the calculate proxy did not apply, as it names them. */
+    dropped?: string[];
     outputs: Record<string, number | string | boolean | null>;
     trace: Array<{
       variable: string;
@@ -832,7 +834,7 @@ export function GraphViewerApp({
           ? Boolean(fallback)
           : inputMeta.dtypes[input.name] === "text"
             ? (typeof fallback === "string" ? fallback : "")
-            : (CURATED_SAMPLES[input.name] ??
+            : (ownEntry(CURATED_SAMPLES, input.name) ??
               (typeof fallback === "number" ? fallback : 0)),
       });
     }
@@ -1176,6 +1178,12 @@ export function GraphViewerApp({
     // An explicit run consumes the pending edits: the stale flag
     // clears and the edit tracker syncs to what this run computes.
     setResultsStale(false);
+    // Send only answers that fit their fields now. The prune effect drops
+    // a misfit one render after the catalog retypes its field, and a Run
+    // in between must not send it.
+    const fieldNames = allScenarioFields.map((field) => field.name);
+    const facts = fittingAnswers(scenario, fieldNames, inputMeta);
+    const answersOf = (member: string) => fittingAnswers(memberScenario[member] ?? {}, fieldNames, inputMeta);
     const runRoles =
       composeFocus && rootRelations.mode === "explicit"
         ? rolesForRun(rootRelations.relations, relationRoles, ["person_1", ...extraMembers], scopeInstanceKeys)
@@ -1185,12 +1193,13 @@ export function GraphViewerApp({
     const runInstances = composeFocus && scopeInstanceKinds.length > 0
       ? Object.fromEntries(scopeInstanceKinds.map((kind) => [
           kind,
-          Object.fromEntries((scopeInstanceKeys[kind] ?? []).map((key) => [key, { ...memberScenario[key] }])),
+          Object.fromEntries((scopeInstanceKeys[kind] ?? []).map((key) => [key, answersOf(key)])),
         ]))
       : undefined;
+    const answeringMembers = [...extraMembers, ...Object.values(scopeInstanceKeys).flat()];
     ranScenarioKey.current = scenarioKey({
-      ...scenario,
-      ...flattenMemberAnswers([...extraMembers, ...Object.values(scopeInstanceKeys).flat()], memberScenario),
+      ...facts,
+      ...flattenMemberAnswers(answeringMembers, Object.fromEntries(answeringMembers.map((member) => [member, answersOf(member)]))),
       ...flattenRoles(runRoles ?? {}),
     });
     try {
@@ -1221,13 +1230,13 @@ export function GraphViewerApp({
       // Extra household members ride as `people` — empty records
       // still travel: an added person with no answers is a person.
       const people = Object.fromEntries(
-        extraMembers.map((member) => [member, memberScenario[member] ?? {}]),
+        extraMembers.map((member) => [member, answersOf(member)]),
       );
       const requestBody = (variables: string[]): Record<string, unknown> =>
         buildRunRequestBody(
           composeFocus,
           effectiveProgram,
-          scenario,
+          facts,
           variables,
           composeFocus ? people : undefined,
           runRoles,
@@ -1436,12 +1445,23 @@ export function GraphViewerApp({
         ((data as { allocated_instances?: unknown }).allocated_instances ?? {}) as Record<string, Record<string, string>>,
       ).flatMap((byKey) => (byKey && typeof byKey === "object" ? Object.entries(byKey) : []))
         .filter((entry): entry is [string, string] => typeof entry[1] === "string");
+      // The proxy names each answer it did not apply (a text answer its
+      // fresh catalog no longer types as text, say). The result must not
+      // claim those answers, and its sheet says the run went without them.
+      const droppedList = (data as { dropped?: unknown }).dropped;
+      const dropped = new Set(Array.isArray(droppedList) ? droppedList.filter((entry): entry is string => typeof entry === "string") : []);
+      const applied = (answers: Record<string, ScenarioValue>, owner?: string) =>
+        Object.fromEntries(Object.entries(answers).filter(([name]) => !dropped.has(owner ? `${owner}:${name}` : name)));
       setRunResult({
         ...data,
-        submittedFacts: { ...scenario },
-        submittedInstances: runInstances,
+        submittedFacts: applied(facts),
+        submittedInstances: runInstances && Object.fromEntries(Object.entries(runInstances).map(([kind, byKey]) => [
+          kind,
+          Object.fromEntries(Object.entries(byKey).map(([key, answers]) => [key, applied(answers, key)])),
+        ])),
         submittedPersonIds: Object.fromEntries([...["person_1", ...extraMembers].map((id, index) => [id, `person:1:${index + 1}`]), ...allocatedIds]),
         ...(runRoles ? { submittedRoles: runRoles } : {}),
+        dropped: [...dropped],
       });
       setEditingRunInputs(false);
       trackRun("ok");
@@ -2725,6 +2745,7 @@ export function GraphViewerApp({
         {runResult && (
           <section className="results-sheet" role="status">
             {workspaceView === "run" && resultsStale && <p className="workspace-stale">Inputs have changed. Run again to update this result.</p>}
+            {runResult.dropped && runResult.dropped.length > 0 && <p className="results-dropped">{droppedAnswersNote(runResult.dropped)}</p>}
             <div className="results-head">
               <div>
                 <span className="results-eyebrow">Scenario result</span>
@@ -3108,7 +3129,7 @@ export function GraphViewerApp({
                   </dd>
                 </>
               ) : null}
-              {input && input.name in inputEditValues ? (
+              {input && Object.hasOwn(inputEditValues, input.name) ? (
                 <>
                   <dt>Your answer</dt>
                   <dd>
@@ -3318,7 +3339,7 @@ export function GraphViewerApp({
             {"kind" in inspected &&
             inspected.kind === "input" &&
             input &&
-            input.name in inputEditValues ? (
+            Object.hasOwn(inputEditValues, input.name) ? (
               <button
                 type="button"
                 className="node-inspector-lens"
@@ -3561,6 +3582,21 @@ function flattenMemberAnswers(
  *  label follows the id, not the position. */
 function memberLabel(id: string): string {
   return humanize(id);
+}
+
+/** An answer the calculate proxy reports in `dropped`: a fact's bare name,
+ *  or `owner:name` for a member's or an instance's answer
+ *  ("person_2:wcc_supermarket_zone" → "Wcc Supermarket Zone (Person 2)"). */
+function droppedAnswerLabel(entry: string): string {
+  const split = entry.indexOf(":");
+  return split < 0 ? humanize(entry) : `${humanize(entry.slice(split + 1))} (${memberLabel(entry.slice(0, split))})`;
+}
+
+/** The results sheet's note on the answers a run did not use: the engine
+ *  read each one's default instead. */
+function droppedAnswersNote(dropped: string[]): string {
+  const one = dropped.length === 1;
+  return `This run did not use your ${one ? "answer" : "answers"} for ${dropped.map(droppedAnswerLabel).join(", ")}; the result uses ${one ? "its default" : "their defaults"}.`;
 }
 
 // ── Input picker computation outline ──

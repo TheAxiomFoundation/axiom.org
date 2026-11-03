@@ -88,3 +88,27 @@ it("shows submitted payment answers in Relationships and retains them until the 
   expect(screen.getByTestId("canvas-evidence")).toHaveTextContent("2000");
   expect(fetcher).toHaveBeenCalledTimes(2);
 });
+
+it("does not claim a payment's answer the run did not use", async () => {
+  // The proxy names an instance's answer it held back as `<key>:<name>`.
+  vi.stubGlobal("fetch", (url: string) => {
+    if (url === "/api/axiom/runtime/calculate") {
+      return Promise.resolve(Response.json({ outputs: { credit: 0 }, trace: [], allocated_instances: { Payment: { payment_1: "payment:1:1" } }, dropped: ["payment_1:payment_amount"] }));
+    }
+    if (url.startsWith("/api/axiom/rulespec?")) return Promise.resolve(Response.json({ content: "" }));
+    throw new Error(`Unexpected request: ${url}`);
+  });
+  render(<GraphViewerApp />);
+  fireEvent.click(await screen.findByRole("button", { name: "Run" }));
+  fireEvent.click(screen.getByRole("button", { name: "＋ Add payment" }));
+  fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "1000" } });
+  fireEvent.click(screen.getByRole("button", { name: "Run scenario" }));
+  expect(await screen.findByText("This run did not use your answer for Payment Amount (Payment 1); the result uses its default.")).toBeInTheDocument();
+  fireEvent.click(within(screen.getByRole("navigation", { name: "Workspace views" })).getByRole("button", { name: "Relationships" }));
+  fireEvent.click(screen.getByRole("button", { name: "Find a rule" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "Search this scope" }), { target: { value: "payment_amount" } });
+  fireEvent.click(screen.getByRole("button", { name: /^Payment amount Input$/i }));
+  const result = await screen.findByRole("region", { name: /^Result for Payment amount$/i });
+  expect(result).not.toHaveTextContent("1000");
+  expect(screen.getByTestId("canvas-evidence")).not.toHaveTextContent("1000");
+});

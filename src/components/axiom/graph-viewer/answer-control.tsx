@@ -151,8 +151,10 @@ export function AnswerControl({
 /**
  * A text slot's suggested values, plus "Other…": the runtime infers the
  * suggestions from the literals its formulas compare the slot with, which
- * is not a complete domain. Choosing "Other…" opens the text field, which
- * holds the answer until another option is picked; an answer outside the
+ * is not a complete domain. Choosing "Other…" opens the text field on the
+ * current answer and changes nothing until the user edits it. The field
+ * stays open while the user works in it, even once the text matches a
+ * suggestion, until another option is picked; an answer outside the
  * suggestions opens it too.
  */
 function TextChoice({
@@ -186,8 +188,9 @@ function TextChoice({
         onChange={(event) => {
           const picked = event.target.value;
           setWriting(picked === OTHER);
-          // "Other…" starts empty: the default holds until text is typed.
-          onChange(picked === "" || picked === OTHER ? undefined : picked);
+          // "Other…" keeps the answer: a list that shows only answered
+          // inputs (the results strip) would otherwise drop the row.
+          if (picked !== OTHER) onChange(picked === "" ? undefined : picked);
         }}
       >
         <option value="">{presumedLabel}</option>
@@ -198,7 +201,7 @@ function TextChoice({
         ))}
         <option value={OTHER}>Other…</option>
       </select>
-      {open && <span className="answer-text-other">{other}</span>}
+      {open && <span className="answer-text-other" onFocus={() => setWriting(true)}>{other}</span>}
     </span>
   );
 }

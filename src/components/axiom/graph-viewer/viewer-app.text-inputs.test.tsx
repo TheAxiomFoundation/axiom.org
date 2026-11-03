@@ -14,6 +14,8 @@ const fixture = vi.hoisted(() => {
   return {
     root,
     id,
+    // A second scope that reads the same zone, for a scope switch.
+    retail: "nz:regulations/rma_district_plans/wellington_city/retail_zoning",
     cap: id("wcc_muz_supermarket_permitted_gfa_cap_m2"),
     status: id("wcc_supermarket_activity_status"),
     permitted: id("wcc_supermarket_permitted"),
@@ -79,20 +81,41 @@ vi.mock("./api", async (original) => ({
   fetchComposedGraph: vi.fn(),
   fetchRootCatalog: vi.fn(),
 }));
-// jsdom has no canvas layout; the stand-in shows what the canvas was handed.
-vi.mock("./InteractiveRuleGraph", async () => {
-  const { createContext, useEffect } = await import("react");
+// jsdom has no canvas layout; the stand-in shows what the canvas was handed,
+// and gives each input card in it the canvas's own answer box
+// (`InlineAnswer`, which a package graph's `#input.<name>` card renders).
+type TracedNode = { legalId: string; dtype?: string; value?: unknown; inputSource?: string; children?: TracedNode[] };
+vi.mock("./InteractiveRuleGraph", async (original) => {
+  const actual = await original<typeof import("./InteractiveRuleGraph")>();
+  const { useEffect } = await import("react");
   return {
-    InputEditContext: createContext(null),
+    ...actual,
     initialCollapse: () => new Set(),
-    InteractiveRuleGraph: ({ onReady, traces }: { onReady?: () => void; traces: unknown }) => {
+    InteractiveRuleGraph: ({ onReady, traces }: { onReady?: () => void; traces: Record<string, TracedNode> }) => {
       useEffect(() => { onReady?.(); }, [onReady]);
-      return <output data-testid="canvas-evidence">{JSON.stringify(traces)}</output>;
+      const cards = new Set<string>();
+      const visit = (node: TracedNode) => {
+        if (node.dtype === "input") cards.add(node.legalId.replace("#", "#input."));
+        node.children?.forEach(visit);
+      };
+      Object.values(traces).forEach(visit);
+      return (
+        <>
+          <output data-testid="canvas-evidence">{JSON.stringify(traces)}</output>
+          <div data-testid="canvas-cards">
+            {[...cards].map((card) => <actual.InlineAnswer key={card} legalId={card} />)}
+          </div>
+        </>
+      );
     },
   };
 });
 vi.mock("./inspector-mini-graph", () => ({ InspectorMiniGraph: () => null }));
-vi.mock("./corpus-library", () => ({ CorpusLibrary: () => null }));
+// The launcher's stand-in opens the second scope.
+vi.mock("./corpus-library", () => ({
+  CorpusLibrary: ({ active, onPick }: { active: boolean; onPick: (target: string) => void }) =>
+    active ? <button type="button" onClick={() => onPick(fixture.retail)}>Open retail zoning</button> : null,
+}));
 vi.mock("@/lib/analytics", () => ({ trackAxiomEvent: vi.fn() }));
 vi.mock("./styles.css", () => ({}));
 vi.mock("./graph-styles.css", () => ({}));
@@ -116,6 +139,12 @@ const tracedStatus = () =>
   (JSON.parse(screen.getByTestId("canvas-evidence").textContent || "{}") as Record<string, { value?: unknown }>)[
     fixture.status
   ]?.value;
+
+/** The canvas's node for one of the scope's inputs, under the activity status. */
+const tracedInput = (name: string) => {
+  const status = (JSON.parse(screen.getByTestId("canvas-evidence").textContent || "{}") as Record<string, TracedNode>)[fixture.status];
+  return status?.children?.find((child) => child.legalId === fixture.id(name));
+};
 
 /** Answers every run with `outputs` and records each request body. */
 function stubRuns(outputs: Array<Record<string, unknown>>) {
@@ -214,7 +243,7 @@ it("drops a number typed into the zone's census field once the catalog types the
   expect(requests[0]!.facts).toEqual({ wcc_proposed_supermarket_gfa_m2: 2000 });
 });
 
-it("drops an added person's number from the zone once a re-read catalog types the zone as text", async () => {
+it("never sends an added person's number for the zone once a re-read catalog types the zone as text", async () => {
   // A runtime that still typed the zone as a number refuses the first run
   // for its relations, so the app reads the catalog again and keeps what
   // the user stated; by then the zone is text.
@@ -244,14 +273,195 @@ it("drops an added person's number from the zone once a re-read catalog types th
   fireEvent.click(screen.getByRole("button", { name: "Person 2" }));
   fireEvent.change(screen.getByRole("spinbutton", { name: /supermarket zone/i }), { target: { value: "5" } });
   fireEvent.change(screen.getByRole("spinbutton", { name: /supermarket gfa/i }), { target: { value: "2000" } });
-  fireEvent.click(screen.getByRole("button", { name: "Run scenario" }));
-  await waitFor(() => expect(requests).toHaveLength(1));
-  expect(requests[0]!.people).toEqual({ person_2: { wcc_supermarket_zone: 5, wcc_proposed_supermarket_gfa_m2: 2000 } });
-
-  await screen.findByRole("combobox", { name: /supermarket zone/i });
+  // Press Run in the very commit that first shows the zone as a select, as
+  // a person would on seeing it: the state still holds the number then,
+  // because the prune runs in an effect after that commit.
+  let pressed = false;
+  const observer = new MutationObserver(() => {
+    const run = screen.queryByRole("button", { name: "Run scenario" }) as HTMLButtonElement | null;
+    if (pressed || !run || run.disabled || !screen.queryByRole("combobox", { name: /supermarket zone/i })) return;
+    pressed = true;
+    run.click();
+  });
+  observer.observe(document.body, { childList: true, subtree: true, attributes: true });
   fireEvent.click(screen.getByRole("button", { name: "Run scenario" }));
   await waitFor(() => expect(requests).toHaveLength(2));
+  observer.disconnect();
+  expect(requests[0]!.people).toEqual({ person_2: { wcc_supermarket_zone: 5, wcc_proposed_supermarket_gfa_m2: 2000 } });
   expect(requests[1]!.people).toEqual({ person_2: { wcc_proposed_supermarket_gfa_m2: 2000 } });
+});
+
+it("keeps the zone in the results strip when Other… opens its field", async () => {
+  const requests = stubRuns([
+    { wcc_supermarket_activity_status: "Restricted Discretionary", wcc_supermarket_permitted: false },
+    { wcc_supermarket_activity_status: "Out of scope", wcc_supermarket_permitted: false },
+  ]);
+  render(<GraphViewerApp />);
+  fireEvent.click(await screen.findByRole("button", { name: "Run" }));
+  fireEvent.change(await screen.findByRole("combobox", { name: /supermarket zone/i }), { target: { value: "MUZ" } });
+  fireEvent.change(screen.getByRole("spinbutton", { name: /supermarket gfa/i }), { target: { value: "2000" } });
+  fireEvent.click(screen.getByRole("button", { name: "Run scenario" }));
+  await waitFor(() => expect(tracedStatus()).toBe("Restricted Discretionary"));
+
+  fireEvent.click(screen.getByRole("button", { name: "Graph" }));
+  const strip = (await screen.findByLabelText("Adjust and run again")) as HTMLElement;
+  const zone = within(strip).getAllByRole("combobox").find((select) =>
+    [...(select as HTMLSelectElement).options].some((option) => option.textContent === "Other…"),
+  ) as HTMLSelectElement;
+  const other = [...zone.options].find((option) => option.textContent === "Other…")!;
+  fireEvent.change(zone, { target: { value: other.value } });
+  // The row stays, its field holding the answer to edit.
+  const field = within(strip).getByRole("textbox", { name: "Other value" }) as HTMLInputElement;
+  expect(field.value).toBe("MUZ");
+  fireEvent.change(field, { target: { value: "OSZ" } });
+
+  fireEvent.click(within(strip).getByRole("button", { name: "Run again" }));
+  await waitFor(() => expect(requests).toHaveLength(2));
+  expect(requests[1]!.facts).toEqual({ wcc_supermarket_zone: "OSZ", wcc_proposed_supermarket_gfa_m2: 2000 });
+});
+
+it("names each answer a run did not use, and does not claim it", async () => {
+  // The proxy holds back a text answer its fresh catalog no longer types
+  // as text (a runtime deploy between the page's catalog read and the run).
+  vi.stubGlobal("fetch", (url: string) => {
+    if (url === "/api/axiom/runtime/calculate") {
+      return Promise.resolve(Response.json({
+        outputs: { wcc_supermarket_activity_status: "Out of scope", wcc_supermarket_permitted: false },
+        trace: [],
+        applied: ["wcc_proposed_supermarket_gfa_m2"],
+        dropped: ["wcc_supermarket_zone"],
+      }));
+    }
+    if (url.startsWith("/api/axiom/rulespec?")) return Promise.resolve(Response.json({ content: "" }));
+    throw new Error(`Unexpected request: ${url}`);
+  });
+  render(<GraphViewerApp />);
+  fireEvent.click(await screen.findByRole("button", { name: "Run" }));
+  fireEvent.change(await screen.findByRole("combobox", { name: /supermarket zone/i }), { target: { value: "MUZ" } });
+  fireEvent.change(screen.getByRole("spinbutton", { name: /supermarket gfa/i }), { target: { value: "2000" } });
+  fireEvent.click(screen.getByRole("button", { name: "Run scenario" }));
+  // The results sheet carries the note on the Run view and the Graph view.
+  const note = "This run did not use your answer for Wcc Supermarket Zone; the result uses its default.";
+  expect((await screen.findByText(note)).closest(".results-sheet")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Graph" }));
+  expect(screen.getByText(note).closest(".results-sheet")).toBeTruthy();
+  // The canvas shows the floor area the run used, and the zone's default.
+  expect(tracedInput("wcc_proposed_supermarket_gfa_m2")).toMatchObject({ value: 2000, inputSource: "user" });
+  expect(tracedInput("wcc_supermarket_zone")).toMatchObject({ value: null, inputSource: "default" });
+});
+
+it("answers the zone on a canvas card", async () => {
+  const requests = stubRuns([
+    { wcc_supermarket_activity_status: "Restricted Discretionary", wcc_supermarket_permitted: false },
+    { wcc_supermarket_activity_status: "Permitted", wcc_supermarket_permitted: true },
+    { wcc_supermarket_activity_status: "Out of scope", wcc_supermarket_permitted: false },
+  ]);
+  render(<GraphViewerApp />);
+  fireEvent.click(await screen.findByRole("button", { name: "Run" }));
+  fireEvent.change(await screen.findByRole("combobox", { name: /supermarket zone/i }), { target: { value: "MUZ" } });
+  fireEvent.change(screen.getByRole("spinbutton", { name: /supermarket gfa/i }), { target: { value: "2000" } });
+  fireEvent.click(screen.getByRole("button", { name: "Run scenario" }));
+  await waitFor(() => expect(tracedStatus()).toBe("Restricted Discretionary"));
+
+  // On the Graph view, the zone's card takes text and the floor area's a
+  // number, each holding the answer the run used.
+  fireEvent.click(screen.getByRole("button", { name: "Graph" }));
+  const cards = screen.getByTestId("canvas-cards");
+  // The census's phantom inputs keep their cards, with no answer box.
+  expect(cards.querySelectorAll(".irg-answer")).toHaveLength(2);
+  const zoneCard = within(cards).getByRole("textbox", { name: "Answer" }) as HTMLInputElement;
+  expect(zoneCard.value).toBe("MUZ");
+  expect((within(cards).getByRole("spinbutton", { name: "Answer" }) as HTMLInputElement).value).toBe("2000");
+  fireEvent.change(zoneCard, { target: { value: "CCZ" } });
+  const runAgain = () => within(screen.getByLabelText("Adjust and run again")).getByRole("button", { name: "Run again" });
+  fireEvent.click(runAgain());
+  await waitFor(() => expect(requests).toHaveLength(2));
+  expect(requests[1]!.facts).toEqual({ wcc_supermarket_zone: "CCZ", wcc_proposed_supermarket_gfa_m2: 2000 });
+
+  // Clearing the card withdraws the answer and leaves an empty text box.
+  await waitFor(() => expect(runAgain().hasAttribute("disabled")).toBe(false));
+  fireEvent.change(within(screen.getByTestId("canvas-cards")).getByRole("textbox", { name: "Answer" }), { target: { value: "" } });
+  expect((within(screen.getByTestId("canvas-cards")).getByRole("textbox", { name: "Answer" }) as HTMLInputElement).value).toBe("");
+  fireEvent.click(runAgain());
+  await waitFor(() => expect(requests).toHaveLength(3));
+  expect(requests[2]!.facts).toEqual({ wcc_proposed_supermarket_gfa_m2: 2000 });
+});
+
+it("types the next scope's fields from its own census while its catalog loads", async () => {
+  // The supermarket scope's catalog types the zone as text. The retail
+  // scope reads the same zone and asks its own site area; its catalog has
+  // not arrived, so its census, not the last scope's catalog, types both.
+  const retailStatus = `${fixture.retail}#wcc_retail_activity_status`;
+  const retailInputs = ["wcc_supermarket_zone", "wcc_retail_site_area_m2"];
+  const retailGraph: ProgramGraph = {
+    rules: [rule(retailStatus, { fileLegalId: fixture.retail, dtype: "Text", formula: 'if wcc_supermarket_zone == "MUZ":\n    "Permitted"\nelse:\n    "Out of scope"', inputDeps: retailInputs.map((name) => `${fixture.retail}#${name}`) })],
+    inputs: retailInputs.map((name) => ({ legalId: `${fixture.retail}#${name}`, name, fileLegalId: fixture.retail, entity: "Person", sample: null })),
+    relations: [],
+    ownOutputs: [retailStatus],
+    terminalOutputs: [retailStatus],
+  };
+  vi.mocked(fetchComposedGraph).mockImplementation(async (focus) =>
+    focus === fixture.retail ? { graph: retailGraph, files: [fixture.retail], truncated: false } : { graph, files: [fixture.root], truncated: false },
+  );
+  stubRuns([]);
+  render(<GraphViewerApp />);
+  fireEvent.click(await screen.findByRole("button", { name: "Run" }));
+  await screen.findByRole("combobox", { name: /supermarket zone/i });
+
+  vi.mocked(fetchRootCatalog).mockImplementation(() => new Promise(() => {}));
+  fireEvent.click(screen.getByTestId("back-to-overview"));
+  fireEvent.click(await screen.findByRole("button", { name: "Open retail zoning" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Find a rule" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "Search this scope" }), { target: { value: "retail activity status" } });
+  const results = screen.getByRole("region", { name: "Find a rule in this scope" });
+  fireEvent.click(within(results).getByRole("button", { name: /retail activity status/i }));
+  fireEvent.click(screen.getByRole("button", { name: "Relationships" }));
+  expect(await screen.findByRole("spinbutton", { name: /supermarket zone/i })).toBeTruthy();
+  expect(screen.queryByRole("combobox", { name: /supermarket zone/i })).toBeNull();
+  expect(relationshipQuestions().map((text) => text.toLowerCase())).toEqual(["wcc supermarket zone", "wcc retail site area m2"]);
+});
+
+it("reads an input named like an object built-in as any other input", async () => {
+  // `constructor` is a valid RuleSpec name and a key every object
+  // inherits, so a lookup by input name must read own entries only.
+  const root = "nz:regulations/rma_district_plans/wellington_city/building_consent";
+  const required = `${root}#wcc_consent_required`;
+  const builder = `${root}#constructor`;
+  const consentGraph: ProgramGraph = {
+    rules: [rule(required, { fileLegalId: root, dtype: "Judgment", formula: "constructor > 0", inputDeps: [builder] })],
+    inputs: [{ legalId: builder, name: "constructor", fileLegalId: root, entity: "Person", sample: null }],
+    relations: [],
+    ownOutputs: [required],
+    terminalOutputs: [required],
+  };
+  vi.mocked(fetchComposedGraph).mockImplementation(async () => ({ graph: consentGraph, files: [root], truncated: false }));
+  vi.mocked(fetchRootCatalog).mockImplementation(async () => ({
+    inputs: [{ name: "constructor", dtype: "decimal", default: 0, entity: "Person" }],
+    relationMembership: "convention",
+    relations: [],
+  }));
+  window.history.replaceState({}, "", `/app?compose=${encodeURIComponent(root)}&view=structure`);
+  const requests = stubRuns([{ wcc_consent_required: true }]);
+  render(<GraphViewerApp />);
+  fireEvent.click(await screen.findByRole("button", { name: "Find a rule" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "Search this scope" }), { target: { value: "constructor" } });
+  fireEvent.click(within(screen.getByRole("region", { name: "Find a rule in this scope" })).getByRole("button", { name: /^Constructor Input$/i }));
+  fireEvent.click(screen.getByRole("button", { name: "Graph" }));
+  // Before a run, neither its card nor the inspector takes an answer.
+  expect(await screen.findByLabelText("Run results and node details")).toBeTruthy();
+  expect(screen.getByTestId("canvas-cards").querySelectorAll(".irg-answer")).toHaveLength(0);
+  expect(screen.queryByText("Your answer")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Run with these values" })).toBeNull();
+
+  fireEvent.click(screen.getByRole("button", { name: "Run" }));
+  fireEvent.change(await screen.findByRole("spinbutton", { name: /constructor/i }), { target: { value: "5" } });
+  fireEvent.click(screen.getByRole("button", { name: "Run scenario" }));
+  await waitFor(() => expect(requests).toHaveLength(1));
+  expect(requests[0]!.facts).toEqual({ constructor: 5 });
+  fireEvent.click(screen.getByRole("button", { name: "Graph" }));
+  const strip = await screen.findByLabelText("Adjust and run again");
+  expect(within(strip).getByRole("spinbutton").getAttribute("placeholder")).toBe("e.g. 0");
+  expect((within(screen.getByTestId("canvas-cards")).getByRole("spinbutton", { name: "Answer" }) as HTMLInputElement).value).toBe("5");
 });
 
 it("asks nothing and offers no input retry when the catalog lists no inputs", async () => {

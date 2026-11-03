@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RootInputSlot } from "./api";
 import { AnswerControl } from "./answer-control";
@@ -66,8 +66,9 @@ describe("AnswerControl: text slots", () => {
     const select = screen.getByRole("combobox") as HTMLSelectElement;
     expect(optionTexts(select)).toEqual(["default — monthly", "weekly", "Other…"]);
     choose(select, "Other…");
-    // Other… opens an empty field; the default holds until text arrives.
-    expect(onChange).toHaveBeenLastCalledWith(undefined);
+    // Other… opens an empty field and changes nothing; the default holds
+    // until text arrives.
+    expect(onChange).not.toHaveBeenCalled();
     const field = screen.getByRole("textbox", { name: "Other value" }) as HTMLInputElement;
     expect(field.value).toBe("");
     expect(field.placeholder).toBe("default — monthly");
@@ -86,6 +87,34 @@ describe("AnswerControl: text slots", () => {
     expect(onChange).toHaveBeenLastCalledWith("weekly");
     rerender(<AnswerControl name="pay_frequency" value="weekly" meta={frequency} onChange={onChange} />);
     expect(select.value).toBe("weekly");
+    expect(screen.queryByRole("textbox")).toBeNull();
+  });
+
+  it("keeps the answer when Other… opens the field", () => {
+    const onChange = vi.fn();
+    render(<AnswerControl name="wcc_supermarket_zone" value="MUZ" meta={ZONE} onChange={onChange} />);
+    const select = screen.getByRole("combobox") as HTMLSelectElement;
+    choose(select, "Other…");
+    // A list of answered inputs (the results strip) keeps the row.
+    expect(onChange).not.toHaveBeenCalled();
+    expect(optionTexts(select)[select.selectedIndex]).toBe("Other…");
+    expect((screen.getByRole("textbox", { name: "Other value" }) as HTMLInputElement).value).toBe("MUZ");
+  });
+
+  it("keeps the field open while the user writes a suggestion into it", () => {
+    const onChange = vi.fn();
+    const { rerender } = render(<AnswerControl name="wcc_supermarket_zone" value="MU" meta={ZONE} onChange={onChange} />);
+    const select = screen.getByRole("combobox") as HTMLSelectElement;
+    const field = screen.getByRole("textbox", { name: "Other value" }) as HTMLInputElement;
+    act(() => field.focus());
+    fireEvent.change(field, { target: { value: "MUZ" } });
+    expect(onChange).toHaveBeenLastCalledWith("MUZ");
+    rerender(<AnswerControl name="wcc_supermarket_zone" value="MUZ" meta={ZONE} onChange={onChange} />);
+    expect(screen.getByRole("textbox", { name: "Other value" })).toBe(field);
+    expect(document.activeElement).toBe(field);
+    // Picking from the select closes it.
+    choose(select, "CCZ");
+    rerender(<AnswerControl name="wcc_supermarket_zone" value="CCZ" meta={ZONE} onChange={onChange} />);
     expect(screen.queryByRole("textbox")).toBeNull();
   });
 

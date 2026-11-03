@@ -1583,12 +1583,12 @@ const OutputNode = ({ data }: NodeProps) => {
   );
 };
 
-function InlineAnswer({ legalId }: { legalId: string }) {
+export function InlineAnswer({ legalId }: { legalId: string }) {
   const { values, answered, onChange } = useContext(InputEditContext);
   const fragment = legalId.split("#").pop() ?? "";
   if (!onChange || !fragment.startsWith("input.")) return null;
   const name = fragment.slice("input.".length);
-  if (!(name in values)) {
+  if (!Object.hasOwn(values, name)) {
     // The runtime cannot ingest this question yet — no field is
     // better than a field the engine silently ignores.
     return null;
@@ -1649,7 +1649,7 @@ function useAnswerBoxPopulated(legalId: string): boolean {
   const fragment = legalId.split("#").pop() ?? "";
   if (!onChange || !fragment.startsWith("input.")) return false;
   const name = fragment.slice("input.".length);
-  if (!(name in values)) return false;
+  if (!Object.hasOwn(values, name)) return false;
   const value = values[name];
   // A checkbox always displays its state; a number or text box counts
   // once typed.
@@ -1718,7 +1718,7 @@ const InputNode = ({ data }: NodeProps) => {
   const inputName = inputFragment.startsWith("input.")
     ? inputFragment.slice("input.".length)
     : inputFragment || null;
-  const settable = Boolean(onChange && inputName && inputName in values);
+  const settable = Boolean(onChange && inputName && Object.hasOwn(values, inputName));
   const isAnswered = Boolean(inputName && answered.has(inputName));
   // Affordance shows when the parent wired up onExposeInput (Step III).
   // Action label flips with the current state — same hook toggles both
@@ -1757,7 +1757,7 @@ const InputNode = ({ data }: NodeProps) => {
           default rather than an answer. */}
       {d.showValues && settable && !isAnswered && (
         <div className="irg-default-chip">
-          {inputName && defaults && inputName in defaults && defaults[inputName] !== ""
+          {inputName && defaults && Object.hasOwn(defaults, inputName) && defaults[inputName] !== ""
             ? `default — ${String(defaults[inputName])}`
             : "using default"}
         </div>
