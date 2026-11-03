@@ -2,7 +2,7 @@ import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import type { RootInputSlot } from "./api";
 import type { ScenarioValue } from "./input-meta";
-import { answerFits, answerKind, catalogAnswerMeta, censusAnswerMeta, fittingAnswers } from "./input-meta";
+import { answerFits, answerKind, catalogAnswerMeta, censusAnswerMeta, fittingAnswers, ownEntry } from "./input-meta";
 
 // Wellington's supermarket rule as the API composed it before
 // axiom-api#309: its formula scan read the words inside the text
@@ -66,7 +66,10 @@ describe("catalogAnswerMeta: Wellington supermarket zoning", () => {
 
 describe("catalogAnswerMeta", () => {
   it("types each dtype, and leaves dates on their census control", () => {
-    const census = censusAnswerMeta([{ name: "start", sample: 5 }]);
+    const census = censusAnswerMeta([
+      { name: "start", sample: 5 },
+      { name: "renews", sample: false },
+    ]);
     const meta = catalogAnswerMeta(
       [
         {
@@ -90,6 +93,7 @@ describe("catalogAnswerMeta", () => {
         { name: "frequency", dtype: "text", default: "monthly", entity: "Person", values: [3, "weekly", "weekly"] },
         { name: "start", dtype: "date", default: "2026-01-01", entity: "Person" },
         { name: "end", dtype: "date", default: "2026-12-31", entity: "Person" },
+        { name: "renews", dtype: "date", default: "2027-01-01", entity: "Person" },
       ],
       census,
     );
@@ -111,6 +115,9 @@ describe("catalogAnswerMeta", () => {
     expect(meta.defaults.start).toBe(5);
     expect(meta.dtypes.end).toBe("number");
     expect(meta.defaults.end).toBeUndefined();
+    // The census's toggle stays a toggle.
+    expect(answerKind(meta, "renews")).toBe("bool");
+    expect(meta.defaults.renews).toBe(false);
   });
 
   it("treats an empty catalog as authoritative: the root ingests nothing", () => {
@@ -225,7 +232,8 @@ describe("catalogAnswerMeta invariants", () => {
   it("the catalog alone decides which inputs exist, and each gets a control of its type", () => {
     fc.assert(
       fc.property(fc.array(slot, { maxLength: 8 }), fc.array(censusInput, { maxLength: 8 }), (slots, census) => {
-        const meta = catalogAnswerMeta(slots, censusAnswerMeta(census));
+        const placeholder = censusAnswerMeta(census);
+        const meta = catalogAnswerMeta(slots, placeholder);
         const names = new Set(slots.map((item) => item.name));
         // A census name the catalog lacks never survives.
         expect(new Set(Object.keys(meta.dtypes))).toEqual(names);
@@ -247,6 +255,11 @@ describe("catalogAnswerMeta invariants", () => {
           expect(kind === "choice").toBe(declared);
           const suggested = first.dtype === "text" && (first.values ?? []).some((item) => typeof item === "string" && item !== "");
           expect(kind === "text-choice").toBe(suggested);
+          // A slot the panel cannot type keeps its census control.
+          if (!["bool", "integer", "decimal", "text"].includes(first.dtype)) {
+            expect(meta.dtypes[key]).toBe(ownEntry(placeholder.dtypes, key) ?? "number");
+            expect(meta.defaults[key]).toBe(ownEntry(placeholder.defaults, key));
+          }
         }
       }),
       { numRuns: 300, seed: 2026110311 },

@@ -214,6 +214,46 @@ it("drops a number typed into the zone's census field once the catalog types the
   expect(requests[0]!.facts).toEqual({ wcc_proposed_supermarket_gfa_m2: 2000 });
 });
 
+it("drops an added person's number from the zone once a re-read catalog types the zone as text", async () => {
+  // A runtime that still typed the zone as a number refuses the first run
+  // for its relations, so the app reads the catalog again and keeps what
+  // the user stated; by then the zone is text.
+  const numericZone: RootCatalog = {
+    ...wellingtonCatalog,
+    inputs: catalog.map((slot) =>
+      slot.name === "wcc_supermarket_zone" ? { name: slot.name, dtype: "decimal", default: 0, entity: "Person" } : slot,
+    ),
+  };
+  vi.mocked(fetchRootCatalog).mockReset().mockResolvedValueOnce(numericZone).mockResolvedValue(wellingtonCatalog);
+  const requests: Array<Record<string, unknown>> = [];
+  vi.stubGlobal("fetch", (url: string, init?: RequestInit) => {
+    if (url === "/api/axiom/runtime/calculate") {
+      requests.push(JSON.parse(String(init?.body)));
+      return Promise.resolve(
+        requests.length === 1
+          ? Response.json({ error: "unknown_relation", message: "This scope's relations changed." }, { status: 422 })
+          : Response.json({ outputs: {}, trace: [] }),
+      );
+    }
+    if (url.startsWith("/api/axiom/rulespec?")) return Promise.resolve(Response.json({ content: "" }));
+    throw new Error(`Unexpected request: ${url}`);
+  });
+  render(<GraphViewerApp />);
+  fireEvent.click(await screen.findByRole("button", { name: "Run" }));
+  fireEvent.click(await screen.findByRole("button", { name: /add person/i }));
+  fireEvent.click(screen.getByRole("button", { name: "Person 2" }));
+  fireEvent.change(screen.getByRole("spinbutton", { name: /supermarket zone/i }), { target: { value: "5" } });
+  fireEvent.change(screen.getByRole("spinbutton", { name: /supermarket gfa/i }), { target: { value: "2000" } });
+  fireEvent.click(screen.getByRole("button", { name: "Run scenario" }));
+  await waitFor(() => expect(requests).toHaveLength(1));
+  expect(requests[0]!.people).toEqual({ person_2: { wcc_supermarket_zone: 5, wcc_proposed_supermarket_gfa_m2: 2000 } });
+
+  await screen.findByRole("combobox", { name: /supermarket zone/i });
+  fireEvent.click(screen.getByRole("button", { name: "Run scenario" }));
+  await waitFor(() => expect(requests).toHaveLength(2));
+  expect(requests[1]!.people).toEqual({ person_2: { wcc_proposed_supermarket_gfa_m2: 2000 } });
+});
+
 it("asks nothing and offers no input retry when the catalog lists no inputs", async () => {
   vi.mocked(fetchRootCatalog).mockImplementation(async () => ({ inputs: [], relationMembership: "convention", relations: [] }));
   stubRuns([]);
