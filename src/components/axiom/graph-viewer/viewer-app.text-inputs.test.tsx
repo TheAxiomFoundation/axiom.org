@@ -263,8 +263,13 @@ it("never sends the census field's number from the commit that first shows the z
     run.click();
   });
   observer.observe(document.body, { childList: true, subtree: true, attributes: true });
-  await act(async () => deliver(wellingtonCatalog));
-  await waitFor(() => expect(requests).toHaveLength(1));
+  // Deliver while waitFor holds act off: React then commits each render in
+  // its own task, as in a browser, and the observer sees the commit that
+  // first shows the select. Inside act, React would flush every commit,
+  // the prune's included, before the observer ran.
+  const sent = waitFor(() => expect(requests).toHaveLength(1));
+  deliver(wellingtonCatalog);
+  await sent;
   observer.disconnect();
   expect(requests[0]!.facts).toEqual({ wcc_proposed_supermarket_gfa_m2: 2000 });
 });
@@ -368,11 +373,13 @@ it("names each answer a run did not use, and does not claim it", async () => {
   fireEvent.change(await screen.findByRole("combobox", { name: /supermarket zone/i }), { target: { value: "MUZ" } });
   fireEvent.change(screen.getByRole("spinbutton", { name: /supermarket gfa/i }), { target: { value: "2000" } });
   fireEvent.click(screen.getByRole("button", { name: "Run scenario" }));
-  // The results sheet carries the note on the Run view and the Graph view.
+  // The results sheet carries the note under its heading, on the Run view
+  // and the Graph view.
   const note = "This run did not use your answer for Wcc Supermarket Zone; the result uses its default.";
-  expect((await screen.findByText(note)).closest(".results-sheet")).toBeTruthy();
+  const underHeading = (element: HTMLElement) => element.previousElementSibling?.matches(".results-sheet > .results-head") ?? false;
+  expect(underHeading(await screen.findByText(note))).toBe(true);
   fireEvent.click(screen.getByRole("button", { name: "Graph" }));
-  expect(screen.getByText(note).closest(".results-sheet")).toBeTruthy();
+  expect(underHeading(screen.getByText(note))).toBe(true);
   // The canvas shows the floor area the run used, and the zone's default.
   expect(tracedInput("wcc_proposed_supermarket_gfa_m2")).toMatchObject({ value: 2000, inputSource: "user" });
   expect(tracedInput("wcc_supermarket_zone")).toMatchObject({ value: null, inputSource: "default" });

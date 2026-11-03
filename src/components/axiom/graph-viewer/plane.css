@@ -277,7 +277,7 @@
   color: var(--color-ink-muted);
 }
 .graph-viewer-root .results-dropped {
-  margin: 8px 0 0;
+  margin: 8px 0 6px;
   font-size: 14px;
   color: var(--color-accent);
 }

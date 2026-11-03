@@ -2745,7 +2745,6 @@ export function GraphViewerApp({
         {runResult && (
           <section className="results-sheet" role="status">
             {workspaceView === "run" && resultsStale && <p className="workspace-stale">Inputs have changed. Run again to update this result.</p>}
-            {runResult.dropped && runResult.dropped.length > 0 && <p className="results-dropped">{droppedAnswersNote(runResult.dropped)}</p>}
             <div className="results-head">
               <div>
                 <span className="results-eyebrow">Scenario result</span>
@@ -2760,6 +2759,7 @@ export function GraphViewerApp({
                 ×
               </button>
             </div>
+            {runResult.dropped && runResult.dropped.length > 0 && <p className="results-dropped">{droppedAnswersNote(runResult.dropped)}</p>}
             {workspaceView !== "run" && <div className="results-grid">
               {(() => {
                 // The cell is a door to its node on the canvas.
