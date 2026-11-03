@@ -169,7 +169,7 @@ const PR_RUN_RE =
 // A validator rule id: letters first, with at least one "-" or ":" segment
 // (complete-source-unit:structure), so an index like versions[0] never matches.
 const ERROR_RULE_RE = /\[([a-z][a-z0-9]*(?:[-:][a-z0-9]+)+)\]/i;
-const ERROR_MAX_CHARS = 500;
+const ERROR_MAX_CHARS = 1000;
 /** Clock slack between the Actions run and the encoder's own timestamps. */
 const ENCODER_WINDOW_SLACK_MS = 10 * 60 * 1000;
 
@@ -1200,6 +1200,11 @@ interface RunJob {
 
 /** The step that generates, validates, repairs, and reviews: the encode loop. */
 const ENCODE_STEP_RE = /^Encode, review, validate, and apply$/i;
+/**
+ * From encoder 0.2.2218 the encode step only queues the lanes; each lane's
+ * encode loop runs in its own "Apply prepared signature N" step after it.
+ */
+const LANE_STEP_RE = /^Apply prepared signature \d+$/i;
 /** Steps outside the three parts: bookkeeping, failure bundles, and cleanup. */
 const UNTIMED_STEP_RE = /^(?:Post |Complete job$|Summarize model spend$|(?:Package|Upload) failed re-encode diagnostics$)/i;
 
@@ -1209,8 +1214,9 @@ const seconds = (from: string, to: string) =>
 /**
  * Split the encode job at its encode step. Setup runs from the first step
  * to the encode step (or, when the job stopped before it, to the last step
- * that ran); the encode part is that step; publishing runs from its end to
- * the last packaging, signing, or PR step after it. Failure bundles and
+ * that ran); the encode part is that step and the lane steps that run the
+ * encode loop after it; publishing runs from their end to the last
+ * packaging, signing, or PR step after them. Failure bundles and
  * cleanup steps count toward none of them.
  */
 export function jobPhases(steps: RunStep[]): JobPhases {
@@ -1227,11 +1233,14 @@ export function jobPhases(steps: RunStep[]): JobPhases {
   const first = ran[0].started_at;
   if (at < 0) return { setup: seconds(first, ran[ran.length - 1].completed_at), encode: null, publish: null };
   const encode = ran[at];
-  const after = ran.slice(at + 1);
+  let last = at;
+  for (let i = at + 1; i < ran.length; i++) if (LANE_STEP_RE.test(ran[i].name ?? "")) last = i;
+  const encodeEnd = ran[last].completed_at;
+  const after = ran.slice(last + 1);
   return {
     setup: seconds(first, encode.started_at),
-    encode: seconds(encode.started_at, encode.completed_at),
-    publish: after.length ? seconds(encode.completed_at, after[after.length - 1].completed_at) : null,
+    encode: seconds(encode.started_at, encodeEnd),
+    publish: after.length ? seconds(encodeEnd, after[after.length - 1].completed_at) : null,
   };
 }
 
@@ -2149,7 +2158,7 @@ const ANSI_RE = /\x1b\[[0-9;]*m/g;
 /** Actions' own closing lines, which say a step failed but not why. */
 const GENERIC_ERROR_RE =
   /^(Process completed with exit code \d+|The operation was canceled|The job was not acquired|The runner has received a shutdown signal)/i;
-const CHECK_ERROR_MAX_CHARS = 400;
+const CHECK_ERROR_MAX_CHARS = 1000;
 /** "pkg.module.SomeError: message", the last line of a Python traceback. */
 const EXCEPTION_RE = /^[A-Za-z_][\w.]*(?:Error|Exception|Exit)\b[^:\s]*: \S/;
 /** A failing step's own output, up to this many lines, is quoted whole; longer output by its end. */

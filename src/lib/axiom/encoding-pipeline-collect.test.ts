@@ -164,8 +164,8 @@ describe("parsing", () => {
   it("truncates long errors and drops blank ones", () => {
     expect(truncateError("  ")).toBeNull();
     expect(truncateError(null)).toBeNull();
-    const long = truncateError("x".repeat(600))!;
-    expect(long).toHaveLength(500);
+    const long = truncateError("x".repeat(1200))!;
+    expect(long).toHaveLength(1000);
     expect(long.endsWith("…")).toBe(true);
   });
 
@@ -884,6 +884,17 @@ describe("run details", () => {
     expect(jobPhases([step("Set up job", "20:27", "20:29"), step("Verify immutable checkout identities", "20:29", "20:31", "failure")]))
       .toEqual({ setup: 4, encode: null, publish: null });
     expect(jobPhases([{ name: "Set up job", conclusion: "skipped" }])).toEqual({ setup: null, encode: null, publish: null });
+    // From encoder 0.2.2218 the lanes run the encode loop after the encode step.
+    expect(
+      jobPhases([
+        ...setup,
+        step("Encode, review, validate, and apply", "29:04", "29:12"),
+        step("Apply prepared signature 1", "29:12", "41:10"),
+        step("Apply prepared signature 2", "41:10", "41:10", "skipped"),
+        step("Verify generated provenance", "41:10", "41:30"),
+        step("Push lane branch and open draft pull request", "41:40", "41:44"),
+      ])
+    ).toEqual({ setup: 517, encode: 726, publish: 34 });
   });
 
   it("reads each finished run's jobs once, cancelled runs first", () => {
@@ -1007,7 +1018,7 @@ describe("PR check errors", () => {
     );
     const long = log("##[endgroup]", "one", "two", "three", "four", "five: the cause", "##[error]Process completed with exit code 2.");
     expect(checkErrorFromLog(long)).toBe("four five: the cause");
-    expect(checkErrorFromLog(log("##[endgroup]", "x".repeat(500), "##[error]Process completed with exit code 1."))).toHaveLength(400);
+    expect(checkErrorFromLog(log("##[endgroup]", "x".repeat(1500), "##[error]Process completed with exit code 1."))).toHaveLength(1000);
   });
 
   it("names a cancelled job, a step that printed nothing, and a log with no failure", () => {
