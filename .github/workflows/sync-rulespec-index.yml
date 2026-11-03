@@ -11,6 +11,13 @@ on:
 jobs:
   sync:
     runs-on: ubuntu-latest
+    # One sync at a time: scheduled, manual and collector-dispatched runs
+    # would otherwise interleave their per-module resets and stale-row
+    # cleanups. A run that arrives while one is going waits; GitHub keeps
+    # only the newest waiting run, which reads the repos afresh anyway.
+    concurrency:
+      group: sync-rulespec-index
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2

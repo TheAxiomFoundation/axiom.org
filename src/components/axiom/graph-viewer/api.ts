@@ -337,7 +337,7 @@ function programLabel(programId: string, jurisdiction: string): string {
   return PROGRAM_LABELS[base] ?? humanizeProgram(base);
 }
 
-function humanizeProgram(value: string): string {
+export function humanizeProgram(value: string): string {
   return value
     .split(/[-_]/)
     .filter(Boolean)

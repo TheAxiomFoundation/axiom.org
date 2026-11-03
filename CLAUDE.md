@@ -120,6 +120,11 @@ Dev needs `.env.local` (gitignored) with:
   (`bun scripts/collect-program-bundles.mjs --out <file>`, `--bundle <yaml>`
   for a bundle file not yet on axiom-corpus main) that the bundles tab reads
   instead of the tables.
+- `AXIOM_GITHUB_TOKEN` — set in Production; optional in dev. The `/ops`
+  Pipeline tab's ingest stations read axiom-corpus's PRs and every rulespec
+  repo's pin history through GitHub's GraphQL API with it (cached 15
+  minutes). Without it, Corpus ingest has no times and Release pin shows as
+  not measured (`GH_TOKEN=$(gh auth token) bun run dev` works locally).
 - `NEXT_PUBLIC_GRAPH_VIEWER_URL` / `NEXT_PUBLIC_BUILDER_URL` — optional
   overrides for the graph-viewer / dashboard-builder deep-link targets.
 

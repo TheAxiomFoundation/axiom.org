@@ -25,7 +25,8 @@ describe("proxy", () => {
       ["/graph", "https://axiom.org/app"],
       ["/graph/?x=1", "https://axiom.org/app?x=1"],
       ["/axiom/graph/", "https://axiom.org/app"],
-      ["/ops", "https://axiom.org/axiom/ops"],
+      ["/ops", "https://axiom.org/ops"],
+      ["/axiom/ops?tab=line", "https://axiom.org/ops?tab=line"],
     ] as const) {
       const response = proxy(
         request(`https://app.axiom-foundation.org${path}`, "app.axiom-foundation.org")
@@ -83,9 +84,10 @@ describe("proxy", () => {
     }
   });
 
-  it("serves the ops dashboard under its /axiom mount in place", () => {
-    const response = proxy(request("https://axiom.org/axiom/ops", "axiom.org"));
-    expect(response.headers.get("x-middleware-next")).toBe("1");
+  it("redirects the ops dashboard's old /axiom mount to /ops, with its query", () => {
+    const response = proxy(request("https://axiom.org/axiom/ops?tab=output", "axiom.org"));
+    expect(response.status).toBe(308);
+    expect(response.headers.get("location")).toBe("https://axiom.org/ops?tab=output");
   });
 
   it("routes the encoded-rules index links and search at their bare path on every host", () => {
@@ -174,13 +176,13 @@ describe("proxy", () => {
     expect(response.headers.get("location")).toBe("https://axiom.org/app");
   });
 
-  it("redirects the ops dashboard on the old host to its /axiom mount", () => {
+  it("redirects the ops dashboard on the old host to /ops", () => {
     const response = proxy(
       request("https://app.axiom-foundation.org/ops", "app.axiom-foundation.org")
     );
 
     expect(response.status).toBe(308);
-    expect(response.headers.get("location")).toBe("https://axiom.org/axiom/ops");
+    expect(response.headers.get("location")).toBe("https://axiom.org/ops");
   });
 
   it("rewrites jurisdiction paths on localhost into the Axiom app route", () => {
