@@ -164,6 +164,16 @@
       "permanent": false
     },
     {
+      "source": "/gallery",
+      "destination": "/demos",
+      "permanent": false
+    },
+    {
+      "source": "/gallery/",
+      "destination": "/demos",
+      "permanent": false
+    },
+    {
       "source": "/chatbot",
       "destination": "/gallery/chatbot",
       "permanent": false

@@ -174,6 +174,9 @@ describe("public copy claims no certification the ledger lacks", () => {
     expect(words).toContain("compiled · illustrative");
     expect(imgLabel(container)).toContain("which compiles into a program artifact");
     expect(imgLabel(container)).not.toMatch(/1,742,391|7\.7M/);
+    // The corpus holds selected sources (live /coverage), so the strip names
+    // the corpus and claims no more than that.
+    expect(publicCopy(container)).not.toMatch(/\bthe whole law\b/i);
   });
 
   it("the reading-room library claims no certification or unsourced count", () => {
@@ -200,6 +203,9 @@ describe("retired certification copy stays retired", () => {
     "certifies itself",
     "certification is automatic",
     "the whole law captured",
+    "the whole law, word for word",
+    "the whole law word for word",
+    "deterministic checks, oracles, AI judge",
   ];
 
   function sources(dir: string): string[] {
