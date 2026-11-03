@@ -1,3 +1,4 @@
+import { MAX_CITED_BY_MODULES, MAX_CITED_RULES } from "@/lib/axiom/cited-by-limits";
 import {
   render,
   screen,
@@ -436,7 +437,7 @@ describe("EncodingRail", () => {
     );
 
     expect(screen.getByTestId("rail-cited-by-overflow")).toHaveTextContent(
-      "42 more rules in other modules are grounded in this provision. This view shows the first 120 by rank and module path.",
+      `42 more rules cite this provision. This view shows the first ${MAX_CITED_RULES} by rank and module path.`,
     );
   });
 
@@ -458,7 +459,68 @@ describe("EncodingRail", () => {
     );
 
     expect(screen.getByTestId("rail-cited-by-overflow")).toHaveTextContent(
-      "1 more rules in other modules are grounded in this provision. This view shows the first 120 by rank and module path.",
+      `1 more rules cite this provision. This view shows the first ${MAX_CITED_RULES} by rank and module path.`,
+    );
+  });
+
+  it("links a citing module from another jurisdiction into its own repo path", () => {
+    placeSections({ a: 500, b: 1500 });
+    render(
+      <EncodingRail
+        encoding={makeEncoding()}
+        jurisdiction="us"
+        citationPath="us/statute/26/32"
+        isRepealed={false}
+        chunks={CHUNKS}
+        encodedRules={[ENCODED_RULES[0]]}
+        outgoing={[]}
+        incoming={[]}
+        citedByFiles={[
+          {
+            citationPath: "us-co/policy/snap/allotment",
+            filePath: "policies/snap/allotment.yaml",
+            jurisdiction: "us-co",
+            rules: [
+              {
+                renderedName: "rule_for_a",
+                canonicalName: "rule_for_a",
+                rank: 0,
+                atomKinds: [],
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    const link = within(screen.getByTestId("rail-cited-by")).getByText(
+      "us-co/policy/snap/allotment",
+    );
+    expect(link.getAttribute("href")).toMatch(
+      /\/blob\/main\/us-co\/policies\/snap\/allotment\.yaml$/,
+    );
+  });
+
+  it("counts the compatibility fallback's overflow in modules", () => {
+    placeSections({ a: 500, b: 1500 });
+    render(
+      <EncodingRail
+        encoding={makeEncoding()}
+        jurisdiction="us"
+        citationPath="us/statute/26/32"
+        isRepealed={false}
+        chunks={CHUNKS}
+        encodedRules={ENCODED_RULES}
+        outgoing={OUTGOING}
+        incoming={[]}
+        citedByFiles={[]}
+        citedByOverflow={7}
+        citedByOverflowUnit="modules"
+      />,
+    );
+
+    expect(screen.getByTestId("rail-cited-by-overflow")).toHaveTextContent(
+      `7 more modules cite this provision. This view shows the first ${MAX_CITED_BY_MODULES} by module path.`,
     );
   });
 

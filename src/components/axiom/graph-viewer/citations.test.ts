@@ -190,6 +190,25 @@ describe("humanizeRuleName", () => {
     );
   });
 
+  it("upper-cases the SNAP immigration acronyms", () => {
+    // Rule names from the signed SNAP immigration encoding
+    // (corpus-subtrees.json carries the first two).
+    expect(humanizeRuleName("lpr_subject_to_five_year_waiting_period")).toBe(
+      "LPR Subject To Five Year Waiting Period",
+    );
+    expect(humanizeRuleName("snap_eligible_non_citizen_under_obbb")).toBe(
+      "SNAP Eligible Non Citizen Under OBBB",
+    );
+    expect(humanizeRuleName("cofa_citizen_lawfully_residing")).toBe(
+      "COFA Citizen Lawfully Residing",
+    );
+    expect(humanizeRuleName("prwora_qualified_alien")).toBe("PRWORA Qualified Alien");
+    expect(humanizeRuleName("ina_section_212_status")).toBe("INA Section 212 Status");
+    expect(humanizeRuleName("qc_error_case")).toBe("QC Error Case");
+    // Whole-word only: words that merely contain the tokens stay words.
+    expect(humanizeRuleName("final_income_quota")).toBe("Final Income Quota");
+  });
+
   it("does not touch words that merely contain acronym substrings", () => {
     expect(humanizeRuleName("debtor_has_ssn")).toBe("Debtor Has SSN");
     expect(humanizeRuleName("countable_debt_amount")).toBe(
