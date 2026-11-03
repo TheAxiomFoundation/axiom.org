@@ -10,7 +10,8 @@ import {
 import { unstable_cache } from "next/cache";
 import { getBundleIndex } from "./program-bundles-data";
 import { getPipelineEvents, getStationTargets, type EventsOrigin } from "./pipeline-events-data";
-import type { PipelineEvent } from "./pipeline-events";
+import { PRE_ENCODE_GATE_SINCE, type PipelineEvent } from "./pipeline-events";
+import { getIngestEvents, withIngest } from "./pipeline-ingest-data";
 import { mineFlow, type FlowModel, type Population, type WorkflowSignal } from "./pipeline-flow";
 import { getWorkflowHealth, gradeWorkflow, WORKFLOWS, type WorkflowSpec } from "./workflow-health";
 
@@ -88,6 +89,14 @@ export function eventDeadlines(events: PipelineEvent[], now: number): Array<{ la
   return out;
 }
 
+/**
+ * Stations of the line to show although no event may reach them, and why:
+ * the ingest loader's gaps, and the target gate until the encoder runs it.
+ */
+export function unmeasuredStations(ingest: Record<string, string>, gateSince: string | null = PRE_ENCODE_GATE_SINCE): Record<string, string> {
+  return { ...ingest, ...(gateSince ? {} : { target_gate: "gate not live yet" }) };
+}
+
 /** Everything the /ops Line tab and /api/ops/flow need, mined once per request. */
 export async function loadFlow(options: {
   days: number;
@@ -98,11 +107,14 @@ export async function loadFlow(options: {
   workflows?: boolean;
 }): Promise<FlowData> {
   const now = options.now ?? Date.now();
-  const [events, targets, workflows] = await Promise.all([
+  const [log, targets, workflows, ingest] = await Promise.all([
     getPipelineEvents(),
     getStationTargets(),
     options.workflows === false ? [] : getWorkflowHealth(FLOW_WORKFLOWS).catch(() => []),
+    getIngestEvents(),
   ]);
+  // The corpus releases upstream of every encode.
+  const events = { ...log, events: withIngest(log.events, ingest.events) };
   const signals: WorkflowSignal[] = workflows.map((w) => {
     const { grade, reason } = gradeWorkflow(w, w.read, now);
     return { label: w.label, grade, url: w.url, detail: reason };
@@ -115,6 +127,8 @@ export async function loadFlow(options: {
     targets: targets.targets,
     workflows: signals,
     deadlines: eventDeadlines(events.events, now),
+    unmeasured: unmeasuredStations(ingest.unmeasured),
+    sourceErrors: ingest.error ? [ingest.error] : [],
   });
   return { model, events: events.events, origin: events.origin, targetsSeeded: targets.seeded, error: events.error };
 }

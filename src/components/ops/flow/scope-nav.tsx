@@ -1,8 +1,9 @@
 import styles from "./flow.module.css";
 
 /**
- * A jurisdiction switch: All, then the busiest roots. `href` builds each
- * choice's address, so the switch keeps the rest of the page's state.
+ * A jurisdiction switch: All, then the busiest roots, shown as codes in
+ * capitals (US, DK). `href` builds each choice's address, so the switch
+ * keeps the rest of the page's state.
  */
 export function ScopeNav({
   current,
@@ -23,7 +24,7 @@ export function ScopeNav({
       {ordered.map((j) =>
         j === current ? (
           <span key={j ?? "all"} aria-current="page">
-            {j ?? "All"}
+            {j ? j.toUpperCase() : "All"}
           </span>
         ) : (
           <a
@@ -40,7 +41,7 @@ export function ScopeNav({
                 : undefined
             }
           >
-            {j ?? "All"}
+            {j ? j.toUpperCase() : "All"}
           </a>
         )
       )}

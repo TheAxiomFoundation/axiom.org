@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { mergedAttempt } from "@/test/pipeline-attempt";
 import { attemptEvents, type PipelineEvent } from "./pipeline-events";
-import { eventDeadlines, loadAccepted, parseWindow } from "./pipeline-flow-data";
+import { eventDeadlines, loadAccepted, parseWindow, unmeasuredStations } from "./pipeline-flow-data";
 import { getBundleIndex } from "./program-bundles-data";
 
 vi.mock("./program-bundles-data", () => ({ getBundleIndex: vi.fn() }));
@@ -38,6 +38,16 @@ describe("parseWindow", () => {
     expect(parseWindow(["90"])).toBe(90);
     expect(parseWindow("12")).toBe(30);
     expect(parseWindow(undefined)).toBe(30);
+  });
+});
+
+describe("unmeasuredStations", () => {
+  it("adds the target gate until the encoder runs it, beside the ingest gaps", () => {
+    expect(unmeasuredStations({ release_pin: "needs a GitHub token to read the pin history" })).toEqual({
+      release_pin: "needs a GitHub token to read the pin history",
+      target_gate: "gate not live yet",
+    });
+    expect(unmeasuredStations({}, "0.2.2290")).toEqual({});
   });
 });
 

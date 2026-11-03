@@ -5,6 +5,8 @@ import {
   PERSON_STATIONS,
   ruleWords,
   STATION_PHASES,
+  stationLabel,
+  type FailureClassRow,
   type FlowModel,
   type RuleTrend,
   type StationStats,
@@ -14,8 +16,8 @@ import styles from "./evidence.module.css";
 
 /**
  * The /ops Pipeline tab as evidence: each stage's counts, times and exits,
- * where the hours go, the encode loop by try, and the validator rules by
- * week. Every number comes from the pipeline event log; nothing here
+ * the failed cases by failure class, where the hours go, the encode loop by
+ * try, and the validator rules by week. Every number comes from the pipeline event log; nothing here
  * judges or advises.
  */
 export function PipelineEvidence({ model }: { model: FlowModel }) {
@@ -23,10 +25,15 @@ export function PipelineEvidence({ model }: { model: FlowModel }) {
   const maxReached = Math.max(1, ...model.stations.map((s) => s.cases));
   return (
     <div className={styles.evidence}>
-      <Panel title="Stages" note={`Cases that reached each stage in the last ${model.window.days} days`}>
+      <Panel title="Stages">
         <PipelineDiagram phases={phases} />
         <StageTable phases={phases} maxReached={maxReached} />
       </Panel>
+      {model.failure_classes.length ? (
+        <Panel title="Failure classes" note="Encode cases that failed in the window, by who owns the fix">
+          <FailureClasses rows={model.failure_classes} />
+        </Panel>
+      ) : null}
       <Panel title="Where the time goes" note="Summed time of finished visits at each stage">
         <TimeBars stations={phases.flatMap((p) => p.stations)} />
       </Panel>
@@ -71,6 +78,8 @@ export interface PhaseRow {
   id: string;
   label: string;
   stations: StationStats[];
+  /** Stations of the row that run side by side (STATION_PHASES). */
+  parallel?: string[];
 }
 
 /** The stations in line order, grouped by phase; a station no phase names comes last. */
@@ -81,7 +90,7 @@ export function phaseRows(stations: StationStats[]): PhaseRow[] {
   for (const phase of STATION_PHASES) {
     const list = phase.stations.map((id) => byId.get(id)).filter((s): s is StationStats => !!s);
     for (const s of list) placed.add(s.id);
-    if (list.length) rows.push({ id: phase.id, label: phase.label, stations: list });
+    if (list.length) rows.push({ id: phase.id, label: phase.label, stations: list, parallel: phase.parallel });
   }
   const other = stations.filter((s) => !placed.has(s.id));
   if (other.length) rows.push({ id: "other", label: "Other", stations: other });
@@ -153,6 +162,7 @@ function StageTable({ phases, maxReached }: { phases: PhaseRow[]; maxReached: nu
 }
 
 function StageRow({ s, maxReached }: { s: StationStats; maxReached: number }) {
+  if (s.unmeasured) return <UnmeasuredRow s={s} />;
   const open = s.flow.waiting_here;
   const total = s.ok + s.failed + s.cancelled + open;
   const top = s.flow.exit_causes[0];
@@ -210,6 +220,34 @@ function StageRow({ s, maxReached }: { s: StationStats; maxReached: number }) {
             <span className={styles.sub}> · {n(top.cases)}</span>
           </>
         ) : null}
+      </td>
+    </tr>
+  );
+}
+
+/** A stage of the line with no event yet: its name, and why it is not measured. */
+function UnmeasuredRow({ s }: { s: StationStats }) {
+  const person = PERSON_STATIONS.has(s.id);
+  return (
+    <tr>
+      <th scope="row" title={s.description}>
+        <span className={styles.stage}>
+          {s.label}
+          {person ? <User size={13} aria-label="A person acts here" className={styles.person} /> : null}
+        </span>
+      </th>
+      <td>
+        <span className={styles.none}>–</span>
+      </td>
+      <td />
+      <td />
+      <td className={styles.num}>
+        <span className={styles.none}>not measured</span>
+      </td>
+      <td />
+      <td />
+      <td className={styles.reason}>
+        <span className={styles.none}>{sentence(s.unmeasured ?? "")}</span>
       </td>
     </tr>
   );
@@ -287,6 +325,71 @@ function RetryBars({ steps }: { steps: NonNullable<FlowModel["retry"]>["steps"] 
           </span>
         </div>
       ))}
+    </div>
+  );
+}
+
+const BASIS_WORDS: Array<[keyof FailureClassRow["basis"], string]> = [
+  ["encoder", "encoder record"],
+  ["rule", "stage or rule"],
+  ["text", "error text"],
+];
+
+function FailureClasses({ rows }: { rows: FailureClassRow[] }) {
+  const total = rows.reduce((sum, r) => sum + r.cases, 0);
+  const max = Math.max(1, ...rows.map((r) => r.cases));
+  const cause = (c: FailureClassRow["causes"][number]) => `${stationLabel(c.station)}: ${reasonLabel(c.cause)}`;
+  return (
+    <div className={styles.tableWrap}>
+      <table className={styles.table} aria-label="Failure classes">
+        <thead>
+          <tr>
+            <th scope="col">Class</th>
+            <th scope="col">Owner</th>
+            <th scope="col">Failed cases</th>
+            <th scope="col" title="Where the class comes from: the class the encoder recorded, the stage or a rule id, or a pattern in the error text">
+              Classified by
+            </th>
+            <th scope="col">Main reason</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => {
+            const top = r.causes[0];
+            return (
+              <tr key={r.id}>
+                <th scope="row">{r.label}</th>
+                <td>{r.owner}</td>
+                <td>
+                  <span className={styles.reached}>
+                    <span className={styles.reachedBar} style={{ width: `${(r.cases / max) * 100}%` }} />
+                    <span className={styles.count}>
+                      {n(r.cases)}
+                      <span className={styles.sub}> · {share(r.cases, total)}</span>
+                    </span>
+                  </span>
+                </td>
+                <td className={styles.sub}>
+                  {BASIS_WORDS.filter(([key]) => r.basis[key])
+                    .map(([key, words]) => `${words} ${n(r.basis[key])}`)
+                    .join(" · ") || "–"}
+                </td>
+                <td className={styles.reason} title={r.causes.map((c) => `${c.cases} · ${cause(c)}`).join("\n") || undefined}>
+                  {top ? (
+                    <>
+                      <span className={styles.reasonText}>{cause(top)}</span>
+                      <span className={styles.sub}> · {n(top.cases)}</span>
+                    </>
+                  ) : null}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <p className={styles.legend}>
+        A rejected try is an encoder error or a validator false positive; the data cannot split them yet. Encoders from axiom-encode #1997 on record their own class, and that class comes first.
+      </p>
     </div>
   );
 }
@@ -410,6 +513,17 @@ function Coverage({ model }: { model: FlowModel }) {
         }, ${n(t.with_cost)} have a model cost.`}
       </li>
       {untimed.length ? <li>Time not measured: {untimed.join(", ")}.</li> : null}
+      {t.unmeasured.length ? (
+        <li>
+          Not measured: {t.unmeasured.map((u) => `${model.stations.find((s) => s.id === u.station)?.label ?? u.station} (${u.reason})`).join(", ")}.
+        </li>
+      ) : null}
+      {t.releases ? (
+        <li>
+          {`${n(t.releases)} corpus releases in the window. Corpus ingest is the axiom-corpus PR a release is cut from, open to merge; Release publish is each run of its publish workflow; Release activate is its first activation (corpus.scope_activation_history); Release pin runs from the upload to the first pin in its rulespec repo's .axiom/toolchain.toml of it or of a release signed after it (superseded).`}
+        </li>
+      ) : null}
+      {t.source_errors.length ? <li>Not read this time: {t.source_errors.join("; ")}.</li> : null}
       {t.partly_timed.length ? (
         <li>
           Time measured for part of the visits:{" "}

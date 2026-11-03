@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { attemptEvents, caseIndex, failedStepStation, infraRuleId, issueEvents, issueRuleId } from "./pipeline-events";
+import { attemptEvents, caseIndex, failedStepStation, infraRuleId, issueEvents, issueRuleId, PRE_ENCODE_GATE_SINCE, runsPreEncodeGate } from "./pipeline-events";
 import { dependentAttempt, mergedAttempt, outsideAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 
 const path = (events: ReturnType<typeof attemptEvents>) => events.map((e) => `${e.station}.${e.kind}`);
@@ -88,6 +88,31 @@ describe("attemptEvents", () => {
   it("stops at the approval when a run was cancelled there", () => {
     const events = attemptEvents(pipelineAttempt({ run_conclusion: "cancelled", cancel_stage: "approval" }));
     expect(path(events)).toEqual(["dispatch.leave", "approval.enter", "approval.cancel"]);
+  });
+
+  it("stops a run at the target gate when the pre-encode gate blocked it, before any model call", () => {
+    const events = attemptEvents(
+      pipelineAttempt({
+        encode_started_at: "2026-09-20T10:01:00Z",
+        setup_seconds: 120,
+        failed_step: "encode / Encode, review, validate and apply",
+        encoder_status: "pre_encode_blocked",
+        encoder_error: "pre-encode gate: no_operative_text",
+        generation_attempts: 0,
+      })
+    );
+    expect(path(events)).toEqual(["dispatch.leave", "approval.enter", "approval.leave", "setup.enter", "setup.leave", "target_gate.enter", "target_gate.fail"]);
+    expect(events.at(-1)).toMatchObject({ at: "2026-09-20T10:03:00.000Z", rule_id: "gate:pre-encode-blocked", outcome: "blocked", message: "pre-encode gate: no_operative_text", attrs: { untimed: true } });
+  });
+
+  it("records no gate pass until the gate's first encoder version is set", () => {
+    expect(PRE_ENCODE_GATE_SINCE).toBeNull();
+    expect(runsPreEncodeGate("0.2.2300")).toBe(false);
+    expect(runsPreEncodeGate("0.2.2300", "0.2.2290")).toBe(true);
+    expect(runsPreEncodeGate("0.2.999", "0.2.2290")).toBe(false);
+    expect(runsPreEncodeGate(null, "0.2.2290")).toBe(false);
+    const events = attemptEvents(mergedAttempt({ encoder_version: "0.2.9999" }));
+    expect(events.some((e) => e.station === "target_gate")).toBe(false);
   });
 
   it("leaves a queued run open at the approval", () => {

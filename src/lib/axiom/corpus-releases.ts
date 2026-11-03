@@ -457,7 +457,7 @@ async function hasManifest(release: string): Promise<boolean> {
 }
 
 /** The jurisdictions with a live rulespec repo; the known list when the search is unavailable. */
-async function readRulespecRepos(): Promise<string[]> {
+export async function readRulespecRepos(): Promise<string[]> {
   try {
     const result = await fetchJson<{ items?: Array<{ name?: string; archived?: boolean }> }>(REPO_SEARCH_URL);
     const found = (result.items ?? [])

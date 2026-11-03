@@ -31,8 +31,8 @@ describe("PipelineLedger", () => {
     expect(within(ledger).getByRole("rowheader", { name: "US Federal" })).toBeInTheDocument();
     expect(within(ledger).queryByRole("rowheader", { name: "New Zealand" })).not.toBeInTheDocument();
     const nav = screen.getByRole("navigation", { name: "Jurisdiction" });
-    expect(within(nav).getByRole("link", { name: "nz" })).toHaveAttribute("href", "/ops?j=nz");
-    fireEvent.click(within(nav).getByRole("link", { name: "nz" }));
+    expect(within(nav).getByRole("link", { name: "NZ" })).toHaveAttribute("href", "/ops?j=nz");
+    fireEvent.click(within(nav).getByRole("link", { name: "NZ" }));
     expect(within(ledger).getByRole("rowheader", { name: "New Zealand" })).toBeInTheDocument();
     expect(within(ledger).queryByRole("rowheader", { name: "US Federal" })).not.toBeInTheDocument();
     expect(window.location.search).toBe("?j=nz");

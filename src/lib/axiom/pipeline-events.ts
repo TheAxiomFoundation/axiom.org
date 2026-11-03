@@ -13,10 +13,11 @@
  */
 
 import { attemptSource, failedStepStation, mainMergedAt, type PipelineAttempt } from "./encoding-pipeline";
+import { compareVersions } from "./encoding-pipeline-insights";
 
 export type EventKind = "enter" | "leave" | "fail" | "cancel" | "wait" | "issue" | "change";
 
-export type EventSource = "pipeline_attempts" | "failure_bundle" | "local_ab" | "encoder" | "waiver_ledger" | "encoder_change";
+export type EventSource = "pipeline_attempts" | "failure_bundle" | "local_ab" | "encoder" | "waiver_ledger" | "encoder_change" | "corpus_release";
 
 /** One row of encodings.pipeline_events. */
 export interface PipelineEvent {
@@ -96,6 +97,22 @@ function spanMs(from: string | null | undefined, to: string | null | undefined):
 }
 
 const MODEL_PHASES = new Set(["model_call"]);
+
+/** The encoder status of a run its pre-encode gate stopped before any model call (axiom-encode #1997). */
+export const GATE_BLOCKED_STATUS = "pre_encode_blocked";
+
+/**
+ * The first axiom-encode version that runs the pre-encode gate on every
+ * encode, so a run of it that reached a model call passed the gate. Null
+ * until the gate ships on main (axiom-encode #1997): until then only a
+ * blocked run, if any, records a gate verdict.
+ */
+export const PRE_ENCODE_GATE_SINCE: string | null = null;
+
+/** Whether an encoder version runs the pre-encode gate. */
+export function runsPreEncodeGate(version: string | null | undefined, since: string | null = PRE_ENCODE_GATE_SINCE): boolean {
+  return Boolean(since && version && compareVersions(version, since) >= 0);
+}
 
 interface Builder {
   push(event: Omit<PipelineEvent, "id" | "case_id" | "citation" | "jurisdiction" | "source" | "encoder_version" | "attrs"> & {
@@ -190,10 +207,32 @@ export function attemptEvents(attempt: PipelineAttempt): PipelineEvent[] {
       return events;
     }
     encodeFrom = setupMs != null ? addMs(setupFrom, setupMs) : setupFrom;
-    if (setupMs != null || attempt.tries?.length || attempt.encode_seconds != null || attempt.pr_created_at) {
+    const gateBlocked = attempt.encoder_status === GATE_BLOCKED_STATUS;
+    if (setupMs != null || attempt.tries?.length || attempt.encode_seconds != null || attempt.pr_created_at || gateBlocked) {
       ev({ station: "setup", kind: "leave", at: encodeFrom, outcome: "ok", duration_ms: setupMs, attrs: setupMs == null ? { untimed: true } : {} });
     } else if (!finished) {
       return events;
+    }
+
+    // Target gate: the encoder's pre-encode gate, before any model call. Its
+    // own time is not recorded: a point.
+    if (gateBlocked) {
+      ev({ station: "target_gate", kind: "enter", at: encodeFrom });
+      ev({
+        station: "target_gate",
+        kind: "fail",
+        at: encodeFrom,
+        outcome: "blocked",
+        rule_id: "gate:pre-encode-blocked",
+        message: clip(attempt.encoder_error),
+        ref_url: runUrl,
+        attrs: { untimed: true },
+      });
+      return events;
+    }
+    if (runsPreEncodeGate(attempt.encoder_version) && (attempt.tries?.length || attempt.encode_seconds != null || attempt.pr_created_at)) {
+      ev({ station: "target_gate", kind: "enter", at: encodeFrom });
+      ev({ station: "target_gate", kind: "leave", at: encodeFrom, outcome: "ok", attrs: { untimed: true } });
     }
   }
 

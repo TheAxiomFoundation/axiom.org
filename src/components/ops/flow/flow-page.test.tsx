@@ -1,9 +1,11 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { attemptEvents } from "@/lib/axiom/pipeline-events";
-import { caseDetail, citationLanes, mineFlow } from "@/lib/axiom/pipeline-flow";
+import { caseDetail, citationLanes, mineFlow, type StationStats } from "@/lib/axiom/pipeline-flow";
+import { ingestEvents } from "@/lib/axiom/pipeline-ingest";
 import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 import { FlowLine, flowHref, JourneyView, type FlowParams } from "./flow-page";
+import { layoutRows, wrapWords } from "./pipeline-diagram";
 
 // The canvases need a real browser (React Flow measures the DOM).
 vi.mock("./level-canvases", () => ({
@@ -74,9 +76,75 @@ describe("FlowLine", () => {
     expect(text).toContain("REVIEW · PERSON");
   });
 
+  it("lists the failed cases by failure class, with who owns the fix", () => {
+    line();
+    const table = screen.getByRole("table", { name: "Failure classes" });
+    const row = within(table).getByRole("rowheader", { name: "Validator rejected the output" }).closest("tr")!;
+    expect(row.textContent).toContain("Encoder or validator");
+    expect(row.textContent).toContain("stage or rule");
+  });
+
+  it("draws the corpus line first, and a stage with no event dashed with why it is not measured", () => {
+    const releases = ingestEvents({
+      releases: [{ name: "us-rulespec-r1", signedAt: "2026-09-20T01:00:00Z" }],
+      runs: [],
+      prs: {},
+      activations: [{ release_name: "us-rulespec-r1", activated_at: "2026-09-20T05:00:00Z" }],
+      pins: [{ repo: "rulespec-us", release: "us-rulespec-r1", at: "2026-09-21T01:00:00Z", ref_url: null }],
+      toActivate: [],
+    });
+    const withIngest = mineFlow([...events, ...releases], { now: NOW, days: 30, unmeasured: { target_gate: "gate not live yet" } });
+    render(<FlowLine model={withIngest} error={null} params={params} jurisdictions={[]} />);
+    const text = screen.getByRole("figure", { name: "The pipeline as a diagram" }).textContent ?? "";
+    expect(text.indexOf("INGEST")).toBeLessThan(text.indexOf("START"));
+    expect(text).toContain("RELEASE ACTIVATE · PERSON");
+    expect(text).toContain("RELEASE PIN · PERSON");
+    // Activate and pin do not wait for each other: one column, side by side.
+    expect(text).toContain("IN PARALLEL");
+    expect(text).toContain("TARGET GATE");
+    expect(text).toContain("gate not live yet");
+    expect(text).toContain("not measured yet");
+    const gate = screen.getByRole("rowheader", { name: "Target gate" }).closest("tr")!;
+    expect(gate.textContent).toContain("not measured");
+    expect(gate.textContent).toContain("Gate not live yet");
+    const covers = screen.getByRole("region", { name: "What the data covers" }).textContent ?? "";
+    expect(covers).toContain("Not measured: Target gate (gate not live yet).");
+    expect(covers).toContain("1 corpus releases in the window.");
+  });
+
+  it("labels the three filters and gives the Stages panel no subtitle", () => {
+    line();
+    const filters = screen.getByRole("navigation", { name: "Window" }).closest("header")!;
+    expect(filters.textContent).toMatch(/^Window.*Runs.*Jurisdiction/);
+    expect(screen.getByRole("navigation", { name: "Jurisdiction" })).toBeTruthy();
+    const stages = screen.getByRole("region", { name: "Stages" });
+    expect(stages.querySelector("header p")).toBeNull();
+    expect(stages.textContent).not.toContain("Cases that reached");
+  });
+
+  it("stacks parallel stages in one column and makes their row taller", () => {
+    const stage = (id: string) => ({ id }) as StationStats;
+    const [ingest, start] = layoutRows([
+      { id: "ingest", label: "Ingest", stations: ["a", "b", "c", "d"].map(stage), parallel: ["c", "d"] },
+      { id: "start", label: "Start", stations: ["e", "f"].map(stage) },
+    ]);
+    expect(ingest.cols.map((col) => col.map((p) => p.s.id))).toEqual([["a"], ["b"], ["c", "d"]]);
+    expect(ingest.cols[2][0].x).toBe(ingest.cols[2][1].x);
+    expect(ingest.cols[2][1].y).toBeGreaterThan(ingest.cols[2][0].y);
+    // A single stage sits halfway down the taller row.
+    expect(ingest.cols[0][0].y).toBe((ingest.cols[2][0].y + ingest.cols[2][1].y) / 2);
+    expect(start.top).toBeGreaterThan(ingest.top + ingest.height);
+    expect(start.height).toBeLessThan(ingest.height);
+  });
+
+  it("wraps a stage's note into short lines", () => {
+    expect(wrapWords("needs a GitHub token to read the pin history")).toEqual(["needs a GitHub token to", "read the pin history"]);
+    expect(wrapWords("one two three four five six seven eight nine ten eleven twelve", 10, 2)).toEqual(["one two", "three fou…"]);
+  });
+
   it("switches the path and keeps the window and scope", () => {
     line({ window: 7, j: "us" });
-    const path = screen.getByRole("navigation", { name: "Path" });
+    const path = screen.getByRole("navigation", { name: "Runs" });
     expect(path.querySelector('[aria-current="page"]')?.textContent).toBe("All");
     expect(screen.getByRole("link", { name: "Hand-made PRs" }).getAttribute("href")).toBe("/ops?tab=line&window=7&j=us&pop=prs");
   });

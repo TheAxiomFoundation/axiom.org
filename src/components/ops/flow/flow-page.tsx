@@ -40,35 +40,51 @@ export function FlowLine({
 }) {
   return (
     <section aria-label="The encoding line">
-      <header className={styles.head}>
+      <header className={`${styles.head} ${styles.filters}`}>
         <div className={styles.controls}>
-          <nav className={styles.seg} aria-label="Window">
-            {[7, 30, 90].map((d) =>
-              d === params.window ? (
-                <span key={d} aria-current="page">
-                  {d} days
-                </span>
-              ) : (
-                <a key={d} href={flowHref(params, { window: d })}>
-                  {d} days
-                </a>
-              )
-            )}
-          </nav>
-          <nav className={styles.seg} aria-label="Path">
-            {PATHS.map((p) =>
-              p.pop === params.pop ? (
-                <span key={p.pop} aria-current="page">
-                  {p.label}
-                </span>
-              ) : (
-                <a key={p.pop} href={flowHref(params, { pop: p.pop })}>
-                  {p.label}
-                </a>
-              )
-            )}
-          </nav>
-          <ScopeNav current={params.j} options={jurisdictions} href={(j) => flowHref(params, { j, station: null })} />
+          <div className={styles.control}>
+            {/* The visible name of each group; its nav carries the same name for screen readers. */}
+            <span className={styles.controlLabel} aria-hidden="true">
+              Window
+            </span>
+            <nav className={styles.seg} aria-label="Window">
+              {[7, 30, 90].map((d) =>
+                d === params.window ? (
+                  <span key={d} aria-current="page">
+                    {d} days
+                  </span>
+                ) : (
+                  <a key={d} href={flowHref(params, { window: d })}>
+                    {d} days
+                  </a>
+                )
+              )}
+            </nav>
+          </div>
+          <div className={styles.control}>
+            <span className={styles.controlLabel} aria-hidden="true">
+              Runs
+            </span>
+            <nav className={styles.seg} aria-label="Runs">
+              {PATHS.map((p) =>
+                p.pop === params.pop ? (
+                  <span key={p.pop} aria-current="page">
+                    {p.label}
+                  </span>
+                ) : (
+                  <a key={p.pop} href={flowHref(params, { pop: p.pop })}>
+                    {p.label}
+                  </a>
+                )
+              )}
+            </nav>
+          </div>
+          <div className={styles.control}>
+            <span className={styles.controlLabel} aria-hidden="true">
+              Jurisdiction
+            </span>
+            <ScopeNav current={params.j} options={jurisdictions} href={(j) => flowHref(params, { j, station: null })} />
+          </div>
         </div>
       </header>
 

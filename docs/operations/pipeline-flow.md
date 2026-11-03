@@ -57,9 +57,14 @@ collector emit these today, in pipeline order:
 
 | station | what happens | from |
 |---|---|---|
+| `corpus_ingest` | the axiom-corpus PR a release is cut from (documents and manifest), open to merge | the PR its publish run's head commit merged |
+| `release_publish` | axiom-corpus's publish workflow signs and uploads the release (one visit per run) | `publish.yml` runs whose head commit has the release's signed time |
+| `release_activate` | a person activates the release: the site serves it | `corpus.scope_activation_history` (first activation); waits while it is its jurisdiction's next release to activate |
+| `release_pin` | the jurisdiction's rulespec repo pins it, or a release signed after it: the pin lag | each rulespec repo's `.axiom/toolchain.toml` history (first pin per release, at its PR's merge) |
 | `dispatch` | a targeted re-encode run is queued | `dispatched_at` |
 | `approval` | the `production-signing` environment waits for a human | `started_at` → `encode_started_at`, `cancel_stage=approval` |
 | `setup` | checkouts, corpus fetch, identity checks | `setup_seconds`, `failed_step` (workflow steps) |
+| `target_gate` | the encoder's pre-encode gate stops an empty or repealed target before a model call | `encoder_status=pre_encode_blocked`; a pass from `PRE_ENCODE_GATE_SINCE` on |
 | `generate` | the model writes a candidate (one event per try) | `tries[].phases.model_call` |
 | `validate` | checks judge the candidate (one event per try, issues attached) | `tries[].phases.*validation`, `tries[].error`, failure bundles |
 | `publish` | package, sign, open the manifest PR | `publish_seconds`, `pr_created_at` |
@@ -71,11 +76,31 @@ collector emit these today, in pipeline order:
 | `tests` | the jurisdiction's validation on main | `tests_first_*`, `tests_status` |
 | `oracle` | the axiom-oracles comparison | `oracle_checked_at`, `oracle_status` |
 
-Upstream stations (`corpus_ingest`, `release_publish`, `release_activate`,
-`target_gate`) are part of the schema but have no backfill source yet: the
-corpus release workflows do not record per-document events. The graph shows
-them as soon as rows exist. Until then the page shows those workflows' state
-from the workflow health read (`src/lib/axiom/workflow-health.ts`).
+The ingest stations have their own cases, one per signed corpus release
+(`release:<name>`, source `corpus_release`), derived at request time by
+`src/lib/axiom/pipeline-ingest.ts` and cached 15 minutes
+(`pipeline-ingest-data.ts`). They are not in the backfill; a writer that puts
+`corpus_release` events in the table replaces them. A release visits
+`release_activate` once activated (a pin-only release never is), and
+`release_pin` when a repo pinned it or when it served; it leaves
+`release_pin` at the first pin of it (outcome `ok`) or of a release signed
+after it (outcome `superseded`), so the time there is how long the encoder
+read an older corpus. Release cases count at every path of the Pipeline tab,
+and not in the totals, sinks or data-trust run counts. The axiom-corpus PRs
+and the pin history come from GitHub's GraphQL API and need
+`AXIOM_GITHUB_TOKEN`: without it Corpus ingest has no times and Release pin
+shows as not measured.
+
+`target_gate` is the pre-encode gate of axiom-encode #1997. A blocked run
+(`encoder_status=pre_encode_blocked`) fails there. A pass is derived only for
+runs of an encoder at or after `PRE_ENCODE_GATE_SINCE` (in
+`pipeline-events.ts`; set it to the first version on main that runs the
+gate). Until a run records a verdict, the diagram shows the station dashed,
+"not measured: gate not live yet".
+
+A station the line names but no event reached is shown only with a reason
+(`FlowOptions.unmeasured`): dashed in the diagram, "not measured" in the
+table, and listed under "What the data covers".
 
 Display names and one-line descriptions of stations are copy (in
 `pipeline-flow.ts`), not data: an unknown station still renders, with its id
@@ -382,7 +407,13 @@ and waiver expiry from the RuleSpec repos' `known-validation-gaps.yaml`
 6. **Rule id for infra failures**: `infra:<workflow step>` so they group.
 7. **Archive failure bundles** before the 90-day expiry (Aug bundles go from
    2026-11-02); the backfill keeps their issues as events.
-8. **Corpus stations**: publish/activate workflows emit `release_*` events.
+8. **Corpus stations**: derived at request time from the corpus tables and
+   GitHub (see "Stations"). Still missing: when each document was fetched
+   (`raw.fetched_documents` is empty and private), and the publish run's
+   release name (runs are matched by their head commit's time).
+9. **Failure class** on each failed case (axiom-encode #1997's
+   `outcome.failure_class`): the collector does not read it yet, so the
+   reasons a case left the line do not show it.
 
 ## Telemetry: remove or stop reading
 

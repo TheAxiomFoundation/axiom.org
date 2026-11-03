@@ -110,6 +110,34 @@
   stroke-opacity: 0.75;
 }
 
+/* A stage the line has no event for yet: dashed, its note in the muted ink. */
+.nodeGhost {
+  fill: rgba(255, 255, 255, 0.015);
+  stroke: rgba(231, 229, 228, 0.28);
+  stroke-width: 1;
+  stroke-dasharray: 5 4;
+}
+
+.nodeGhostCount {
+  fill: var(--screen-muted);
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.nodeGhostNote {
+  fill: var(--screen-muted);
+  font-size: 10px;
+  font-style: italic;
+}
+
+.ghostFlow {
+  fill: none;
+  stroke: var(--screen-flow);
+  stroke-opacity: 0.35;
+  stroke-width: 1.2;
+  stroke-dasharray: 3 5;
+}
+
 .nodeLabel,
 .nodeLabelPerson {
   fill: var(--screen-muted);
@@ -199,4 +227,9 @@
 
 .keyExit {
   background: var(--screen-exit);
+}
+
+.keyGhost {
+  border: 1px dashed var(--screen-muted);
+  height: 6px !important;
 }
