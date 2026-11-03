@@ -30,7 +30,11 @@ import {
   tokenizeFormula,
 } from "../src/lib/axiom/rulespec/doc.ts";
 import { ruleCitationRows } from "../src/lib/axiom/rulespec/source-citations.ts";
-import { budgetedChunks } from "./lib/budgeted-chunks.mjs";
+import {
+  removeStaleRows,
+  replaceRuleCitations,
+  writeWithRetries as retryWrite,
+} from "./lib/rulespec-index-writes.mjs";
 import { parseTreeEntries } from "../src/lib/axiom/rulespec/repo-listing.ts";
 import {
   GITHUB_ORG,
@@ -157,29 +161,14 @@ function buildSearchText(file, doc) {
   return [...tokens].join(" ");
 }
 
-/**
- * Run one Supabase write with bounded retries. A six-hourly crawl makes
- * thousands of REST calls; transient gateway failures (HTML error pages,
- * dropped connections) surface as one-off errors and have killed full
- * runs at arbitrary chunks. Retry every failure a few times with
- * backoff; a persisting error still fails the run closed.
- */
+/** Every write retries (scripts/lib/rulespec-index-writes.mjs); one that
+ *  keeps failing ends the run, so it fails closed. */
 async function writeWithRetries(label, run) {
-  const delaysMs = [2_000, 8_000, 20_000, 45_000];
-  for (let attempt = 0; ; attempt++) {
-    const { error } = await run();
-    if (!error) return;
-    const summary = String(error.message ?? error).slice(0, 200);
-    if (attempt >= delaysMs.length) {
-      console.error(
-        `${label} failed after ${attempt + 1} attempts: ${summary}`,
-      );
-      process.exit(1);
-    }
-    console.warn(
-      `${label} attempt ${attempt + 1} failed (${summary}); retrying`,
-    );
-    await new Promise((resolve) => setTimeout(resolve, delaysMs[attempt]));
+  try {
+    return await retryWrite(label, run);
+  } catch (error) {
+    console.error(error.message);
+    process.exit(1);
   }
 }
 
@@ -331,42 +320,17 @@ for (let i = 0; i < rows.length; i += UPSERT_CHUNK_SIZE) {
 console.log(`${upserted} rows upserted`);
 
 // Replace each synced module's materialized rules before inserting its
-// current rows. Batching the module predicates keeps requests bounded while
-// ensuring modules that now have zero citations also lose their old rows.
-let ruleCitationRowsUpserted = 0;
-for (let i = 0; i < indexedFiles.length; i += RULE_CITATION_DELETE_CHUNK_SIZE) {
-  const moduleChunk = indexedFiles.slice(
-    i,
-    i + RULE_CITATION_DELETE_CHUNK_SIZE,
-  );
-  const moduleCitationPaths = moduleChunk.map(
-    ({ fileRow }) => fileRow.citation_path,
-  );
-  await writeWithRetries(`rule citation reset at module chunk ${i}`, () =>
-    supabase
-      .from("rule_citations")
-      .delete()
-      .in("module_citation_path", moduleCitationPaths),
-  );
-
-  const citationRows = moduleChunk.flatMap(
-    ({ ruleCitationRows: moduleRows }) => moduleRows,
-  );
-  for (const chunk of budgetedChunks(
-    citationRows,
-    RULE_CITATION_UPSERT_CHUNK_SIZE,
-    RULE_CITATION_CHUNK_BUDGET_BYTES,
-  )) {
-    await writeWithRetries(
-      `rule citation upsert at module chunk ${i}, row ${ruleCitationRowsUpserted}`,
-      () =>
-        supabase.from("rule_citations").upsert(chunk, {
-          onConflict: "citation_path,module_citation_path,rule_name",
-        }),
-    );
-    ruleCitationRowsUpserted += chunk.length;
-  }
-}
+// current rows; modules that now cite nothing lose their old rows too.
+const ruleCitationRowsUpserted = await replaceRuleCitations(
+  supabase,
+  indexedFiles,
+  {
+    write: writeWithRetries,
+    moduleChunkSize: RULE_CITATION_DELETE_CHUNK_SIZE,
+    rowChunkSize: RULE_CITATION_UPSERT_CHUNK_SIZE,
+    chunkBudgetBytes: RULE_CITATION_CHUNK_BUDGET_BYTES,
+  },
+);
 console.log(`${ruleCitationRowsUpserted} rule citation rows upserted`);
 console.log(
   `${indexedFiles.filter(({ ruleCitationRows: moduleRows }) => moduleRows.length === 0).length} modules with zero rule citations`,
@@ -396,26 +360,9 @@ if (incompleteReasons.length > 0) {
   );
 } else {
   // Rows not touched by a complete run no longer exist upstream.
-  const { error: deleteError, count } = await supabase
-    .from("rulespec_files")
-    .delete({ count: "exact" })
-    .lt("synced_at", startedAt);
-  if (deleteError) {
-    console.error(`stale-row cleanup failed: ${deleteError.message}`);
-    process.exit(1);
-  }
-  console.log(`${count ?? 0} stale rows removed`);
-
-  const { error: citationDeleteError, count: citationDeleteCount } =
-    await supabase
-      .from("rule_citations")
-      .delete({ count: "exact" })
-      .lt("synced_at", startedAt);
-  if (citationDeleteError) {
-    console.error(
-      `stale rule citation cleanup failed: ${citationDeleteError.message}`,
-    );
-    process.exit(1);
-  }
-  console.log(`${citationDeleteCount ?? 0} stale rule citation rows removed`);
+  const removed = await removeStaleRows(supabase, startedAt, {
+    write: writeWithRetries,
+  });
+  console.log(`${removed.files} stale rows removed`);
+  console.log(`${removed.ruleCitations} stale rule citation rows removed`);
 }

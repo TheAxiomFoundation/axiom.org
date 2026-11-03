@@ -115,6 +115,7 @@ function ruleCitationRow({
       filePath ??
       `policies/${moduleCitationPath.split("/").slice(2).join("/")}.yaml`,
     rule_name: ruleName,
+    jurisdiction: moduleCitationPath.split("/")[0],
     is_module_source: isModuleSource,
     atom_kinds: atomKinds,
     rank,
@@ -476,6 +477,7 @@ describe("getSectionEncoding", () => {
       {
         citationPath: linesModule,
         filePath: linesFile,
+        jurisdiction: linesModule.split("/")[0],
         rules: [
           {
             renderedName: "ch22_general_rate",
@@ -494,6 +496,7 @@ describe("getSectionEncoding", () => {
       {
         citationPath: compositionModule,
         filePath: compositionFile,
+        jurisdiction: compositionModule.split("/")[0],
         rules: [
           {
             renderedName: "computed_overlay",
@@ -511,7 +514,7 @@ describe("getSectionEncoding", () => {
         kind: "ruleCitations",
         method: "select",
         args: [
-          "module_citation_path, file_path, rule_name, is_module_source, atom_kinds, rank, rule_yaml",
+          "module_citation_path, file_path, rule_name, jurisdiction, is_module_source, atom_kinds, rank, rule_yaml",
           { count: "exact" },
         ],
       },
@@ -628,6 +631,72 @@ describe("getSectionEncoding", () => {
     const result = await getSectionEncoding("rule-1", SECTION);
     expect(result.citedByFiles).toHaveLength(2);
     expect(result.citedByOverflow).toBe(204);
+    expect(result.citedByOverflowUnit).toBe("rules");
+  });
+
+  it("carries each citing module's own jurisdiction, not the provision's", async () => {
+    // A state module citing a federal provision links into its own repo.
+    configureMirror({
+      ruleCitations: {
+        data: [
+          ruleCitationRow({
+            moduleCitationPath: "us-co/policy/snap/fy-2026-benefit-calculation",
+            filePath: "policies/snap/fy-2026-benefit-calculation.yaml",
+            ruleName: "co_snap_allotment",
+            rank: 0,
+            isModuleSource: true,
+          }),
+        ],
+        count: 1,
+        error: null,
+      },
+    });
+
+    const result = await getSectionEncoding("rule-1", SECTION);
+    expect(SECTION.split("/")[0]).toBe("us");
+    expect(result.citedByFiles.map((file) => file.jurisdiction)).toEqual(["us-co"]);
+  });
+
+  it("carries a fallback module's own jurisdiction, not the provision's", async () => {
+    configureMirror({
+      ruleCitations: { data: null, error: { message: "rule_citations is unavailable" } },
+      citedByFallback: {
+        data: [
+          {
+            citation_path: "us-co/policy/snap/fy-2026-benefit-calculation",
+            file_path: "policies/cdhs/snap/fy-2026-benefit-calculation.yaml",
+            raw_yaml: citedByYaml(["co_snap_value"], SECTION),
+          },
+        ],
+        count: 1,
+        error: null,
+      },
+    });
+
+    const result = await getSectionEncoding("rule-1", SECTION);
+    expect(SECTION.split("/")[0]).toBe("us");
+    expect(result.citedByFiles.map((file) => file.jurisdiction)).toEqual(["us-co"]);
+  });
+
+  it("counts the fallback's overflow in modules", async () => {
+    configureMirror({
+      ruleCitations: { data: null, error: { message: "rule_citations is unavailable" } },
+      citedByFallback: {
+        data: [
+          {
+            citation_path: "us/policy/cbp/us-tariff-duty/composition",
+            file_path: "policies/cbp/us-tariff-duty/composition.yaml",
+            raw_yaml: citedByYaml(["fallback_value"], SECTION),
+          },
+        ],
+        count: 75,
+        error: null,
+      },
+    });
+
+    const result = await getSectionEncoding("rule-1", SECTION);
+    expect(result.citedByOverflow).toBe(74);
+    expect(result.citedByOverflowUnit).toBe("modules");
   });
 
   it("uses the whole-file value path fallback only when the rule index errors", async () => {
@@ -659,6 +728,7 @@ describe("getSectionEncoding", () => {
       {
         citationPath: fallbackModule,
         filePath: fallbackFile,
+        jurisdiction: "us",
         rules: [
           {
             renderedName: "fallback_condition",
@@ -760,6 +830,7 @@ describe("getSectionEncoding", () => {
     expect(result.citedByFiles[0]).toEqual({
       citationPath: policyCitation,
       filePath: policyFile,
+      jurisdiction: "us",
       rules: [
         {
           renderedName: "ch22_general_rate",
@@ -1027,6 +1098,7 @@ describe("registered app_visibility gate", () => {
       ruleFiles: {},
       citedByFiles: [],
       citedByOverflow: 0,
+      citedByOverflowUnit: "rules",
     });
     // Refused before any read — the mirror, the materialized citation
     // index, and the legacy encoding_runs/GitHub fallback alike.

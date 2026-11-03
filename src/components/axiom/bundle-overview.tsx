@@ -71,12 +71,16 @@ const percent = (s: Share) => formatShare(s.done, s.total);
 /** A segment's width: its part of the total, and at least a sliver when it is not empty. */
 const width = (part: number, total: number) => `${part > 0 && total > 0 ? Math.max((part / total) * 100, 1.5) : 0}%`;
 
-/** The bar: done in green, then partly done in a lighter green, on a grey track for the rest. */
+/**
+ * The bar: done in green, then partly done in a lighter green, on a grey
+ * track for not started; documents not in the corpus close it, striped.
+ */
 function Bar({ share }: { share: Share }) {
   return (
     <span className={styles.track} aria-hidden>
       {share.done > 0 && <span className={styles.fill} style={{ width: width(share.done, share.total) }} />}
       {share.partly > 0 && <span className={styles.partly} style={{ width: width(share.partly, share.total) }} />}
+      {share.missing > 0 && <span className={styles.missing} style={{ width: width(share.missing, share.total) }} />}
     </span>
   );
 }
@@ -283,7 +287,7 @@ export function BundleOverview({
           </h2>
           <p className={styles.note}>
             {count === "documents"
-              ? "Documents complete (dark green) and partly encoded (light green), as each bundle's page counts them."
+              ? "Documents complete (dark green), partly encoded (light green), not started (grey) and not in the corpus (striped)."
               : "Provisions encoded, as each bundle's page counts them (Tier 1: the provisions of the plan's documents and those the reference model cites)."}{" "}
             {view === "program"
               ? "A state's bundle includes the program's federal law."

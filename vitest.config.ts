@@ -108,6 +108,14 @@ export default defineConfig({
         'src/components/axiom/corpus-field.tsx',
         'src/components/axiom/graph-viewer/viewer-app.tsx',
         'src/components/axiom/graph-viewer/InteractiveRuleGraph.tsx',
+        // /ops/flow's React Flow canvases: node and edge views measured by
+        // the DOM (ResizeObserver, SVG path geometry, SMIL particles). Their
+        // layout is pure and covered (flow-layout.ts); the views are checked
+        // in real Chrome against live data.
+        'src/components/ops/flow/canvas-shell.tsx',
+        'src/components/ops/flow/pipeline-canvas.tsx',
+        'src/components/ops/flow/level-canvases.tsx',
+        'src/app/ops/flow/page.tsx', // thin server route wrapper
         'src/components/axiom/graph-viewer/mini-graph.tsx',
         'src/components/axiom/graph-viewer/api.ts',
         'src/components/axiom/graph-viewer/formula.ts',
