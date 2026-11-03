@@ -19,8 +19,7 @@ vi.mock("./api", async (original) => ({
   ...await original<typeof import("./api")>(),
   fetchAllPrograms: vi.fn(async () => []),
   fetchComposedGraph: vi.fn(async () => ({ graph, files: [fixture.root], truncated: false })),
-  fetchRootInputs: vi.fn(async () => [{ name: "payment_amount", dtype: "decimal", default: 0, entity: "Payment" }]),
-  fetchRootCatalog: vi.fn(async () => ({ inputs: [], relationMembership: "explicit", relations: [describeRelation({ name: "payment_of_tax_unit", kind: "data_relation", data_relation: { arity: 2, arguments: ["TaxUnit", "Payment"] } }, fixture.root)] })),
+  fetchRootCatalog: vi.fn(async () => ({ inputs: [{ name: "payment_amount", dtype: "decimal", default: 0, entity: "Payment" }], relationMembership: "explicit", relations: [describeRelation({ name: "payment_of_tax_unit", kind: "data_relation", data_relation: { arity: 2, arguments: ["TaxUnit", "Payment"] } }, fixture.root)] })),
 }));
 // Keep the real scenario controls and Relationships view; jsdom has no canvas layout.
 vi.mock("./InteractiveRuleGraph", async () => {

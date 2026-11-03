@@ -28,6 +28,21 @@ vi.mock("@/lib/axiom/runtime/api", () => ({
 import { POST } from "./route";
 import { _resetRunRouteState } from "../run/limiter";
 
+/** A root catalog (`GET /runtime/root-inputs`) listing these slots. */
+function slotCatalog(dtypes: Record<string, string>) {
+  return {
+    status: 200,
+    body: {
+      status: "ok",
+      data: {
+        inputs: Object.entries(dtypes).map(([name, dtype]) => ({ name, dtype, default: dtype === "text" ? "none" : 0, entity: "Person" })),
+        relation_membership: "convention",
+        relations: [],
+      },
+    },
+  };
+}
+
 function post(body: unknown): Request {
   return new Request("http://localhost/api/axiom/runtime/calculate", {
     method: "POST",
@@ -44,6 +59,8 @@ describe("POST /api/axiom/runtime/calculate (run-by-root)", () => {
     runCalculateRootMock.mockReset();
     isConfiguredMock.mockReset();
     isConfiguredMock.mockReturnValue(true);
+    runtimeProxyGetMock.mockReset();
+    runtimeProxyGetMock.mockResolvedValue(slotCatalog({}));
   });
 
   it("preserves long encoding input and trace names for every person and reports rejected keys", async () => {
@@ -96,6 +113,9 @@ describe("POST /api/axiom/runtime/calculate (run-by-root)", () => {
 
   it("passes text facts through verbatim, up to 1,024 characters (a Wellington zone)", async () => {
     const root = "nz:regulations/rma_district_plans/wellington_city/supermarket_zoning";
+    runtimeProxyGetMock.mockResolvedValue(
+      slotCatalog({ wcc_supermarket_zone: "text", wcc_proposed_supermarket_gfa_m2: "decimal", longest: "text", too_long: "text" })
+    );
     runCalculateRootMock.mockResolvedValue({
       kind: "ok",
       result: { outputs: { wcc_supermarket_activity_status: "Restricted Discretionary" }, trace: [] },
@@ -138,31 +158,87 @@ describe("POST /api/axiom/runtime/calculate (run-by-root)", () => {
     );
     const key = fc.oneof(
       fc.stringMatching(/^[a-zA-Z_][a-zA-Z0-9_]{0,15}$/),
-      fc.constantFrom("bad-key", "1st", "", "a b", "zone.code")
-    ).filter((name) => name !== "__proto__");
-    const facts = fc.uniqueArray(fc.tuple(key, value), { selector: ([name]) => name, maxLength: 12 });
+      fc.constantFrom("bad-key", "1st", "", "a b", "zone.code", "__proto__")
+    );
+    // Each name is a text slot in the runtime's catalog, or a number slot.
+    const facts = fc.uniqueArray(fc.tuple(key, value, fc.boolean()), { selector: ([name]) => name, maxLength: 12 });
     runCalculateRootMock.mockResolvedValue({ kind: "ok", result: { outputs: {}, trace: [] } });
     await fc.assert(
       fc.asyncProperty(facts, async (entries) => {
         _resetRunRouteState();
         runCalculateRootMock.mockClear();
+        runtimeProxyGetMock.mockReset();
+        runtimeProxyGetMock.mockResolvedValue(
+          slotCatalog(Object.fromEntries(entries.map(([name, , text]) => [name, text ? "text" : "decimal"])))
+        );
+        const textSlots = new Set(entries.filter(([, , text]) => text).map(([name]) => name));
         // What arrives is what JSON carries: NaN and ±Infinity become null.
-        const sent = JSON.parse(JSON.stringify(Object.fromEntries(entries))) as Record<string, unknown>;
+        const sent = JSON.parse(JSON.stringify(Object.fromEntries(entries.map(([name, item]) => [name, item])))) as Record<string, unknown>;
         const response = await POST(post({ root: "us:statutes/7/2014/e/6/A", facts: sent, variables: [] }));
         expect(response.status).toBe(200);
-        const wellFormed = ([name, item]: [string, unknown]) =>
+        const scalar = ([name, item]: [string, unknown]) =>
           /^[a-zA-Z_][a-zA-Z0-9_]{0,511}$/.test(name) &&
+          name !== "__proto__" &&
           (typeof item === "boolean" ||
             (typeof item === "number" && Number.isFinite(item)) ||
             (typeof item === "string" && item.length <= 1024));
-        const kept = Object.entries(sent).filter(wellFormed);
+        const scalars = Object.entries(sent).filter(scalar);
+        // A string reaches only a text slot.
+        const kept = scalars.filter(([name, item]) => typeof item !== "string" || textSlots.has(name));
         const body = await response.json();
         expect(runCalculateRootMock.mock.calls[0]![0].facts).toEqual(Object.fromEntries(kept));
         expect(body.applied).toEqual(kept.map(([name]) => name));
-        expect(body.dropped).toEqual(Object.keys(sent).filter((name) => !kept.some(([k]) => k === name)));
+        expect(body.dropped).toEqual([
+          ...Object.keys(sent).filter((name) => !scalars.some(([k]) => k === name)),
+          ...scalars.filter((entry) => !kept.includes(entry)).map(([name]) => name),
+        ]);
+        // Only a scenario holding a string reads the catalog.
+        expect(runtimeProxyGetMock).toHaveBeenCalledTimes(scalars.some(([, item]) => typeof item === "string") ? 1 : 0);
       }),
-      { numRuns: 150, seed: 2026110313 }
+      { numRuns: 200, seed: 2026110313 }
     );
+  });
+
+  it("forwards a string only to a slot the runtime's catalog types as text, and reports the rest", async () => {
+    const root = "nz:regulations/rma_district_plans/wellington_city/supermarket_zoning";
+    runtimeProxyGetMock.mockResolvedValue(
+      slotCatalog({ wcc_supermarket_zone: "text", wcc_proposed_supermarket_gfa_m2: "decimal", member_flag: "bool" })
+    );
+    runCalculateRootMock.mockResolvedValue({ kind: "ok", result: { outputs: {}, trace: [] } });
+    // The runtime would coerce these strings, not refuse them.
+    const response = await POST(
+      post({
+        root,
+        facts: { wcc_supermarket_zone: "MUZ", wcc_proposed_supermarket_gfa_m2: "abc", unknown_slot: "x" },
+        people: { person_2: { member_flag: "false", wcc_supermarket_zone: "CCZ" } },
+        variables: [],
+      })
+    );
+    expect(response.status).toBe(200);
+    expect(runtimeProxyGetMock).toHaveBeenCalledTimes(1);
+    expect(runCalculateRootMock).toHaveBeenCalledWith({
+      root,
+      facts: { wcc_supermarket_zone: "MUZ" },
+      people: { person_2: { wcc_supermarket_zone: "CCZ" } },
+      variables: [],
+    });
+    expect(await response.json()).toMatchObject({
+      applied: ["wcc_supermarket_zone"],
+      dropped: ["wcc_proposed_supermarket_gfa_m2", "unknown_slot", "person_2:member_flag"],
+    });
+  });
+
+  it("refuses text answers it cannot check, and reads no catalog for numbers alone", async () => {
+    runCalculateRootMock.mockResolvedValue({ kind: "ok", result: { outputs: {}, trace: [] } });
+    runtimeProxyGetMock.mockResolvedValue({ status: 502, body: {} });
+    const refused = await POST(post({ root: "us:statutes/26/32", facts: { filing_label: "joint" }, variables: [] }));
+    expect(refused.status).toBe(503);
+    expect(await refused.json()).toMatchObject({ error: "unavailable" });
+    expect(runCalculateRootMock).not.toHaveBeenCalled();
+    runtimeProxyGetMock.mockClear();
+    const numbers = await POST(post({ root: "us:statutes/26/32", facts: { age: 40 }, variables: [] }));
+    expect(numbers.status).toBe(200);
+    expect(runtimeProxyGetMock).not.toHaveBeenCalled();
   });
 
   it("sanitizes extra members like facts and forwards them as people", async () => {
@@ -307,6 +383,22 @@ describe("POST /api/axiom/runtime/calculate (run-by-root)", () => {
     expect(data.applied).toEqual(["zone"]);
     expect(data.dropped).toEqual(["household_size"]);
     expect(runCalculateMock.mock.calls[0]![0].household.entities.unit.u1).toEqual({ zone: "MUZ" });
+  });
+
+  it("grafts only answers the scenario holds, even for an input named constructor", async () => {
+    getRuntimePackageMock.mockResolvedValue({
+      sample_request: { household: { entities: { unit: { u1: {} } } } },
+      default_outputs: ["snap_allotment"],
+      entities: [{ entity: "unit", inputs: [{ name: "constructor" }, { name: "household_size" }] }],
+    });
+    runCalculateMock.mockResolvedValue({ outputs: { snap_allotment: 298 }, trace: [] });
+    const unanswered = await POST(post({ jurisdiction: "us-co", program_id: "co-snap", values: { household_size: 3 } }));
+    expect((await unanswered.json()).applied).toEqual(["household_size"]);
+    expect(runCalculateMock.mock.calls[0]![0].household.entities.unit.u1).toEqual({ household_size: 3 });
+    _resetRunRouteState();
+    const answered = await POST(post({ jurisdiction: "us-co", program_id: "co-snap", values: { constructor: 1 } }));
+    expect((await answered.json()).applied).toEqual(["constructor"]);
+    expect(runCalculateMock.mock.calls[1]![0].household.entities.unit.u1).toEqual({ constructor: 1 });
   });
 });
 
@@ -528,6 +620,31 @@ describe("per-request instances (26 USC 22 payments of the tax unit)", () => {
     vi.mocked(compositionScope).mockResolvedValue({ readiness: "roles_required", relations: S22 });
     runtimeProxyGetMock.mockReset();
     runtimeProxyGetMock.mockResolvedValue(catalog());
+  });
+
+  it("keeps a payment's text answer only for a text slot, with one catalog read", async () => {
+    runtimeProxyGetMock.mockResolvedValue(catalog((data) => ({
+      ...data,
+      inputs: [
+        { name: "payment_kind", dtype: "text", default: "none", entity: "Payment" },
+        { name: "payment_amount", dtype: "decimal", default: 0, entity: "Payment" },
+      ],
+    })));
+    runCalculateRootMock.mockResolvedValue(ok(echo));
+    const response = await POST(post({
+      root: "us:statutes/26/22",
+      facts: {},
+      relations: roles,
+      instances: { Payment: { payment_1: { payment_amount: "400", payment_kind: "pension" }, payment_2: { payment_amount: 1000 } } },
+      variables: [],
+    }));
+    expect(response.status).toBe(200);
+    // The text check and the roles check share one fresh read.
+    expect(runtimeProxyGetMock).toHaveBeenCalledTimes(1);
+    expect(runCalculateRootMock.mock.calls[0]![0].instances).toEqual({
+      Payment: { payment_1: { payment_kind: "pension" }, payment_2: { payment_amount: 1000 } },
+    });
+    expect((await response.json()).dropped).toEqual(["payment_1:payment_amount"]);
   });
 
   it("sends every payment and links the chosen ones by key, in declared slot order", async () => {

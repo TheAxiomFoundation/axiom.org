@@ -1,6 +1,6 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import type { RootInputSlot } from "./api";
+import { fetchComposedGraph, fetchRootCatalog, type RootCatalog, type RootInputSlot } from "./api";
 import type { ProgramGraph } from "./types";
 import { GraphViewerApp } from "./viewer-app";
 
@@ -71,12 +71,13 @@ const catalog: RootInputSlot[] = [
   { name: "wcc_supermarket_zone", dtype: "text", default: "none", entity: "Person", values: ["CCZ", "GIZ", "LCZ", "MCZ", "MUZ", "NCZ", "none"] },
 ];
 
+const wellingtonCatalog: RootCatalog = { inputs: catalog, relationMembership: "convention", relations: [] };
+
 vi.mock("./api", async (original) => ({
   ...await original<typeof import("./api")>(),
   fetchAllPrograms: vi.fn(async () => []),
-  fetchComposedGraph: vi.fn(async () => ({ graph, files: [fixture.root], truncated: false })),
-  fetchRootInputs: vi.fn(async () => catalog),
-  fetchRootCatalog: vi.fn(async () => ({ inputs: catalog, relationMembership: "convention", relations: [] })),
+  fetchComposedGraph: vi.fn(),
+  fetchRootCatalog: vi.fn(),
 }));
 // jsdom has no canvas layout; the stand-in shows what the canvas was handed.
 vi.mock("./InteractiveRuleGraph", async () => {
@@ -99,6 +100,8 @@ vi.mock("./plane.css", () => ({}));
 vi.mock("./workspace.css", () => ({}));
 
 beforeEach(() => {
+  vi.mocked(fetchComposedGraph).mockReset().mockImplementation(async () => ({ graph, files: [fixture.root], truncated: false }));
+  vi.mocked(fetchRootCatalog).mockReset().mockImplementation(async () => wellingtonCatalog);
   window.history.replaceState({}, "", `/app?compose=${encodeURIComponent(fixture.root)}&view=structure`);
   window.localStorage.clear();
   window.sessionStorage.clear();
@@ -114,28 +117,45 @@ const tracedStatus = () =>
     fixture.status
   ]?.value;
 
-it("runs Wellington supermarket zoning with a zone code, and asks no phantom questions", async () => {
-  const outcomes = [
-    { wcc_supermarket_activity_status: "Restricted Discretionary", wcc_supermarket_permitted: false },
-    { wcc_supermarket_activity_status: "Permitted", wcc_supermarket_permitted: true },
-  ];
+/** Answers every run with `outputs` and records each request body. */
+function stubRuns(outputs: Array<Record<string, unknown>>) {
   const requests: Array<Record<string, unknown>> = [];
   vi.stubGlobal("fetch", (url: string, init?: RequestInit) => {
     if (url === "/api/axiom/runtime/calculate") {
       requests.push(JSON.parse(String(init?.body)));
-      return Promise.resolve(Response.json({ outputs: outcomes[requests.length - 1], trace: [] }));
+      return Promise.resolve(Response.json({ outputs: outputs[requests.length - 1] ?? {}, trace: [] }));
     }
     if (url.startsWith("/api/axiom/rulespec?")) return Promise.resolve(Response.json({ content: "" }));
     throw new Error(`Unexpected request: ${url}`);
   });
+  return requests;
+}
+
+/** Opens the activity status in the Relationships view, where each
+ *  input it reads has a field beside it. */
+async function openActivityStatus() {
+  fireEvent.click(await screen.findByRole("button", { name: "Find a rule" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "Search this scope" }), { target: { value: "activity status" } });
+  const results = screen.getByRole("region", { name: "Find a rule in this scope" });
+  fireEvent.click(within(results).getByRole("button", { name: /supermarket activity status/i }));
+}
+
+const relationshipQuestions = () =>
+  [...document.querySelectorAll(".relationship-inputs label > span:first-child")].map((span) => span.textContent ?? "");
+
+it("runs Wellington supermarket zoning with a zone code, and asks no phantom questions", async () => {
+  const requests = stubRuns([
+    { wcc_supermarket_activity_status: "Restricted Discretionary", wcc_supermarket_permitted: false },
+    { wcc_supermarket_activity_status: "Permitted", wcc_supermarket_permitted: true },
+  ]);
   render(<GraphViewerApp />);
   fireEvent.click(await screen.findByRole("button", { name: "Run" }));
 
   const zone = (await screen.findByRole("combobox", { name: /supermarket zone/i })) as HTMLSelectElement;
-  expect([...zone.options].map((option) => option.textContent)).toEqual(["none", "CCZ", "GIZ", "LCZ", "MCZ", "MUZ", "NCZ"]);
+  expect([...zone.options].map((option) => option.textContent)).toEqual(["none", "CCZ", "GIZ", "LCZ", "MCZ", "MUZ", "NCZ", "Other…"]);
   const area = screen.getByRole("spinbutton", { name: /supermarket gfa/i });
   // The run panel asks exactly the two questions the catalog lists.
-  const questions = [...document.querySelectorAll(".household-fields label > span")].map((span) => span.textContent);
+  const questions = [...document.querySelectorAll(".household-fields label > span:first-child")].map((span) => span.textContent);
   expect(questions).toHaveLength(2);
   expect(questions.join(" | ")).not.toMatch(/complying|scope/i);
 
@@ -143,10 +163,8 @@ it("runs Wellington supermarket zoning with a zone code, and asks no phantom que
   fireEvent.change(area, { target: { value: "2000" } });
   fireEvent.click(screen.getByRole("button", { name: "Run scenario" }));
   await waitFor(() => expect(requests).toHaveLength(1));
-  expect(requests[0]).toMatchObject({
-    root: fixture.root,
-    facts: { wcc_supermarket_zone: "MUZ", wcc_proposed_supermarket_gfa_m2: 2000 },
-  });
+  expect(requests[0]).toMatchObject({ root: fixture.root });
+  expect(requests[0]!.facts).toEqual({ wcc_supermarket_zone: "MUZ", wcc_proposed_supermarket_gfa_m2: 2000 });
   await waitFor(() => expect(tracedStatus()).toBe("Restricted Discretionary"));
 
   // Within the 1,500 m² cap the same zone is permitted.
@@ -156,8 +174,62 @@ it("runs Wellington supermarket zoning with a zone code, and asks no phantom que
   fireEvent.change(screen.getByRole("spinbutton", { name: /supermarket gfa/i }), { target: { value: "1000" } });
   fireEvent.click(screen.getByRole("button", { name: "Run scenario" }));
   await waitFor(() => expect(requests).toHaveLength(2));
-  expect(requests[1]).toMatchObject({
-    facts: { wcc_supermarket_zone: "MUZ", wcc_proposed_supermarket_gfa_m2: 1000 },
-  });
+  expect(requests[1]!.facts).toEqual({ wcc_supermarket_zone: "MUZ", wcc_proposed_supermarket_gfa_m2: 1000 });
   await waitFor(() => expect(tracedStatus()).toBe("Permitted"));
+});
+
+it("answers the zone in the Relationships view with the same choices", async () => {
+  const requests = stubRuns([{ wcc_supermarket_activity_status: "Restricted Discretionary", wcc_supermarket_permitted: false }]);
+  render(<GraphViewerApp />);
+  await openActivityStatus();
+  const zone = (await screen.findByRole("combobox", { name: /supermarket zone/i })) as HTMLSelectElement;
+  expect([...zone.options].map((option) => option.textContent)).toEqual(["none", "CCZ", "GIZ", "LCZ", "MCZ", "MUZ", "NCZ", "Other…"]);
+  // The census's phantom inputs keep their graph nodes until axiom-api#309
+  // deploys, but nothing asks them.
+  expect(relationshipQuestions().map((text) => text.toLowerCase())).toEqual([
+    "wcc supermarket zone",
+    "wcc proposed supermarket gfa m2",
+  ]);
+  fireEvent.change(zone, { target: { value: "MUZ" } });
+  fireEvent.change(screen.getByRole("spinbutton", { name: /supermarket gfa/i }), { target: { value: "2000" } });
+  fireEvent.click(screen.getByRole("button", { name: "Run household" }));
+  await waitFor(() => expect(requests).toHaveLength(1));
+  expect(requests[0]!.facts).toEqual({ wcc_supermarket_zone: "MUZ", wcc_proposed_supermarket_gfa_m2: 2000 });
+});
+
+it("drops a number typed into the zone's census field once the catalog types the zone as text", async () => {
+  const requests = stubRuns([{}]);
+  let deliver!: (value: RootCatalog) => void;
+  vi.mocked(fetchRootCatalog).mockImplementation(() => new Promise((resolve) => { deliver = resolve; }));
+  render(<GraphViewerApp />);
+  await openActivityStatus();
+  // Until the catalog arrives, the census offers a number field for each input.
+  const census = await screen.findByRole("spinbutton", { name: /supermarket zone/i });
+  fireEvent.change(census, { target: { value: "5" } });
+  await act(async () => deliver(wellingtonCatalog));
+  await screen.findByRole("combobox", { name: /supermarket zone/i });
+  fireEvent.change(screen.getByRole("spinbutton", { name: /supermarket gfa/i }), { target: { value: "2000" } });
+  fireEvent.click(screen.getByRole("button", { name: "Run household" }));
+  await waitFor(() => expect(requests).toHaveLength(1));
+  expect(requests[0]!.facts).toEqual({ wcc_proposed_supermarket_gfa_m2: 2000 });
+});
+
+it("asks nothing and offers no input retry when the catalog lists no inputs", async () => {
+  vi.mocked(fetchRootCatalog).mockImplementation(async () => ({ inputs: [], relationMembership: "convention", relations: [] }));
+  stubRuns([]);
+  render(<GraphViewerApp />);
+  fireEvent.click(await screen.findByRole("button", { name: "Run" }));
+  await screen.findByRole("button", { name: "Run scenario" });
+  expect(document.querySelectorAll(".household-fields label")).toHaveLength(0);
+  // An empty catalog is the runtime's answer, not a failed load.
+  expect(screen.queryByRole("button", { name: "Retry loading inputs" })).toBeNull();
+});
+
+it("refetches the graph when Retry follows a failed load", async () => {
+  vi.mocked(fetchComposedGraph).mockRejectedValueOnce(new Error("compose request failed (502)"));
+  stubRuns([]);
+  render(<GraphViewerApp />);
+  fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
+  await screen.findByRole("button", { name: "Run" });
+  expect(fetchComposedGraph).toHaveBeenCalledTimes(2);
 });

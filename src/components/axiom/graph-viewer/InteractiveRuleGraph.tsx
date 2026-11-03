@@ -1584,7 +1584,7 @@ const OutputNode = ({ data }: NodeProps) => {
 };
 
 function InlineAnswer({ legalId }: { legalId: string }) {
-  const { values, answered, onChange, textChoices } = useContext(InputEditContext);
+  const { values, answered, onChange } = useContext(InputEditContext);
   const fragment = legalId.split("#").pop() ?? "";
   if (!onChange || !fragment.startsWith("input.")) return null;
   const name = fragment.slice("input.".length);
@@ -1610,28 +1610,13 @@ function InlineAnswer({ legalId }: { legalId: string }) {
           aria-label="Answer"
         />
       ) : typeof value === "string" ? (
-        textChoices?.[name]?.length ? (
-          <select
-            value={value}
-            onChange={(event) => onChange(name, event.target.value)}
-            aria-label="Answer"
-          >
-            <option value="">answer…</option>
-            {textChoices[name]!.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <input
-            type="text"
-            value={value}
-            placeholder="answer…"
-            onChange={(event) => onChange(name, event.target.value)}
-            aria-label="Answer"
-          />
-        )
+        <input
+          type="text"
+          value={value}
+          placeholder="answer…"
+          onChange={(event) => onChange(name, event.target.value)}
+          aria-label="Answer"
+        />
       ) : (
         <input
           type="number"
@@ -1673,16 +1658,14 @@ function useAnswerBoxPopulated(legalId: string): boolean {
 }
 
 /** Inline value editing on Question cards — provided by the app so
- *  the canvas itself is a form: type a number, flip a toggle, pick a
- *  zone, run. A text question's value is a string ("" unanswered). */
+ *  the canvas itself is a form: type a number or text, flip a toggle,
+ *  run. A text question's value is a string ("" unanswered). */
 export const InputEditContext = createContext<{
   values: Record<string, ScenarioValue>;
   answered: Set<string>;
   /** Registry defaults by bare name — an unanswered card names the
    *  value that held for the run. */
   defaults?: Record<string, ScenarioValue>;
-  /** A text question's closed domain, offered as a select. */
-  textChoices?: Record<string, string[]>;
   /** Person-level answers per household member (present only when
    *  the scenario carries extra members): the card shows every
    *  member's value; editing beyond Person 1 lives in the inspector

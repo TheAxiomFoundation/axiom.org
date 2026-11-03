@@ -37,7 +37,9 @@ function sanitizeValues(raw: unknown): {
     for (const [key, value] of Object.entries(
       raw as Record<string, unknown>
     )) {
-      if (!INPUT_NAME_RE.test(key)) { rejected.push(key); continue; }
+      // `__proto__` would set the record's prototype instead of adding a
+      // key, so it would vanish from both applied and dropped.
+      if (!INPUT_NAME_RE.test(key) || key === "__proto__") { rejected.push(key); continue; }
       if (
         (typeof value !== "number" &&
           typeof value !== "boolean" &&
@@ -53,6 +55,17 @@ function sanitizeValues(raw: unknown): {
     }
   }
   return { sanitized, rejected };
+}
+
+/** The names of a root catalog's text slots (`GET /runtime/root-inputs`). */
+function textSlotNames(catalog: unknown): Set<string> {
+  const inputs = (catalog as { data?: { inputs?: unknown } } | null)?.data?.inputs;
+  const names = new Set<string>();
+  for (const slot of Array.isArray(inputs) ? inputs : []) {
+    const { name, dtype } = (slot ?? {}) as { name?: unknown; dtype?: unknown };
+    if (typeof name === "string" && dtype === "text") names.add(name);
+  }
+  return names;
 }
 
 const SLUG_RE = /^[a-z0-9-]{1,64}$/;
@@ -184,6 +197,41 @@ export async function POST(request: Request) {
       instanceKeys = allocated.keys;
       droppedFacts.push(...allocated.dropped);
     }
+    // The runtime's own catalog for this root, read at most once and
+    // fresh: a stale catalog could misstate its relations or its slots.
+    let catalogRead: Promise<{ status: number; body: unknown }> | undefined;
+    const readCatalog = () =>
+      (catalogRead ??= runtimeProxyGet(
+        `/runtime/root-inputs?root=${encodeURIComponent(root)}`,
+        { timeoutMs: 20_000, fresh: true }
+      ));
+    // Text only answers a text slot: the runtime coerces a string in a
+    // number or bool slot ("false" becomes true) instead of refusing it.
+    // Only a scenario that holds a string pays for the catalog read.
+    const answerMaps: Array<[prefix: string, values: Record<string, ScenarioValue>]> = [
+      ["", facts],
+      ...Object.entries(people ?? {}).map(([member, values]) => [`${member}:`, values] as [string, Record<string, ScenarioValue>]),
+      ...Object.values(instances ?? {}).flatMap((byKey) =>
+        Object.entries(byKey).map(([key, values]) => [`${key}:`, values] as [string, Record<string, ScenarioValue>])
+      ),
+    ];
+    if (answerMaps.some(([, values]) => Object.values(values).some((value) => typeof value === "string"))) {
+      const catalog = await readCatalog();
+      if (catalog.status !== 200) {
+        return NextResponse.json(
+          { error: "unavailable", message: "The runtime's input catalog could not be read to check the text answers. Try again." },
+          { status: 503, headers: { "cache-control": "no-store" } }
+        );
+      }
+      const text = textSlotNames(catalog.body);
+      for (const [prefix, values] of answerMaps) {
+        for (const [name, value] of Object.entries(values)) {
+          if (typeof value !== "string" || text.has(name)) continue;
+          delete values[name];
+          droppedFacts.push(`${prefix}${name}`);
+        }
+      }
+    }
     if (readiness === "roles_required") {
       const order = ["person_1", ...Object.keys(people ?? {})];
       const built = membershipTuples(scope.relations, body.relations, order, instanceKeys);
@@ -208,10 +256,7 @@ export async function POST(request: Request) {
       // running (a cached catalog could itself be stale): a probe the
       // client skipped, a stale root-inputs response or mirror/runtime
       // drift all land here.
-      const catalog = await runtimeProxyGet(
-        `/runtime/root-inputs?root=${encodeURIComponent(root)}`,
-        { timeoutMs: 20_000, fresh: true }
-      );
+      const catalog = await readCatalog();
       if (catalog.status !== 200) {
         return NextResponse.json(
           { error: "unavailable", message: "The runtime's relationship catalog could not be read. Try again." },
@@ -331,7 +376,9 @@ export async function POST(request: Request) {
     const container = entities[entity.entity];
     if (!container) continue;
     for (const input of entity.inputs ?? []) {
-      if (!(input.name in values)) continue;
+      // Own keys only: `in` would also find an unanswered input named
+      // like an Object.prototype member, such as `constructor`.
+      if (!Object.hasOwn(values, input.name)) continue;
       // Text only answers a text input: the runtime coerces a string in a
       // number or bool slot ("false" becomes true) instead of refusing it.
       if (typeof values[input.name] === "string" && input.dtype !== "text") continue;

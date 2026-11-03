@@ -42,11 +42,11 @@ import {
   fetchAllPrograms,
   fetchComposedGraph,
   fetchRootCatalog,
-  fetchRootInputs,
   fetchInputMeta,
   fetchProgramGraph,
   programKey,
   programRefFromSummary,
+  type RootInputSlot,
 } from "./api";
 import type { Country, DashboardSpec, LegalId, ParameterRule, ProgramGraph, ProgramRef, ProgramSummary, RuleNode, TraceNode } from "./types";
 import {
@@ -56,7 +56,7 @@ import {
 } from "./compose-filter";
 import { buildRunRequestBody, classifyRunRefusal, mergeRunBatches, runValueMaps, scenarioKey, traceRootIds, TRACE_BATCH_SIZE, type RunPayload } from "./run-request";
 import { AnswerControl } from "./answer-control";
-import { answerKind, catalogAnswerMeta, censusAnswerMeta, type AnswerMeta, type ScenarioValue } from "./input-meta";
+import { answerKind, catalogAnswerMeta, censusAnswerMeta, fittingAnswers, type AnswerMeta, type ScenarioValue } from "./input-meta";
 import { trackAxiomEvent } from "@/lib/analytics";
 import {
   DEFAULT_LAUNCHER_MODE,
@@ -358,6 +358,10 @@ export function GraphViewerApp({
   // Re-reads the root catalog alone (not the graph) when the server's
   // relation set has moved under a roles run.
   const [catalogNonce, setCatalogNonce] = useState(0);
+  // Compose mode: the input slots of the root catalog that gates Run
+  // (null until it arrives). One read serves both, so the questions can
+  // never come from an older or failed read while Run is available.
+  const [rootSlots, setRootSlots] = useState<RootInputSlot[] | null>(null);
 
   const lastRunRequest = useRef<Record<string, unknown> | null>(null);
   // The results sheet's quick-adjust strip pages through answered
@@ -814,7 +818,7 @@ export function GraphViewerApp({
     }> = [];
     for (const input of graph?.inputs ?? []) {
       if (seen.has(input.name)) continue;
-      if (!(input.name in inputMeta.dtypes)) continue;
+      if (!Object.hasOwn(inputMeta.dtypes, input.name)) continue;
       seen.add(input.name);
       const isBool = inputMeta.dtypes[input.name] === "bool";
       const fallback = inputMeta.defaults[input.name];
@@ -1147,15 +1151,18 @@ export function GraphViewerApp({
 
   useEffect(() => {
     // No presets: only values the user actually typed survive a
-    // field-list change; samples are placeholders, never answers.
-    setScenario((current) =>
+    // field-list change; samples are placeholders, never answers. An
+    // answer that no longer fits its field's type goes too: a number
+    // typed while the census showed a number field must not reach a
+    // text slot once the catalog retypes it.
+    const names = allScenarioFields.map((field) => field.name);
+    setScenario((current) => fittingAnswers(current, names, inputMeta));
+    setMemberScenario((current) =>
       Object.fromEntries(
-        allScenarioFields
-          .map((field) => [field.name, current[field.name]] as const)
-          .filter(([, value]) => value !== undefined),
+        Object.entries(current).map(([member, answers]) => [member, fittingAnswers(answers, names, inputMeta)]),
       ),
     );
-  }, [allScenarioFields]);
+  }, [allScenarioFields, inputMeta]);
 
   const runScenario = async () => {
     if (!effectiveProgram || running) return;
@@ -1653,18 +1660,6 @@ export function GraphViewerApp({
         setGraph(filteredGraph);
         setComposedFiles(composed.files);
         setComposedTruncated(composed.truncated);
-        // No package registry backs a composed view; until the runtime
-        // catalog arrives, the graph's own input census (name + sample)
-        // stands in for the run panel's controls.
-        const census = censusAnswerMeta(filteredGraph.inputs);
-        setInputMeta(census);
-        // The runtime catalog then decides which inputs exist, with their
-        // types, choices and presentation.
-        fetchRootInputs(fileLegalIdOf(composeFocus))
-          .then((slots) => {
-            if (!cancelled) setInputMeta(catalogAnswerMeta(slots, census));
-          })
-          .catch(() => { /* The independent readiness probe controls Run. */ });
         const rulesById = new Map(
           filteredGraph.rules.map((rule) => [rule.legalId, rule]),
         );
@@ -1713,7 +1708,18 @@ export function GraphViewerApp({
     return () => {
       cancelled = true;
     };
-  }, [composeFocus]);
+    // Retry after a failed load refetches the graph (reloadNonce).
+  }, [composeFocus, reloadNonce]);
+
+  // No package registry backs a composed view. Until the root catalog
+  // arrives, the graph's own input census (name + sample) stands in for
+  // the controls; then the catalog decides which inputs exist, with their
+  // types, choices and presentation.
+  useEffect(() => {
+    if (!composeFocus || !graph) return;
+    const census = censusAnswerMeta(graph.inputs);
+    setInputMeta(rootSlots ? catalogAnswerMeta(rootSlots, census) : census);
+  }, [composeFocus, graph, rootSlots]);
 
   // Compilation capability is independent of whether an empty household can
   // produce a result. The input catalog compiles without executing a scenario.
@@ -1727,6 +1733,7 @@ export function GraphViewerApp({
     setRunUnavailableReason(null);
     if (focusChanged) {
       setComposeRunReady(null);
+      setRootSlots(null);
       setRootRelations({ relations: [], mode: "convention" });
       // Every scope starts with no roles stated (relation-roles.tsx).
       setRelationRoles({});
@@ -1737,6 +1744,7 @@ export function GraphViewerApp({
     fetchRootCatalog(root)
       .then((catalog) => {
         if (cancelled) return;
+        setRootSlots(catalog.inputs);
         setRootRelations({ relations: catalog.relations, mode: catalog.relationMembership });
         if (!focusChanged) setRelationRoles((current) => reconcileRoles(current, catalog.relations));
         rememberRunCapability(root, true);
@@ -1916,8 +1924,6 @@ export function GraphViewerApp({
             (typeof entry[1] === "string" && inputMeta.dtypes[entry[0]] === "text"),
         ),
       ),
-      // A text question's closed domain: the card offers a select.
-      textChoices: inputMeta.textOptions,
       // Person-level cards show every member's answer (read-only
       // beyond Person 1 — the inspector and run panel edit members).
       memberValues:
@@ -2391,7 +2397,10 @@ export function GraphViewerApp({
             }}
           />}
         />
-        {inputCatalog.length === 0 && (graph?.inputs.length ?? 0) > 0 && <button type="button" className="status-retry" onClick={() => setReloadNonce(n => n + 1)}>Retry loading inputs</button>}
+        {/* A package's registry can fail to load; Run in compose mode
+            exists only once its catalog has loaded, and an empty catalog
+            is an answer, not a failure. */}
+        {!composeFocus && inputCatalog.length === 0 && (graph?.inputs.length ?? 0) > 0 && <button type="button" className="status-retry" onClick={() => setReloadNonce(n => n + 1)}>Retry loading inputs</button>}
         <div className="run-actions">
           <p className="run-assumptions">{Object.keys(scenario).length + Object.values(memberScenario).reduce((count, answers) => count + Object.keys(answers).length, 0)} household inputs answered · unanswered inputs use engine defaults</p>
           <button
@@ -2565,7 +2574,7 @@ export function GraphViewerApp({
             run={runResult}
             renderInput={(id, selectedMember) => {
               const input = graph.inputs.find(item => item.legalId === id);
-              if (!input || !(input.name in inputMeta.dtypes)) return null;
+              if (!input || !Object.hasOwn(inputMeta.dtypes, input.name)) return null;
               const name = input.name;
               const fallback = inputMeta.defaults[name];
               const instanceKind = input.entity && scopeInstanceKinds.includes(input.entity) ? input.entity : null;
@@ -2584,16 +2593,12 @@ export function GraphViewerApp({
                   else setScenario(update);
                 };
                 const kind = answerKind(inputMeta, name);
-                const textChoices = inputMeta.textOptions?.[name] ?? [];
-                const textChoice = typeof effective === "string" && textChoices.includes(effective) ? effective : "";
                 return <label key={member ?? "household"}><span>{members.length > 1 ? member ? memberLabel(member) : "Person 1" : humanize(name)}</span>
                   {kind === "bool" ? <select disabled={running} value={effective === true ? "true" : effective === false ? "false" : ""} onChange={event => change(event.target.value === "" ? undefined : event.target.value === "true")}>
                     {typeof effective !== "boolean" && <option value="">—</option>}<option value="false">false</option><option value="true">true</option>
                   </select> : kind === "choice" ? <select disabled={running} value={typeof effective === "number" ? effective : ""} onChange={event => change(event.target.value === "" ? undefined : Number(event.target.value))}>
                     {typeof effective !== "number" && <option value="">—</option>}{inputMeta.options![name]!.map(option => <option key={option} value={option}>{inputMeta.optionLabels?.[name]?.[option] ?? String(option)}</option>)}
-                  </select> : kind === "text-choice" ? <select disabled={running} value={textChoice} onChange={event => change(event.target.value === "" ? undefined : event.target.value)}>
-                    {textChoice === "" && <option value="">—</option>}{textChoices.map(option => <option key={option} value={option}>{option}</option>)}
-                  </select> : kind === "text" ? <input disabled={running} type="text" value={typeof effective === "string" ? effective : ""} onChange={event => change(event.target.value === "" ? undefined : event.target.value)} />
+                  </select> : kind === "text-choice" || kind === "text" ? <AnswerControl name={name} value={draft} meta={inputMeta} onChange={change} plainDefaults disabled={running} />
                   : <input disabled={running} type="number" step="any" value={typeof effective === "number" ? effective : ""} onChange={event => change(event.target.value === "" ? undefined : event.target.valueAsNumber)} />}
                 </label>;
               })}</div>;
@@ -2830,7 +2835,7 @@ export function GraphViewerApp({
                     value={scenario[field.name]}
                     meta={inputMeta}
                     selectClassName="results-adjust-select"
-                    placeholder={`e.g. ${field.sample}`}
+                    placeholder={field.sample === "" ? "answer…" : `e.g. ${field.sample}`}
                     onChange={(next) =>
                       setScenario((current) => {
                         if (next === undefined) {
