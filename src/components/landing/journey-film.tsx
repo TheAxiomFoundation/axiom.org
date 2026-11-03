@@ -769,7 +769,7 @@ const GATE_STORY =
 // no later scenes, no registry numbers. The waiver sentence is the one
 // disclosure it carries that the frame does not draw, because the
 // workbench's module is on the waiver list.
-const STILL_LABEL = `${SCENE2_NAME}. § 2017 of Title 7 appears as three sections, with one open in a workbench. The workbench holds that section's RuleSpec: id, citation, typed inputs and output, and the formula allotment equals tfp minus 0.30 times net income, with every value citing its source words. It also shows four stamped gates (run, checks, compare and AI review), and the other two sections show two ticks, for run and checks. On October 2, 2026, CI skipped the checks on 1,940 rulespec-us modules on the validation waiver list, the published § 2017(a) module among them.`;
+const STILL_LABEL = `${SCENE2_NAME}. § 2017 of Title 7 appears as three sections, with one open in a workbench. The workbench holds that section's RuleSpec: its id, citation, output type and formula. In the formula, allotment equals the larger of zero and tfp minus 0.30 times net income. A proof line cites the source words for 0.30 and tfp. The workbench also shows four stamped gates (run, checks, compare and AI review), and the other two sections show two ticks, for run and checks. On October 2, 2026, CI skipped the checks on 1,940 rulespec-us modules on the validation waiver list, the published § 2017(a) module among them.`;
 
 const FILM_LABEL = STATIC
   ? STILL_LABEL

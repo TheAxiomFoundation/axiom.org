@@ -139,7 +139,7 @@ const STILL_WAIVER_LINE =
 // title, § 2017's three sections, the open workbench, its four stamped
 // gates and the other sections' two ticks, then the waiver disclosure.
 const STILL_LABEL =
-  "One provision, encoded — an illustration. § 2017 of Title 7 appears as three sections, with one open in a workbench. The workbench holds that section's RuleSpec: id, citation, typed inputs and output, and the formula allotment equals tfp minus 0.30 times net income, with every value citing its source words. It also shows four stamped gates (run, checks, compare and AI review), and the other two sections show two ticks, for run and checks. " +
+  "One provision, encoded — an illustration. § 2017 of Title 7 appears as three sections, with one open in a workbench. The workbench holds that section's RuleSpec: its id, citation, output type and formula. In the formula, allotment equals the larger of zero and tfp minus 0.30 times net income. A proof line cites the source words for 0.30 and tfp. The workbench also shows four stamped gates (run, checks, compare and AI review), and the other two sections show two ticks, for run and checks. " +
   STILL_WAIVER_LINE;
 // Every edit to the label changes a claim, so each one has to change here too.
 const STRIP_LABEL =
@@ -206,7 +206,7 @@ describe.each([
     expect(gates[0]).toMatch(
       motion
         ? /^In this illustration the workbench stamps four gates/
-        : /^It also shows four stamped gates/,
+        : /^The workbench also shows four stamped gates/,
     );
     expect(gates[0]).toContain("and AI review");
     // The label narrates the redraft only where the film plays it.
