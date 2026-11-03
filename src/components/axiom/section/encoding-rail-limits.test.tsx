@@ -32,7 +32,7 @@ function renderOverflow(unit: "rules" | "modules") {
 describe("EncodingRail overflow bounds", () => {
   it("quotes the rule index's bound", () => {
     expect(renderOverflow("rules")).toBe(
-      "2 more rules in other modules cite this provision. This view shows the first 7 by rank and module path.",
+      "2 more rules cite this provision. This view shows the first 7 by rank and module path.",
     );
   });
 

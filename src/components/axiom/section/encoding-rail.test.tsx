@@ -437,7 +437,7 @@ describe("EncodingRail", () => {
     );
 
     expect(screen.getByTestId("rail-cited-by-overflow")).toHaveTextContent(
-      `42 more rules in other modules cite this provision. This view shows the first ${MAX_CITED_RULES} by rank and module path.`,
+      `42 more rules cite this provision. This view shows the first ${MAX_CITED_RULES} by rank and module path.`,
     );
   });
 
@@ -459,7 +459,7 @@ describe("EncodingRail", () => {
     );
 
     expect(screen.getByTestId("rail-cited-by-overflow")).toHaveTextContent(
-      `1 more rules in other modules cite this provision. This view shows the first ${MAX_CITED_RULES} by rank and module path.`,
+      `1 more rules cite this provision. This view shows the first ${MAX_CITED_RULES} by rank and module path.`,
     );
   });
 

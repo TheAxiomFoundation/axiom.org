@@ -338,10 +338,12 @@ export function EncodingRail({
                 >
                   {/* Every counted rule or module cites this provision: an
                       index row is one rule citation of it, and a fallback
-                      module lists it in value_citation_paths. */}
+                      module lists it in value_citation_paths. The rule
+                      count also covers the section's own module, so the
+                      note does not say "other modules". */}
                   {citedByOverflowUnit === "modules"
                     ? `${citedByOverflow} more modules cite this provision. This view shows the first ${MAX_CITED_BY_MODULES} by module path.`
-                    : `${citedByOverflow} more rules in other modules cite this provision. This view shows the first ${MAX_CITED_RULES} by rank and module path.`}
+                    : `${citedByOverflow} more rules cite this provision. This view shows the first ${MAX_CITED_RULES} by rank and module path.`}
                 </p>
               )}
             </div>
