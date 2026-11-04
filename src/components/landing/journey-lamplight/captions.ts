@@ -31,7 +31,7 @@ export const captionAt = (P: number) => {
 
 export const CAPTIONS: Array<{ kicker: string; title: string }> = [
   { kicker: "1 / 8 · Off the shelf", title: "It starts with the law as written." },
-  { kicker: "2 / 8 · The law, as published", title: "Official sources, captured word for word." },
+  { kicker: "2 / 8 · The law, as published", title: "The legal text is the spec, and the code traces straight back to it." },
   { kicker: "3 / 8 · The corpus", title: "Every provision has an address." },
   { kicker: "4 / 8 · Encode and check", title: "Automated encoding, deterministic checks, transparent validation." },
   { kicker: "5 / 8 · Cited code", title: "Every value cites the sentence it came from." },
