@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
 import styles from "./ops-dashboard.module.css";
 import { relativeTime } from "./ops-dashboard";
@@ -22,6 +22,7 @@ import {
 import {
   newestDocuments,
   runLedger,
+  runModules,
   sectionBrief,
   type LedgerDocument,
   type LedgerSection,
@@ -217,6 +218,8 @@ export function PipelineLedger({
                     document={document}
                     referenceMs={referenceMs}
                     bundles={payload?.bundles ?? []}
+                    allRows={payload?.rows ?? []}
+                    labels={payload?.labels ?? {}}
                     openSection={openSection}
                     onSection={(citation) => setOpenSection((open) => (open === citation ? null : citation))}
                   />
@@ -244,6 +247,8 @@ function DocumentSections({
   document,
   referenceMs,
   bundles,
+  allRows,
+  labels,
   openSection,
   onSection,
 }: {
@@ -251,6 +256,9 @@ function DocumentSections({
   referenceMs: number;
   /** Bundle documents, to name the bundle and tier each section belongs to. */
   bundles: BundleIndexEntry[];
+  /** Every run row, out of scope too: the other modules a section's run encoded. */
+  allRows: RunRow[];
+  labels: Record<string, string>;
   openSection: string | null;
   onSection: (citation: string) => void;
 }) {
@@ -332,7 +340,7 @@ function DocumentSections({
             {open && (
               <TableRow className="hover:bg-transparent">
                 <TableCell colSpan={6} className={styles.ledgerRunCell}>
-                  <SectionRuns section={section} referenceMs={referenceMs} />
+                  <SectionRuns section={section} allRows={allRows} labels={labels} referenceMs={referenceMs} />
                 </TableCell>
               </TableRow>
             )}
@@ -349,7 +357,17 @@ function DocumentSections({
  * act on, the failures that came back, every run as a mark, and the journey
  * for the full history.
  */
-function SectionRuns({ section, referenceMs }: { section: LedgerSection; referenceMs: number }) {
+function SectionRuns({
+  section,
+  allRows,
+  labels,
+  referenceMs,
+}: {
+  section: LedgerSection;
+  allRows: RunRow[];
+  labels: Record<string, string>;
+  referenceMs: number;
+}) {
   const brief = sectionBrief(section);
   // The timeline shows the latest run until a mark picks another.
   const [chosen, setChosen] = useState<string>(section.runs[0].id);
@@ -407,8 +425,94 @@ function SectionRuns({ section, referenceMs }: { section: LedgerSection; referen
         </span>
         <a href={`/ops/journey?citation=${encodeURIComponent(section.citation)}`}>Full history →</a>
       </p>
-      <RunTrack run={run} timeline={runTimeline(run, referenceMs)} latest={run === section.runs[0]} />
+      <SharedRunTrack row={run} section={section.citation} allRows={allRows} labels={labels} referenceMs={referenceMs} latest={run === section.runs[0]} />
     </div>
+  );
+}
+
+/**
+ * A run as its card. When one run encoded several modules, the card is the
+ * run's (its stages, its PR, shown once) and its encode loop lists each
+ * module, with the section's own open; else the section's row alone.
+ */
+function SharedRunTrack({
+  row,
+  section,
+  allRows,
+  labels,
+  referenceMs,
+  latest,
+}: {
+  row: RunRow;
+  section: string;
+  allRows: RunRow[];
+  labels: Record<string, string>;
+  referenceMs: number;
+  latest: boolean;
+}) {
+  const { run, modules } = runModules(row, allRows);
+  if (!run || modules.length < 2) return <RunTrack run={row} timeline={runTimeline(row, referenceMs)} latest={latest} />;
+  const timeline = runTimeline(run, referenceMs);
+  // The bar is the run's; each module's tries are counted on its own line.
+  const bars = timeline.bars.map((bar) => (bar.key === "encode" ? { ...bar, label: "Encode loop" } : bar));
+  return (
+    <RunTrack run={run} timeline={{ ...timeline, bars }} latest={latest}>
+      <ModuleLoops modules={modules} section={section} labels={labels} referenceMs={referenceMs} />
+    </RunTrack>
+  );
+}
+
+/** Each module's encode loop in one run: one line each, the section's own open to its tries. */
+function ModuleLoops({ modules, section, labels, referenceMs }: { modules: RunRow[]; section: string; labels: Record<string, string>; referenceMs: number }) {
+  return (
+    <div className={styles.trackModules} aria-label="Modules this run encoded">
+      {modules.map((module) => {
+        const { tries } = runTimeline(module, referenceMs);
+        // The module's own loop clock, else its tries' time; the run's encode step holds every module's loop.
+        const triesTime = tries.reduce<number | null>((sum, t) => (t.wallMs ?? t.ms) == null ? sum : (sum ?? 0) + (t.wallMs ?? t.ms)!, null);
+        const loop = module.loop?.wallMs ?? triesTime;
+        const last = tries.at(-1);
+        const cost = tries.reduce<number | null>((sum, t) => (t.cost == null ? sum : (sum ?? 0) + t.cost), null);
+        const facts = [tries.length ? `${tries.length} ${tries.length === 1 ? "try" : "tries"}` : null, loop ? span(loop) : null, cost == null ? null : money(cost)];
+        const result = last ? (last.ok ? "passed" : (last.headline ?? "failed")) : null;
+        return (
+          <details key={module.citation} className={styles.trackModule} open={module.citation === section}>
+            <summary>
+              <span className={styles.trackModuleName}>{module.citation.split("/").at(-1)}</span>
+              <span className={styles.trackModuleLabel}>{labels[module.citation] ?? ""}</span>
+              <span className={styles.trackModuleFacts}>{facts.filter(Boolean).join(" · ")}</span>
+              {result && (
+                <span className={styles.trackTryWhy} data-ok={last!.ok}>
+                  {result}
+                </span>
+              )}
+            </summary>
+            {tries.length > 0 && <TryList tries={tries} />}
+          </details>
+        );
+      })}
+    </div>
+  );
+}
+
+const money = (cost: number) => (cost < 0.01 ? "<$0.01" : `$${cost.toFixed(2)}`);
+
+/** The tries of one encode loop, a line each. */
+function TryList({ tries }: { tries: RunTimeline["tries"] }) {
+  return (
+    <ol className={styles.trackTries} aria-label="Tries in the encode loop">
+      {tries.map((t) => (
+        <li key={t.attempt} data-ok={t.ok}>
+          <span className={styles.trackTryNo}>Try {t.attempt}</span>
+          <span className={styles.trackTryModel}>{t.model ?? "model not recorded"}</span>
+          <span className={styles.trackTryTime}>{span(t.wallMs ?? t.ms)}</span>
+          <span className={styles.trackTryCost}>{t.cost == null ? "" : money(t.cost)}</span>
+          <span className={styles.trackTryWhy} title={t.error ?? undefined}>
+            {t.ok ? "passed" : (t.headline ?? "failed")}
+          </span>
+        </li>
+      ))}
+    </ol>
   );
 }
 
@@ -422,7 +526,7 @@ const span = (ms: number | null) => (ms == null ? "–" : ms < 60_000 ? `${Math.
  * clock (the wait for approval, setup, the encode loop, signing), a line per
  * try of the encode loop, and the steps after the PR as chips.
  */
-function RunTrack({ run, timeline, latest }: { run: RunRow; timeline: RunTimeline; latest: boolean }) {
+function RunTrack({ run, timeline, latest, children }: { run: RunRow; timeline: RunTimeline; latest: boolean; children?: ReactNode }) {
   const total = timeline.totalMs || 1;
   return (
     <section className={styles.track} aria-label={latest ? "Latest run" : "Chosen run"}>
@@ -466,21 +570,8 @@ function RunTrack({ run, timeline, latest }: { run: RunRow; timeline: RunTimelin
         </>
       )}
 
-      {timeline.tries.length > 0 && (
-        <ol className={styles.trackTries} aria-label="Tries in the encode loop">
-          {timeline.tries.map((t) => (
-            <li key={t.attempt} data-ok={t.ok}>
-              <span className={styles.trackTryNo}>Try {t.attempt}</span>
-              <span className={styles.trackTryModel}>{t.model ?? "model not recorded"}</span>
-              <span className={styles.trackTryTime}>{span(t.wallMs ?? t.ms)}</span>
-              <span className={styles.trackTryCost}>{t.cost == null ? "" : t.cost < 0.01 ? "<$0.01" : `$${t.cost.toFixed(2)}`}</span>
-              <span className={styles.trackTryWhy} title={t.error ?? undefined}>
-                {t.ok ? "passed" : (t.headline ?? "failed")}
-              </span>
-            </li>
-          ))}
-        </ol>
-      )}
+      {/* Several modules: each one's loop (children); one module: its tries. */}
+      {children ?? (timeline.tries.length > 0 && <TryList tries={timeline.tries} />)}
 
       {timeline.stopped && <Stopped text={timeline.stopped} runUrl={run.runUrl} />}
 

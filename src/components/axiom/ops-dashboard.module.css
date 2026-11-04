@@ -749,6 +749,83 @@
   color: var(--color-success, #166534);
 }
 
+/* One run, several modules: a line each, the section's own open to its tries. */
+.trackModules {
+  display: grid;
+  border-top: 1px solid var(--color-rule-subtle);
+}
+
+.trackModule {
+  border-bottom: 1px solid var(--color-rule-subtle);
+}
+
+.trackModule summary {
+  display: grid;
+  grid-template-columns: 14px 72px minmax(0, 1fr) auto minmax(0, 220px);
+  gap: 10px;
+  align-items: baseline;
+  padding: 7px 0;
+  font-size: 12px;
+  color: var(--color-ink-secondary);
+  cursor: pointer;
+  list-style: none;
+}
+
+.trackModule summary::-webkit-details-marker {
+  display: none;
+}
+
+/* The chevron: right when closed, down when open. */
+.trackModule summary::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  margin-left: 2px;
+  border-right: 1.5px solid var(--color-ink-muted);
+  border-bottom: 1.5px solid var(--color-ink-muted);
+  transform: translateY(-1px) rotate(-45deg);
+  transition: transform 120ms ease;
+}
+
+.trackModule[open] summary::before {
+  transform: translateY(-3px) rotate(45deg);
+}
+
+.trackModule summary:hover {
+  color: var(--color-ink);
+}
+
+.trackModuleName {
+  font-family: var(--font-mono), monospace;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.trackModuleLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trackModuleFacts {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.trackModule summary .trackTryWhy[data-ok="true"] {
+  color: var(--color-success, #166534);
+}
+
+/* A module's tries sit under its line, indented to its name. */
+.trackModule .trackTries {
+  margin: 0 0 6px 24px;
+  border-top: 0;
+}
+
+.trackModule .trackTries li:last-child {
+  border-bottom: 0;
+}
+
 .trackStopped {
   display: grid;
   gap: 6px;
@@ -843,6 +920,18 @@
   .trackTryCost,
   .trackTryWhy {
     grid-column: 2 / -1;
+  }
+  .trackModule summary {
+    grid-template-columns: 14px 64px minmax(0, 1fr);
+  }
+  .trackModuleLabel {
+    display: none;
+  }
+  .trackModule summary .trackTryWhy {
+    grid-column: 2 / -1;
+  }
+  .trackModule .trackTries {
+    margin-left: 0;
   }
 }
 

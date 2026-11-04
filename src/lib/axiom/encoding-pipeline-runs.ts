@@ -269,9 +269,24 @@ export function runRow(dispatch: PipelineAttempt, hosts: Map<string, string> = n
  */
 export function runRows(attempts: PipelineAttempt[], hostsFrom: PipelineAttempt[] = attempts): RunRow[] {
   const hosts = hostCitations(hostsFrom);
+  const hostRuns = new Map(hostsFrom.filter((attempt) => attemptSource(attempt) === "dispatch").map((attempt) => [attempt.id, attempt]));
   return attempts
-    .map((attempt) => runRow(attempt, hosts))
+    .map((attempt) => withHostOutcome(runRow(attempt, hosts), hostRuns))
     .sort((a, b) => b.at.localeCompare(a.at) || b.id.localeCompare(a.id));
+}
+
+/**
+ * A module encoded inside another citation's run that passed its own loop
+ * shares that run's end: when the run failed or was cancelled after it, no
+ * PR came, and the module's row tells why (the run's outcome and cause)
+ * rather than only that it has no PR.
+ */
+function withHostOutcome(row: RunRow, hostRuns: Map<string, PipelineAttempt>): RunRow {
+  if (row.source !== "dependent" || row.outcome !== "encoded" || row.pr || !row.host) return row;
+  const host = hostRuns.get(row.host.id);
+  if (!host) return row;
+  const outcome = outcomeOf(ownRecord(host));
+  return outcome.outcome === "encoded" ? row : { ...row, ...outcome };
 }
 
 /** The dispatches among run rows: only they count in the flow and its times. */

@@ -194,6 +194,35 @@ describe("PipelineLedger", () => {
     expect(screen.queryByText("Keeps failing on")).toBeNull();
   });
 
+  it("shows a run that encoded two modules once, with each module's loop and the section's own open", async () => {
+    const tries = (model: string) => [
+      { attempt: 1, model: "gpt-6-luna", ms: 60_000, cost: 0.004, ok: false, error: "ci: Ungrounded generated numeric literal: N" },
+      { attempt: 2, model, ms: 120_000, cost: 0.19, ok: true, error: null },
+    ];
+    const host = mergedAttempt({ id: "1001", citation: "us/statute/42/416/l", jurisdiction: "us", pr_state: "open", pr_merged_at: null, setup_seconds: 420, encode_seconds: 600, publish_seconds: 46, tries: tries("gpt-6-sol") });
+    serve({
+      rows: runRows([
+        host,
+        dependentAttempt({ jurisdiction: "us", run_conclusion: "success", encoder_error: null, encoder_status: null, pr_url: host.pr_url, pr_state: "open", pr_repo: "rulespec-us", pr_number: 42, pr_created_at: host.pr_created_at, tries: tries("gpt-6-sol") }),
+      ]),
+      labels: { "us/statute/42/416/l": "Definitions", "us/statute/42/402/q": "Benefits" },
+    });
+    render(<PipelineLedger scope={null} referenceMs={NOW} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Runs of us/statute/42/402/q" }));
+    const card = screen.getByRole("region", { name: "Latest run" });
+    // The run's stages once, and its bar counts no one module's tries.
+    expect(within(card).getByRole("img").getAttribute("aria-label")).toBe("Setup 7m, Encode loop 10m, Sign and open the PR 46s");
+    const modules = within(card).getByLabelText("Modules this run encoded").querySelectorAll("details");
+    expect([...modules].map((m) => [m.querySelector("summary")!.textContent, m.open])).toEqual([
+      ["lDefinitions2 tries · 3m · $0.19passed", false],
+      ["qBenefits2 tries · 3m · $0.19passed", true],
+    ]);
+    expect(within(modules[1]).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
+      "Try 1gpt-6-luna1m<$0.01Ungrounded generated numeric literal",
+      "Try 2gpt-6-sol2m$0.19passed",
+    ]);
+  });
+
   it("shows ten documents at a time", async () => {
     serve({
       rows: runRows(

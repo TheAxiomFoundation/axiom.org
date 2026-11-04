@@ -323,3 +323,18 @@ function reencode(latest: RunRow, done: RunRow): SectionBrief["now"] {
   // The headline already says the section is encoded; this line only says what the later run did.
   return { text: `Re-encode on ${shortDay(latest.at ?? latest.dispatchedAt)} — ${lower(step.text)}`, link: step.link };
 }
+
+/**
+ * The modules one run encoded: the run's own citation first, then each
+ * module encoded inside it, by citation. A run that encoded one module
+ * gives just that row. `rows` holds every row, so a module whose section is
+ * out of scope still shows. The run is the host's row (its stages, its PR);
+ * null when the host is not among the rows.
+ */
+export function runModules(row: RunRow, rows: RunRow[]): { run: RunRow | null; modules: RunRow[] } {
+  const hostId = row.source === "dependent" ? row.host?.id : row.id;
+  if (!hostId) return { run: null, modules: [row] };
+  const run = row.source === "dependent" ? (rows.find((r) => r.id === hostId) ?? null) : row;
+  const inside = rows.filter((r) => r.source === "dependent" && r.host?.id === hostId).sort((a, b) => a.citation.localeCompare(b.citation));
+  return { run, modules: run ? [run, ...inside] : inside.length ? inside : [row] };
+}

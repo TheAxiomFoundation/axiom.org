@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { runRow, runRows } from "./encoding-pipeline-runs";
-import { causeHeadline, newestDocuments, runLedger, sectionBrief, sectionOverview, sectionStatus } from "./run-ledger";
-import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
+import { causeHeadline, newestDocuments, runLedger, runModules, sectionBrief, sectionOverview, sectionStatus } from "./run-ledger";
+import { dependentAttempt, mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 
 const day = (n: number) => `2026-09-${String(n).padStart(2, "0")}T10:00:00Z`;
 
@@ -250,5 +250,23 @@ describe("sectionBrief", () => {
     expect(b.encoded).toBe(true);
     expect(b.now?.text).toMatch(/^Re-encode on Oct 26 — failed/);
     expect(b.now?.link?.url).toBe("https://x/run/9");
+  });
+});
+
+describe("runModules", () => {
+  it("gives a run's own module first, then each module encoded inside it", () => {
+    const rows = runRows([
+      pipelineAttempt({ id: "1001", citation: "us/statute/42/416/l" }),
+      dependentAttempt({ id: "dep:b", citation: "us/statute/42/402/r" }),
+      dependentAttempt({ id: "dep:a", citation: "us/statute/42/402/q" }),
+      pipelineAttempt({ id: "other", citation: "us/statute/7/2015/f" }),
+    ]);
+    const byId = (id: string) => rows.find((r) => r.id === id)!;
+    const cites = (m: ReturnType<typeof runModules>) => [m.run?.id ?? null, m.modules.map((r) => r.citation)];
+    expect(cites(runModules(byId("1001"), rows))).toEqual(["1001", ["us/statute/42/416/l", "us/statute/42/402/q", "us/statute/42/402/r"]]);
+    expect(cites(runModules(byId("dep:a"), rows))).toEqual(["1001", ["us/statute/42/416/l", "us/statute/42/402/q", "us/statute/42/402/r"]]);
+    expect(cites(runModules(byId("other"), rows))).toEqual(["other", ["us/statute/7/2015/f"]]);
+    // The host is not among the rows: the module alone.
+    expect(cites(runModules(byId("dep:a"), [byId("dep:a")]))).toEqual([null, ["us/statute/42/402/q"]]);
   });
 });

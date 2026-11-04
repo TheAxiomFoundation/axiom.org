@@ -711,3 +711,18 @@ describe("rows beyond dispatches", () => {
     ]);
   });
 });
+
+describe("a module encoded inside another citation's run", () => {
+  it("tells why it has no PR from the run's end, and keeps its own failure", () => {
+    const passed = { run_conclusion: "success", encoder_error: null, encoder_status: null } as const;
+    const host = pipelineAttempt({ id: "1001", citation: "us/statute/42/416/l", run_conclusion: "failure", encoder_error: "error: waiver identity is not current", failure_source: "log", failed_step: "publish" });
+    const [dependent] = runRows([dependentAttempt(passed)], [host, dependentAttempt(passed)]);
+    expect([dependent.outcome, dependent.cause]).toEqual(["failed", "error: waiver identity is not current"]);
+    // Its own loop failed: its own cause stays.
+    const [own] = runRows([dependentAttempt()], [host]);
+    expect(own.cause).toMatch(/unknown field `values`/);
+    // The run encoded and opened a PR the module is not in yet: no change.
+    const [unknown] = runRows([dependentAttempt(passed)], [pipelineAttempt({ id: "1001", run_conclusion: "success" })]);
+    expect(unknown.outcome).toBe("encoded");
+  });
+});
