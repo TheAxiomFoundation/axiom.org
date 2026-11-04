@@ -638,7 +638,7 @@
 
 .trackHead {
   display: grid;
-  grid-template-columns: 120px minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: baseline;
   gap: 4px 12px;
   margin: 0;
@@ -653,10 +653,6 @@
 .trackHead a {
   color: var(--color-accent);
   white-space: nowrap;
-}
-
-.trackMeta {
-  color: var(--color-ink-muted);
 }
 
 .trackBar {

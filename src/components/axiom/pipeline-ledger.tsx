@@ -561,7 +561,6 @@ function TryList({ tries }: { tries: RunTimeline["tries"] }) {
   );
 }
 
-const DAY_FORMAT = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "UTC" });
 
 /** A duration: "37s" under a minute, else "42m", "1h 5m", "3d"; "–" when not timed. */
 const span = (ms: number | null) => (ms == null ? "–" : ms < 60_000 ? `${Math.round(ms / 1000)}s` : durationLabel(ms));
@@ -577,15 +576,6 @@ function RunTrack({ run, timeline, latest, children }: { run: RunRow; timeline: 
     <section className={styles.track} aria-label={latest ? "Latest run" : "Chosen run"}>
       <p className={styles.trackHead}>
         <span className={styles.ledgerLabel}>{latest ? "Latest run" : "This run"}</span>
-        <span>
-          <b>{run.outcomeLabel}</b>
-          <span className={styles.trackMeta}>
-            {" · "}
-            {DAY_FORMAT.format(new Date(run.at ?? run.dispatchedAt))} UTC
-            {timeline.totalMs ? ` · ${span(timeline.totalMs)}` : ""}
-            {run.encoder ? ` · encoder ${run.encoder}` : ""}
-          </span>
-        </span>
         <a href={run.source === "outside" && run.pr ? run.pr.url : run.runUrl} target="_blank" rel="noreferrer">
           {run.source === "outside" ? "PR ↗" : "Run on GitHub ↗"}
         </a>

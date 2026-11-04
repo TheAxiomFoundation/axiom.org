@@ -121,12 +121,13 @@ describe("PipelineLedger", () => {
     expect(screen.queryByRole("list", { name: "Where each run stopped, and why" })).toBeNull();
     expect(screen.queryByRole("button", { name: /^Show all/ })).toBeNull();
     const latest = screen.getByRole("region", { name: "Latest run" });
-    expect(latest).toHaveTextContent(/Failed validation · Sep 12, 10:00 UTC/);
+    // The card's head is its label and its link; the run's date is on its mark's hover.
+    expect(latest.querySelector("p")).toHaveTextContent(/^Latest runRun on GitHub ↗$/);
     expect(latest).toHaveTextContent(/Stopped: Failed validation/);
     expect(marks[11]).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(marks[0]);
     expect(marks[0]).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("region", { name: "Chosen run" })).toHaveTextContent(/Sep 1, 10:00 UTC/);
+    expect(screen.getByRole("region", { name: "Chosen run" })).toHaveTextContent(/^This run/);
     expect(screen.queryByRole("region", { name: "Latest run" })).toBeNull();
     fireEvent.click(section);
     expect(screen.queryByText("Now")).toBeNull();
