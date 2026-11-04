@@ -555,6 +555,8 @@ interface Visit {
   readTime: boolean;
   /** The failure class the encoder recorded on the ending event (attrs.failure_class). */
   recordedClass: { class?: unknown; subclass?: unknown } | null;
+  /** A PR checks failure on a PR that was closed: no longer failing now. */
+  prClosed: boolean;
 }
 
 interface Case {
@@ -623,7 +625,7 @@ function buildCases(events: PipelineEvent[]): Map<string, Case> {
         }
       }
       if (!visit) {
-        visit = { station: e.station, start: t, end: null, outcome: "open", try_no: e.try_no, rule_id: null, reason: null, ref_url: e.ref_url, duration_ms: null, waived: false, actor: e.actor, cost_usd: null, message: null, readTime: false, recordedClass: null };
+        visit = { station: e.station, start: t, end: null, outcome: "open", try_no: e.try_no, rule_id: null, reason: null, ref_url: e.ref_url, duration_ms: null, waived: false, actor: e.actor, cost_usd: null, message: null, readTime: false, recordedClass: null, prClosed: false };
         visits.push(visit);
         open.set(e.station, visit);
         if (e.kind !== "enter" && TERMINAL.has(e.kind)) unentered.set(e.station, visit);
@@ -644,6 +646,7 @@ function buildCases(events: PipelineEvent[]): Map<string, Case> {
         visit.cost_usd = e.cost_usd != null ? Number(e.cost_usd) : null;
         visit.message = e.message;
         visit.readTime = Boolean(e.attrs?.read_time);
+        visit.prClosed = Boolean(e.attrs?.pr_closed);
         const recorded = e.attrs?.failure_class;
         visit.recordedClass = recorded && typeof recorded === "object" ? (recorded as Visit["recordedClass"]) : null;
         visit.duration_ms = e.duration_ms ?? (e.attrs?.untimed ? null : t - visit.start);
@@ -1158,7 +1161,7 @@ export function checkClusterRows(cases: Case[]): CheckClusterRow[] {
   for (const c of cases) {
     if (c.end !== "exit:failed" || c.failedAt !== "pr_checks") continue;
     const v = [...c.visits].reverse().find((x) => x.station === "pr_checks" && x.outcome === "fail");
-    if (!v) continue;
+    if (!v || v.prClosed) continue;
     // Events written before clusters carry the check's name: their message names the cluster.
     const cluster = (v.rule_id?.startsWith("ci:") ? checkClusterById(v.rule_id.slice(3)) : null) ?? checkCluster(v.message);
     // No cluster: a log that matched none, or no log read at all.

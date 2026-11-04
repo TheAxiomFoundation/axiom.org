@@ -138,6 +138,8 @@ describe("mineFlow", () => {
       failing("c", 2, "2026-09-20T10:00:00Z", pin),
       failing("d", 3, "2026-09-21T10:00:00Z", "something new"),
       failing("e", 4, "2026-09-22T10:00:00Z", null),
+      // Closed with its checks failing: not counted.
+      { ...failing("f", 5, "2026-09-23T10:00:00Z", pin), pr_state: "closed" as const, pr_closed_at: "2026-09-24T10:00:00Z" },
     ].flatMap(attemptEvents);
     const rows = mineFlow(events, { now: NOW, days: 7 }).check_clusters;
     // Every failing PR, not only the window's.

@@ -389,7 +389,11 @@ function prEvents(
         message: clip(attempt.pr_check_error),
         ref_url: attempt.pr_check_job_id && attempt.pr_repo ? `${prUrl}/checks?check_run_id=${attempt.pr_check_job_id}` : prUrl,
         // A cluster's rule id does not name the check: the list does.
-        attrs: checks.length > 1 || (cluster && checks.length) ? { failed_checks: checks } : {},
+        attrs: {
+          ...(checks.length > 1 || (cluster && checks.length) ? { failed_checks: checks } : {}),
+          // Closed with its checks failing: no longer a PR that fails now.
+          ...(attempt.pr_state === "closed" ? { pr_closed: true } : {}),
+        },
       });
       if (!merged) return;
     }
