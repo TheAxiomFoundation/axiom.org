@@ -1513,9 +1513,35 @@ export function linkPrsToRuns(
   return { byRun, orphans };
 }
 
+/** A check's name without its matrix entry: "validate / validate (us-ak)" is "validate / validate". */
+export function checkFamily(name: string): string {
+  return name.replace(/\s*\([^()]*\)$/, "");
+}
+
+/** The most kinds of failing check whose logs a PR's error quotes. */
+const CHECK_FAMILIES_READ = 3;
+
 /**
- * An open PR's first failing job and what it printed: read once per job, so
- * a new CI run is read again and a closed or passing PR carries none.
+ * The failing jobs whose logs say why a PR's checks fail: the first job of
+ * each kind of check, since a matrix's jobs (one per jurisdiction) mostly
+ * fail the same way.
+ */
+export function prCheckJobs(pr: Pick<ManifestPr, "failedJobs">): FailedJob[] {
+  const seen = new Set<string>();
+  const jobs: FailedJob[] = [];
+  for (const job of pr.failedJobs ?? []) {
+    const family = checkFamily(job.name);
+    if (seen.has(family)) continue;
+    seen.add(family);
+    jobs.push(job);
+  }
+  return jobs.slice(0, CHECK_FAMILIES_READ);
+}
+
+/**
+ * An open PR's failing jobs, one of each kind, and what they printed: read
+ * once per CI run (its first job's id), so a new CI run is read again and a
+ * closed or passing PR carries none. Two kinds or more name each.
  */
 function prCheckError(
   pr: ManifestPr,
@@ -1524,13 +1550,20 @@ function prCheckError(
   previous: Partial<PipelineAttempt> | undefined
 ): Partial<PipelineAttempt> {
   if (pr.failedJobs === undefined) return {};
-  const job = state === "draft" || state === "open" ? pr.failedJobs[0] : undefined;
+  const jobs = state === "draft" || state === "open" ? prCheckJobs(pr) : [];
+  const job = jobs[0];
   if (!job) return { pr_check_job_id: null, pr_check_error: null };
   const kept =
     previous?.pr_check_job_id != null && Number(previous.pr_check_job_id) === job.id
       ? (previous.pr_check_error ?? null)
       : null;
-  return { pr_check_job_id: job.id, pr_check_error: checkErrors.get(String(job.id)) ?? kept };
+  const read = jobs.flatMap((j) => {
+    const error = checkErrors.get(String(j.id));
+    return error ? [{ family: checkFamily(j.name), error }] : [];
+  });
+  if (read.length === 0) return { pr_check_job_id: job.id, pr_check_error: kept };
+  const error = read.length === 1 ? read[0].error : read.map((r) => `${r.family}: ${r.error}`).join(" · ");
+  return { pr_check_job_id: job.id, pr_check_error: clipLine(error) };
 }
 
 /** The side branch's own PR on an attempt, or nulls when there is none to record. */
@@ -2131,7 +2164,8 @@ export function parseVersion(pyproject: string): string | null {
 
 /**
  * Failing jobs of open PRs whose log has not been read, newest PR first, one
- * job per PR. A job is read once; a new CI run has a new job id.
+ * job per kind of check (see prCheckJobs). A CI run is read once; a new one
+ * has new job ids.
  */
 export function checkErrorLookups(
   prs: ManifestPr[],
@@ -2140,14 +2174,17 @@ export function checkErrorLookups(
 ): Array<{ repo: string; jobId: number }> {
   const read = new Set<number>();
   for (const row of previous.values()) {
-    if (row.pr_check_job_id != null && row.pr_check_error != null) read.add(Number(row.pr_check_job_id));
+    if (row.pr_check_job_id != null && row.pr_check_error != null && !staleCheckError(row.pr_check_error)) read.add(Number(row.pr_check_job_id));
   }
   const lookups: Array<{ repo: string; jobId: number }> = [];
   for (const pr of [...prs].sort((a, b) => b.createdAt.localeCompare(a.createdAt))) {
-    const job = pr.state === "OPEN" ? pr.failedJobs?.[0] : undefined;
-    if (!job || read.has(job.id)) continue;
-    read.add(job.id);
-    lookups.push({ repo: pr.repo, jobId: job.id });
+    const jobs = pr.state === "OPEN" ? prCheckJobs(pr) : [];
+    if (!jobs[0] || read.has(jobs[0].id)) continue;
+    for (const job of jobs) {
+      if (read.has(job.id)) continue;
+      read.add(job.id);
+      lookups.push({ repo: pr.repo, jobId: job.id });
+    }
   }
   return lookups.slice(0, limit);
 }
@@ -2176,6 +2213,11 @@ const ERROR_LINE_RE = /^(?:error=(.+)|apply=blocked_[a-z_]+:(.+)|(error: .+))$/;
 /** A result block that applied in the end: the errors before it were repaired. */
 const APPLIED_RE = /^outcome=\S+ final_success=True\b/;
 
+/** A check error read before pytest's failed tests were named: only its count ("3 failed, 25 passed"). */
+export function staleCheckError(error: string): boolean {
+  return /^(?:\+ \] )?\d+ failed, \d+ passed\b/.test(error);
+}
+
 /**
  * A cause read from a log before its signer and encoder bookkeeping lines
  * were skipped, or before a closing JSON result was read for its issues
@@ -2185,9 +2227,20 @@ export function bookkeepingCause(error: string | null | undefined): boolean {
   return !!error && (BOOKKEEPING_RE.test(error) || !/[A-Za-z]/.test(error));
 }
 
-function clipLine(text: string): string {
+/** pytest's short summary: "FAILED tests/x.py::test_name - Reason: ...". */
+const PYTEST_FAILED_RE = /^FAILED \S+::([\w[\]-]+)(?: - (.+))?$/;
+const PYTEST_REASON_MAX_CHARS = 200;
+const VALIDATE_FAILED_RE = /^Result: ✗ FAILED$/;
+/** One issue under a failed file: "- ci: Proof source evidence not found: ...". */
+const VALIDATE_ISSUE_RE = /^- ([a-z][\w-]*: .+)$/;
+
+function clipTo(text: string, max: number): string {
   const flat = text.replace(/\s+/g, " ").trim();
-  return flat.length > CHECK_ERROR_MAX_CHARS ? `${flat.slice(0, CHECK_ERROR_MAX_CHARS - 1)}…` : flat;
+  return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
+}
+
+function clipLine(text: string): string {
+  return clipTo(text, CHECK_ERROR_MAX_CHARS);
 }
 
 /**
@@ -2235,6 +2288,17 @@ export function checkErrorFromLog(log: string): string | null {
   const printed: string[] = [];
   for (let i = generic - 1; i >= 0 && !/^##\[(?:group|endgroup)\]/.test(lines[i]); i--) {
     if (lines[i].trim()) printed.unshift(lines[i].trim());
+  }
+  // A pytest run names each failed test in its short summary: the cause is there, not in its count.
+  const failedTests = printed.flatMap((line) => {
+    const match = PYTEST_FAILED_RE.exec(line);
+    return match ? [`${match[1]} — ${clipTo(match[2] ?? "", PYTEST_REASON_MAX_CHARS)}`.replace(/ — $/, "")] : [];
+  });
+  if (failedTests.length) return clipLine(`${failedTests.length} failed: ${failedTests.join("; ")}`);
+  // `axiom-encode validate` lists each failed file's issues under "Result: ✗ FAILED".
+  if (printed.some((line) => VALIDATE_FAILED_RE.test(line))) {
+    const issues = printed.flatMap((line) => VALIDATE_ISSUE_RE.exec(line)?.[1] ?? []);
+    if (issues.length) return clipLine([...new Set(issues)].join("; "));
   }
   // A guard that prints its result as JSON names its issues there.
   const reported = jsonIssues(printed);

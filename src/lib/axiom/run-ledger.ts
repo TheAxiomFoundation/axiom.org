@@ -71,7 +71,12 @@ export function sectionStatus(latest: RunRow): { status: string; tone: LedgerTon
   }
   const pr = latest.pr;
   if (!pr) return { status: "Without a PR", tone: "failed" };
-  if (pr.state === "draft" || pr.state === "open") return { status: "In review", tone: "waiting" };
+  if (pr.state === "draft" || pr.state === "open") {
+    // What holds the PR, from GitHub: its checks first, then its review.
+    if (pr.checks === "failure") return { status: "PR checks fail", tone: "failed" };
+    if (pr.review === "changes_requested") return { status: "Changes requested", tone: "failed" };
+    return { status: "In review", tone: "waiting" };
+  }
   if (pr.state === "closed") return { status: "PR closed", tone: "failed" };
   if (latest.merged === "off main") {
     return latest.via?.state === "open" || latest.via?.state === "draft"
@@ -229,6 +234,29 @@ function counted<T extends { count: number; label: string }>(groups: Map<string,
   return [...groups.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
 }
 
+/**
+ * Why a run stopped, in a few words: its own cause's headline, or for a PR
+ * whose checks fail, the cluster their log names (check-clusters.ts).
+ */
+function stopCause(run: RunRow): string | null {
+  const group = run.causeGroup ?? run.cause;
+  if (group) return causeHeadline(group);
+  return run.pr?.checks === "failure" ? run.pr.cluster : null;
+}
+
+/** A PR's failing checks: how many, and what their log printed. */
+function failingChecks(run: RunRow): string | null {
+  const pr = run.pr;
+  if (pr?.checks !== "failure") return null;
+  const count = pr.failing ? `${pr.failing} ${pr.failing === 1 ? "check fails" : "checks fail"}` : "Checks fail";
+  return pr.error ? `${count}: ${shortPaths(pr.error)}` : count;
+}
+
+/** A log line with each repo path as its file name, and no list dash: the hover holds the rest. */
+function shortPaths(text: string): string {
+  return text.replace(/^- /, "").replace(/(?:\.?[\w.-]+\/)+([\w.-]+\.(?:json|ya?ml|py))\b/g, "$1");
+}
+
 export function sectionOverview(section: LedgerSection): SectionOverview {
   const runs = section.runs;
   const stops = new Map<string, SectionOverview["stops"][number]>();
@@ -239,12 +267,11 @@ export function sectionOverview(section: LedgerSection): SectionOverview {
     const { status, tone } = sectionStatus(run);
     if (run.outcome === "failed") failed++;
     if (run.outcome === "cancelled") cancelled++;
-    const group = run.causeGroup ?? run.cause;
-    const headline = group ? causeHeadline(group) : null;
+    const headline = stopCause(run);
     const key = `${status}|${headline ?? ""}`;
     const stop = stops.get(key) ?? { key, label: status, cause: headline, tone, count: 0, detail: null };
     stop.count += 1;
-    stop.detail ??= run.cause;
+    stop.detail ??= run.cause ?? failingChecks(run);
     stops.set(key, stop);
     if (run.cause) messages.set(key, (messages.get(key) ?? new Set<string>()).add(run.cause));
   }
@@ -288,6 +315,8 @@ export interface SectionBrief {
   now: { text: string; link: { label: string; url: string } | null } | null;
   /** Failures more than one run hit since the last run that passed, most first. */
   repeated: Array<{ label: string; cause: string | null; detail: string | null; count: number; url: string }>;
+  /** The latest run's PR checks, when they fail: how many, and what their log printed. */
+  checks: string | null;
   marks: RunMark[];
 }
 
@@ -315,6 +344,10 @@ function nextStep(latest: RunRow): SectionBrief["now"] {
   const { status, tone } = sectionStatus(latest);
   if (tone === "done") return null;
   const pr = latest.pr ? { label: `${latest.pr.label} ↗`, url: latest.pr.url } : null;
+  if (latest.pr?.checks === "failure") {
+    const also = latest.pr.review === "changes_requested" ? " · changes requested" : "";
+    return { text: `${status}${latest.pr.cluster ? `: ${latest.pr.cluster}` : ""}${also}`, link: pr };
+  }
   if (latest.merged === "off main" && latest.via?.url) return { text: status, link: { label: `${latest.via.label} ↗`, url: latest.via.url } };
   if (latest.tests === "fail" && latest.testsUrl) return { text: status, link: { label: "Open the tests ↗", url: latest.testsUrl } };
   return { text: status, link: pr };
@@ -338,10 +371,7 @@ export function sectionBrief(section: LedgerSection): SectionBrief {
   const repeated = (stuck.length < 2 ? [] : sectionOverview({ ...section, runs: stuck }).stops)
     .filter((stop) => stop.tone === "failed" && stop.count >= 2)
     .map((stop) => {
-      const hit = stuck.find((run) => {
-        const group = run.causeGroup ?? run.cause;
-        return `${sectionStatus(run).status}|${group ? causeHeadline(group) : ""}` === stop.key;
-      });
+      const hit = stuck.find((run) => `${sectionStatus(run).status}|${stopCause(run) ?? ""}` === stop.key);
       return { label: stop.label, cause: stop.cause, detail: stop.detail, count: stop.count, url: (hit ?? latest).runUrl };
     });
 
@@ -350,12 +380,12 @@ export function sectionBrief(section: LedgerSection): SectionBrief {
     return {
       id: run.id,
       tone: run.outcome === "cancelled" ? "cancelled" : tone,
-      title: `${day(run.at ?? run.dispatchedAt)} · ${status}${run.cause ? `: ${causeHeadline(run.cause)}` : ""}`,
+      title: `${day(run.at ?? run.dispatchedAt)} · ${status}${stopCause(run) ? `: ${stopCause(run)}` : ""}`,
       url: run.pr && run.outcome === "encoded" ? run.pr.url : run.runUrl,
     };
   });
 
-  return { encoded: !!done, headline, now: done ? reencode(latest, done) : nextStep(latest), repeated, marks };
+  return { encoded: !!done, headline, now: done ? reencode(latest, done) : nextStep(latest), repeated, checks: done ? null : failingChecks(latest), marks };
 }
 
 /** For an encoded section: a later run is a re-encode, and its outcome does not undo the merged encoding. */

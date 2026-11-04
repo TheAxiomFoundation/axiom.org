@@ -14,6 +14,9 @@ describe("sectionStatus", () => {
     expect(status({ run_conclusion: "success" })).toEqual({ status: "Without a PR", tone: "failed" });
     expect(status({ run_conclusion: "success", pr_state: "draft", pr_url: "u" })).toEqual({ status: "In review", tone: "waiting" });
     expect(status({ run_conclusion: "success", pr_state: "closed", pr_url: "u" })).toEqual({ status: "PR closed", tone: "failed" });
+    // An open PR: what holds it, its checks first.
+    expect(status({ run_conclusion: "success", pr_state: "open", pr_url: "u", pr_checks: "failure", pr_review: "changes_requested" })).toEqual({ status: "PR checks fail", tone: "failed" });
+    expect(status({ run_conclusion: "success", pr_state: "open", pr_url: "u", pr_checks: "success", pr_review: "changes_requested" })).toEqual({ status: "Changes requested", tone: "failed" });
     const merged = (overrides: Parameters<typeof mergedAttempt>[0]) => sectionStatus(runRow(mergedAttempt(overrides)));
     expect(merged({ pr_targets_default: false })).toEqual({ status: "Merged into another branch", tone: "failed" });
     expect(merged({ tests_status: "pass" })).toEqual({ status: "Tests pass", tone: "done" });
@@ -276,6 +279,30 @@ describe("sectionBrief", () => {
     expect(b.encoded).toBe(true);
     expect(b.now?.text).toMatch(/^Re-encode on Oct 26 — failed/);
     expect(b.now?.link?.url).toBe("https://x/run/9");
+  });
+});
+
+describe("sectionBrief of a PR whose checks fail", () => {
+  it("names the cluster the checks' log printed, and the checks, from the CI record", () => {
+    const rows = runRows([
+      pipelineAttempt({
+        run_conclusion: "success",
+        pr_url: "https://github.com/x/pull/2022",
+        pr_repo: "rulespec-us",
+        pr_number: 2022,
+        pr_state: "open",
+        pr_checks: "failure",
+        pr_review: "changes_requested",
+        pr_failed_checks: ["validate / validate (us-ak)", "validate / validate (us-al)"],
+        pr_check_error: "- .axiom/encoding-manifests/us-az/x.json replacement authority is invalid: legacy replacement manifest",
+      }),
+    ]);
+    const brief = sectionBrief(runLedger(rows)[0].documents[0].sections[0]);
+    expect(brief.now).toEqual({
+      text: "PR checks fail: Legacy manifest · changes requested",
+      link: { label: "rulespec-us#2022 ↗", url: "https://github.com/x/pull/2022" },
+    });
+    expect(brief.checks).toBe("2 checks fail: x.json replacement authority is invalid: legacy replacement manifest");
   });
 });
 

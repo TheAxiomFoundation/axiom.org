@@ -164,6 +164,21 @@ describe("attemptEvents", () => {
     );
     const last = events.at(-1)!;
     expect([last.station, last.kind, last.rule_id]).toEqual(["pr_checks", "fail", "check:validate / validate (dk)"]);
+    // The job's log names a cluster: the rule id is the cluster, the checks stay in the attrs.
+    const clustered = attemptEvents(
+      pipelineAttempt({
+        run_conclusion: "success",
+        encode_seconds: 60,
+        pr_url: "https://github.com/x/pull/1",
+        pr_repo: "rulespec-us",
+        pr_state: "draft",
+        pr_created_at: "2026-09-20T10:29:00Z",
+        pr_checks: "failure",
+        pr_failed_checks: ["validate / validate (dk)"],
+        pr_check_error: "x.json validation_execution.axiom_encode does not match the running pinned encoder",
+      })
+    ).at(-1)!;
+    expect([clustered.rule_id, clustered.attrs?.failed_checks]).toEqual(["ci:stale-encoder-pin", ["validate / validate (dk)"]]);
   });
 
   it("starts an outside merge at its PR and a dependent module at its own tries", () => {

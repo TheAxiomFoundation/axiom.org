@@ -12,6 +12,7 @@
  * same instant, so the flow mining never needs a hard-coded station order.
  */
 
+import { checkCluster } from "./check-clusters";
 import { attemptSource, failedStepStation, mainMergedAt, type PipelineAttempt } from "./encoding-pipeline";
 import { compareVersions } from "./encoding-pipeline-insights";
 
@@ -377,15 +378,18 @@ function prEvents(
     const merged = attempt.pr_state === "merged";
     if (attempt.pr_checks === "failure") {
       const checks = attempt.pr_failed_checks ?? [];
+      const cluster = ciRule(attempt.pr_check_error);
       ev({
         station: "pr_checks",
         kind: merged ? "wait" : "fail",
         at: prAt,
         outcome: "fail",
-        rule_id: checks.length ? `check:${checks[0]}` : "check:unknown",
+        // The cluster the job's log names, else the check that failed.
+        rule_id: cluster ?? (checks.length ? `check:${checks[0]}` : "check:unknown"),
         message: clip(attempt.pr_check_error),
         ref_url: attempt.pr_check_job_id && attempt.pr_repo ? `${prUrl}/checks?check_run_id=${attempt.pr_check_job_id}` : prUrl,
-        attrs: checks.length > 1 ? { failed_checks: checks } : {},
+        // A cluster's rule id does not name the check: the list does.
+        attrs: checks.length > 1 || (cluster && checks.length) ? { failed_checks: checks } : {},
       });
       if (!merged) return;
     }
@@ -583,4 +587,10 @@ export function caseIndex(events: PipelineEvent[]): Map<string, { at: string; ju
     index.set(e.case_id, entry);
   }
   return index;
+}
+
+/** A PR checks failure's rule id from the cluster its log names: `ci:<cluster>`, or null. */
+function ciRule(error: string | null | undefined): string | null {
+  const cluster = checkCluster(error);
+  return cluster ? `ci:${cluster.id}` : null;
 }

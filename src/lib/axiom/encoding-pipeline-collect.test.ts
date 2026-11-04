@@ -27,6 +27,7 @@ import {
   buildMirrorIndex,
   checkErrorFromLog,
   checkErrorLookups,
+  prCheckJobs,
   needsLogRead,
   needsStepRead,
   parseVersion,
@@ -1052,6 +1053,25 @@ describe("PR check errors", () => {
       { repo: "rulespec-us", jobId: 11 },
     ]);
     expect(checkErrorLookups(prs, previous, 1)).toHaveLength(1);
+    // A pytest count read before the failed tests were named is read again.
+    const counted = new Map([["x", { pr_check_job_id: 10, pr_check_error: "+ ] 3 failed, 25 passed in 85.50s (0:01:25)" }]]);
+    expect(checkErrorLookups([failing(1, 10, "2026-09-01T00:00:00Z")], counted, 10)).toEqual([{ repo: "rulespec-us", jobId: 10 }]);
+  });
+
+  it("reads one failing job of each kind of check, the matrix's first", () => {
+    const failingPr = pr({
+      failedJobs: [
+        { name: "validate / validate (us-ak)", id: 1 },
+        { name: "validate / validate (us-al)", id: 2 },
+        { name: "validate / validate", id: 3 },
+        { name: "tests", id: 4 },
+      ],
+    });
+    // The matrix's aggregate job is the same check: it fails because an entry did.
+    expect(prCheckJobs(failingPr).map((job) => job.id)).toEqual([1, 4]);
+    expect(checkErrorLookups([failingPr], new Map(), 10).map((lookup) => lookup.jobId)).toEqual([1, 4]);
+    const read = buildAttempts(inputs({ prs: [failingPr], checkErrors: new Map([["1", "legacy manifest"], ["4", "2 failed: test_a"]]) }));
+    expect(read[0]).toMatchObject({ pr_check_job_id: 1, pr_check_error: "validate / validate: legacy manifest · tests: 2 failed: test_a" });
   });
 
   it("stores the error with its job, keeps it while the job is the same, and clears it once the PR is done", () => {
@@ -1077,6 +1097,33 @@ describe("PR check errors", () => {
 
 describe("causes from the failing job's log", () => {
   const log = (...lines: string[]) => lines.map((line) => `2026-09-29T18:04:19.0000000Z ${line}`).join("\n");
+
+  it("names each test a pytest run failed, and each issue of a file validate failed", () => {
+    expect(
+      checkErrorFromLog(
+        log(
+          "##[endgroup]",
+          "=========================== short test summary info ============================",
+          "FAILED tests/test_layout.py::test_legacy_manifests - AssertionError: prelaunch hard cut requires deleting every legacy applied manifest",
+          "FAILED tests/test_oracle.py::test_ratchet",
+          "2 failed, 25 passed in 85.50s (0:01:25)",
+          "##[error]Process completed with exit code 1."
+        )
+      )
+    ).toBe("2 failed: test_legacy_manifests — AssertionError: prelaunch hard cut requires deleting every legacy applied manifest; test_ratchet");
+    expect(
+      checkErrorFromLog(
+        log(
+          "##[endgroup]",
+          "File: /home/runner/work/x/block-45.yaml",
+          "CI: ✗",
+          "Result: ✗ FAILED",
+          "  - ci: Proof source evidence not found: rule `a` proof atom 0",
+          "##[error]Process completed with exit code 1."
+        )
+      )
+    ).toBe("ci: Proof source evidence not found: rule `a` proof atom 0");
+  });
 
   it("quotes the exception a traceback ends in, not the shutdown lines after it", () => {
     expect(

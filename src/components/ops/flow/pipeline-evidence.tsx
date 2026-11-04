@@ -6,6 +6,7 @@ import {
   ruleWords,
   STATION_PHASES,
   stationLabel,
+  type CheckClusterRow,
   type FailureClassRow,
   type FlowModel,
   type RuleTrend,
@@ -32,6 +33,11 @@ export function PipelineEvidence({ model }: { model: FlowModel }) {
       {model.failure_classes.length ? (
         <Panel title="Failure classes" note="Encode cases that failed in the window, by who owns the fix">
           <FailureClasses rows={model.failure_classes} />
+        </Panel>
+      ) : null}
+      {model.check_clusters.length ? (
+        <Panel title="Why PR checks fail" note="Open PRs whose checks fail now, by the cause their CI log names">
+          <CheckClusters rows={model.check_clusters} now={Date.parse(model.generated_at)} />
         </Panel>
       ) : null}
       <Panel title="Where the time goes" note="Summed time of finished visits at each stage">
@@ -389,6 +395,56 @@ function FailureClasses({ rows }: { rows: FailureClassRow[] }) {
       </table>
       <p className={styles.legend}>
         A rejected try is an encoder error or a validator false positive; the data cannot split them yet. Encoders from axiom-encode #1997 on record their own class, and that class comes first.
+      </p>
+    </div>
+  );
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function CheckClusters({ rows, now }: { rows: CheckClusterRow[]; now: number }) {
+  const total = rows.reduce((sum, r) => sum + r.prs, 0);
+  const max = Math.max(1, ...rows.map((r) => r.prs));
+  return (
+    <div className={styles.tableWrap}>
+      <table className={styles.table} aria-label="Why PR checks fail">
+        <thead>
+          <tr>
+            <th scope="col">Cause</th>
+            <th scope="col">Open PRs</th>
+            <th scope="col">Oldest</th>
+            <th scope="col">Newest</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.id ?? "unclassified"}>
+              <th scope="row">{r.label}</th>
+              <td>
+                <span className={styles.reached}>
+                  <span className={styles.reachedBar} style={{ width: `${(r.prs / max) * 100}%` }} />
+                  <span className={styles.count}>
+                    {n(r.prs)}
+                    <span className={styles.sub}> · {share(r.prs, total)}</span>
+                  </span>
+                </span>
+              </td>
+              <td className={styles.sub}>{Math.max(0, Math.floor((now - r.oldest) / DAY_MS))}d</td>
+              <td className={styles.reason} title={r.example.message ?? undefined}>
+                {r.example.url ? (
+                  <a className={styles.reasonText} href={r.example.url} target="_blank" rel="noreferrer">
+                    {r.example.citation} ↗
+                  </a>
+                ) : (
+                  <span className={styles.reasonText}>{r.example.citation}</span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className={styles.legend}>
+        Read from the failing jobs&apos; logs, one job of each kind of check per PR. A log that matches no cause is not classified; hover a PR for what its log printed.
       </p>
     </div>
   );

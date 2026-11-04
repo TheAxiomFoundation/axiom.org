@@ -114,6 +114,41 @@ describe("mineFlow", () => {
     ]);
   });
 
+  it("counts the PRs whose checks fail now by the cluster their CI log names, one PR once", () => {
+    const failing = (id: string, number: number, created: string, error: string | null) =>
+      pipelineAttempt({
+        id,
+        citation: `us/x/${id}`,
+        run_conclusion: "success",
+        encode_seconds: 60,
+        pr_url: `https://github.com/x/pull/${number}`,
+        pr_repo: "rulespec-us",
+        pr_number: number,
+        pr_state: "open",
+        pr_created_at: created,
+        pr_checks: "failure",
+        pr_failed_checks: ["validate / validate (dk)"],
+        pr_check_error: error,
+      });
+    const pin = "x.json validation_execution.axiom_encode does not match the running pinned encoder";
+    const events = [
+      failing("a", 1, "2026-08-01T10:00:00Z", pin),
+      failing("b", 2, "2026-09-20T10:00:00Z", pin),
+      // A module encoded in the same run as b: the same PR.
+      failing("c", 2, "2026-09-20T10:00:00Z", pin),
+      failing("d", 3, "2026-09-21T10:00:00Z", "something new"),
+      failing("e", 4, "2026-09-22T10:00:00Z", null),
+    ].flatMap(attemptEvents);
+    const rows = mineFlow(events, { now: NOW, days: 7 }).check_clusters;
+    // Every failing PR, not only the window's.
+    expect(rows.map((r) => [r.label, r.prs, Math.round((NOW - r.oldest) / 86_400_000), r.example.url])).toEqual([
+      ["Made by an older encoder than the pin", 2, 60, "https://github.com/x/pull/2"],
+      ["Not classified", 1, 9, "https://github.com/x/pull/3"],
+      ["No log read", 1, 8, "https://github.com/x/pull/4"],
+    ]);
+    expect(rows[1].example.message).toBe("something new");
+  });
+
   it("measures the retry loop: pass rate and cost by try", () => {
     expect(model.retry?.judge).toBe("validate");
     expect(model.retry?.work).toBe("generate");

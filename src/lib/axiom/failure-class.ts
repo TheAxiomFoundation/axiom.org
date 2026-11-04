@@ -17,6 +17,8 @@
  * what failed.
  */
 
+import { checkCluster, checkClusterById } from "./check-clusters";
+
 export const FAILURE_CLASSES = [
   "encoder",
   "rejected",
@@ -75,7 +77,7 @@ interface Rule {
 const re = (pattern: RegExp) => (_: FailureSignal, text: string) => pattern.test(text);
 
 /** A validator rule id: `family:check` from a bracket tag, not a grouped error text or a workflow step. */
-const VALIDATOR_RULE = /^(?!text:|infra:|check:|gate:|index:|compile:|review:|publish:|release:)[a-z][a-z0-9-]*:[a-z0-9-]+$/;
+const VALIDATOR_RULE = /^(?!text:|infra:|check:|ci:|gate:|index:|compile:|review:|publish:|release:)[a-z][a-z0-9-]*:[a-z0-9-]+$/;
 
 /** In order: the first rule that matches gives the class. */
 const RULES: Rule[] = [
@@ -119,6 +121,11 @@ export function classifyFailure(signal: FailureSignal): FailureClass {
     const subclass = signal.recorded?.subclass;
     return { id: recorded as FailureClassId, subclass: typeof subclass === "string" ? subclass : null, basis: "encoder" };
   }
+  // A PR checks failure the CI log names a cluster of: the cluster's class.
+  const cluster =
+    (signal.rule_id?.startsWith("ci:") ? checkClusterById(signal.rule_id.slice(3)) : null) ??
+    (signal.station === "pr_checks" ? checkCluster(signal.message) : null);
+  if (cluster && cluster.class !== "unknown") return { id: cluster.class, subclass: cluster.id, basis: "text" };
   const text = `${signal.rule_id ?? ""} ${signal.message ?? ""}`;
   for (const rule of RULES) {
     if (rule.stations && !rule.stations.includes(signal.station)) continue;

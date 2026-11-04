@@ -425,6 +425,14 @@ function SectionRuns({
           )}
         </p>
       )}
+      {brief.checks && (
+        <p className={styles.ledgerNow}>
+          <span className={styles.ledgerLabel}>Checks</span>
+          <span className={styles.ledgerChecks} title={brief.checks}>
+            {brief.checks}
+          </span>
+        </p>
+      )}
       {brief.repeated.length > 0 && (
         <div className={styles.ledgerNow}>
           <span className={styles.ledgerLabel}>Keeps failing on</span>

@@ -4,6 +4,7 @@
  * through the gates between dispatch and tests passing on main.
  */
 
+import { checkCluster } from "./check-clusters";
 import {
   attemptSource,
   attemptTime,
@@ -81,8 +82,15 @@ export interface RunRow {
     label: string;
     url: string;
     state: "draft" | "open" | "merged" | "closed";
-    /** What the PR's first failing check printed, if it fails. */
+    /** What the PR's failing checks printed (one job of each kind), if they fail. */
     error: string | null;
+    /** The head commit's checks, and the review decision, as GitHub reports them. */
+    checks: PipelineAttempt["pr_checks"];
+    review: PipelineAttempt["pr_review"];
+    /** How many checks fail on the head commit. */
+    failing: number;
+    /** The cluster the failing checks' log names (check-clusters.ts), as words. */
+    cluster: string | null;
     openedAt: string | null;
     mergedAt: string | null;
     closedAt: string | null;
@@ -233,6 +241,10 @@ export function runRow(dispatch: PipelineAttempt, hosts: Map<string, string> = n
             url: attempt.pr_url,
             state: attempt.pr_state,
             error: clip(attempt.pr_check_error ?? null),
+            checks: attempt.pr_checks ?? null,
+            review: attempt.pr_review ?? null,
+            failing: attempt.pr_failed_checks?.length ?? 0,
+            cluster: attempt.pr_checks === "failure" ? (checkCluster(attempt.pr_check_error)?.label ?? null) : null,
             openedAt: attempt.pr_created_at,
             mergedAt: attempt.pr_merged_at,
             closedAt: attempt.pr_closed_at,

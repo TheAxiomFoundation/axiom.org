@@ -9,6 +9,7 @@
  * encodings.pipeline_station_targets. Only the display names below are copy.
  */
 
+import { checkCluster, checkClusterById } from "./check-clusters";
 import { classifyFailure, FAILURE_CLASS_COPY, FAILURE_CLASSES, type FailureBasis, type FailureClassId } from "./failure-class";
 import type { PipelineEvent } from "./pipeline-events";
 import { isReleaseCase } from "./pipeline-ingest";
@@ -185,6 +186,7 @@ export const CAUSE_ORIGINS: Record<CauseOrigin, { label: string; source: string 
 
 const ORIGIN_BY_PREFIX: Record<string, CauseOrigin> = {
   check: "ci_check",
+  ci: "ci_check",
   infra: "workflow",
   publish: "workflow",
   text: "encoder_text",
@@ -234,6 +236,7 @@ export function causeText(cause: string): string | null {
   if (cause === "gate:pre-encode-blocked") return "Stopped by the pre-encode gate";
   if (cause === "infra:no-pr") return "The run passed but opened no PR";
   if (cause === "check:unknown") return "A check failed; the record does not name it";
+  if (prefix === "ci") return checkClusterById(rest)?.label ?? null;
   if (cause === "publish:in-host-run") return "Published inside another citation's run";
   if (cause === "review:awaiting-reviewer") return "No reviewer has looked at it yet";
   if (cause === "merge:side-branch") return "Merged into a side branch that is not on main yet";
@@ -469,6 +472,8 @@ export interface FlowModel {
   ladder: IssueLadder;
   /** The window's failed encode cases by failure class, most first. */
   failure_classes: FailureClassRow[];
+  /** PRs whose checks fail now, by the cluster their CI log names, most first. */
+  check_clusters: CheckClusterRow[];
   retry: RetryCurve | null;
   trends: RuleTrend[];
   follows: FollowPair[];
@@ -935,6 +940,8 @@ export function mineFlow(events: PipelineEvent[], options: FlowOptions): FlowMod
   const ladderCases = [...all.values()].filter((c) => c.start <= now && (c.source === "local_ab" || c.start >= from));
   const ladder = issueLadder(ladderCases);
   const failure_classes = failureClassRows(encodeCases);
+  // Not the window: every PR whose checks fail now, however old.
+  const check_clusters = checkClusterRows(factory.filter((c) => !isReleaseCase(c.id)));
   const follows = followPairs(ladderCases);
   const trends = ruleTrends(everyFactory, changes, ladder, now, from);
   const looping = loopingCitations(encodeCases);
@@ -984,6 +991,7 @@ export function mineFlow(events: PipelineEvent[], options: FlowOptions): FlowMod
     sinks: (Object.keys(sinkCounts) as SinkId[]).filter((id) => sinkCounts[id] > 0).map((id) => ({ id, label: SINK_LABELS[id], cases: sinkCounts[id] })),
     ladder,
     failure_classes,
+    check_clusters,
     retry,
     trends,
     follows,
@@ -1126,6 +1134,58 @@ export function failureClassRows(cases: Case[]): FailureClassRow[] {
     }))
     // Not classified last; the rest by size.
     .sort((a, b) => Number(a.id === "unknown") - Number(b.id === "unknown") || b.cases - a.cases || order.get(a.id)! - order.get(b.id)!);
+}
+
+export interface CheckClusterRow {
+  /** The cluster's id; null for a log that matched no cluster, "no-log" when no log was read. */
+  id: string | null;
+  label: string;
+  /** Distinct PRs: modules encoded in one run share theirs. */
+  prs: number;
+  /** When the oldest of those PRs opened (ms). */
+  oldest: number;
+  /** The newest PR, to open: its failing check, its citation, and what the log printed. */
+  example: { url: string | null; citation: string; message: string | null };
+}
+
+/**
+ * PRs whose checks fail now (cases that ended failed at their checks), by
+ * the cluster their CI log names (rule id `ci:<cluster>`); the rest as one
+ * "Not classified" row, last.
+ */
+export function checkClusterRows(cases: Case[]): CheckClusterRow[] {
+  const rows = new Map<string | null, CheckClusterRow & { seen: Set<string>; newest: number }>();
+  for (const c of cases) {
+    if (c.end !== "exit:failed" || c.failedAt !== "pr_checks") continue;
+    const v = [...c.visits].reverse().find((x) => x.station === "pr_checks" && x.outcome === "fail");
+    if (!v) continue;
+    // Events written before clusters carry the check's name: their message names the cluster.
+    const cluster = (v.rule_id?.startsWith("ci:") ? checkClusterById(v.rule_id.slice(3)) : null) ?? checkCluster(v.message);
+    // No cluster: a log that matched none, or no log read at all.
+    const id = cluster?.id ?? (v.message ? null : "no-log");
+    let row = rows.get(id);
+    if (!row) {
+      row = { id, label: cluster?.label ?? (v.message ? "Not classified" : "No log read"), prs: 0, oldest: v.start, example: { url: null, citation: c.citation, message: null }, seen: new Set(), newest: -Infinity };
+      rows.set(id, row);
+    }
+    const pr = v.ref_url?.replace(/\/checks\?.*$/, "") ?? c.id;
+    if (row.seen.has(pr)) continue;
+    row.seen.add(pr);
+    row.prs++;
+    row.oldest = Math.min(row.oldest, v.start);
+    if (v.start > row.newest) {
+      row.newest = v.start;
+      row.example = { url: v.ref_url, citation: c.citation, message: v.message };
+    }
+  }
+  return [...rows.values()]
+    .map(({ seen: _seen, newest: _newest, ...row }) => row)
+    .sort((a, b) => unsorted(a) - unsorted(b) || b.prs - a.prs || a.label.localeCompare(b.label));
+}
+
+/** Rows with no cluster come last: not classified, then no log read. */
+function unsorted(row: CheckClusterRow): number {
+  return row.id === null ? 1 : row.id === "no-log" ? 2 : 0;
 }
 
 /**

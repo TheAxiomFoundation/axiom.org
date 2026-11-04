@@ -276,6 +276,15 @@
   transition: transform 120ms ease;
 }
 
+/* What the failing PR checks printed: two lines at most, the rest on hover. */
+.ledgerChecks {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
 /* A module encoded in a run listed in another document: one muted line, a link to that row. */
 .ledgerEncodedIn {
   display: block;
