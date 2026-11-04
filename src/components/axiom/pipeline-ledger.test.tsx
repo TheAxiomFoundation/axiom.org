@@ -30,13 +30,12 @@ describe("PipelineLedger", () => {
     const ledger = await screen.findByRole("table");
     expect(within(ledger).getByRole("rowheader", { name: "US Federal" })).toBeInTheDocument();
     expect(within(ledger).queryByRole("rowheader", { name: "New Zealand" })).not.toBeInTheDocument();
-    const nav = screen.getByRole("navigation", { name: "Jurisdiction" });
-    expect(within(nav).getByRole("link", { name: "NZ" })).toHaveAttribute("href", "/ops?j=nz");
-    fireEvent.click(within(nav).getByRole("link", { name: "NZ" }));
+    const jurisdiction = screen.getByRole("combobox", { name: "Jurisdiction" });
+    fireEvent.change(jurisdiction, { target: { value: "nz" } });
     expect(within(ledger).getByRole("rowheader", { name: "New Zealand" })).toBeInTheDocument();
     expect(within(ledger).queryByRole("rowheader", { name: "US Federal" })).not.toBeInTheDocument();
     expect(window.location.search).toBe("?j=nz");
-    fireEvent.click(within(nav).getByRole("link", { name: "All" }));
+    fireEvent.change(jurisdiction, { target: { value: "" } });
     expect(within(ledger).getByRole("rowheader", { name: "US Federal" })).toBeInTheDocument();
     expect(window.location.search).toBe("");
     expect(fetch).toHaveBeenCalledTimes(1);

@@ -25,7 +25,7 @@ const model = mineFlow(events, {
   targets: [{ station: "validate", min_yield: 0.9, max_p95_hours: null, max_wip: null, sla_hours: null }],
   workflows: [{ label: "Release activation", grade: "failing", url: "https://x", detail: "Last run failed" }],
 });
-const params: FlowParams = { window: 30, j: null, pop: "all", view: "pipeline", station: null, citation: null, case: null, program: null, bundle: null };
+const params: FlowParams = { window: 30, j: null, only: false, pop: "all", view: "pipeline", station: null, citation: null, case: null, program: null, bundle: null };
 
 function line(overrides: Partial<FlowParams> = {}) {
   return render(<FlowLine model={model} error={null} params={{ ...params, ...overrides }} jurisdictions={["us", "dk"]} />);
@@ -35,6 +35,9 @@ describe("flowHref", () => {
   it("links the line to the Line tab, keeping the window and scope", () => {
     expect(flowHref(params, {})).toBe("/ops?tab=line");
     expect(flowHref({ ...params, window: 7, j: "us" }, { station: "validate" })).toBe("/ops?tab=line&window=7&j=us&station=validate");
+    // The US alone (Federal); without a jurisdiction, `only` drops out.
+    expect(flowHref({ ...params, j: "us", only: true }, {})).toBe("/ops?tab=line&j=us&only=1");
+    expect(flowHref({ ...params, only: true }, {})).toBe("/ops?tab=line");
     expect(flowHref(params, { pop: "prs" })).toBe("/ops?tab=line&pop=prs");
   });
 
@@ -116,7 +119,7 @@ describe("FlowLine", () => {
     line();
     const filters = screen.getByRole("navigation", { name: "Window" }).closest("header")!;
     expect(filters.textContent).toMatch(/^Window.*Runs.*Jurisdiction/);
-    expect(screen.getByRole("navigation", { name: "Jurisdiction" })).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Jurisdiction" })).toBeTruthy();
     const stages = screen.getByRole("region", { name: "Stages" });
     expect(stages.querySelector("header p")).toBeNull();
     expect(stages.textContent).not.toContain("Cases that reached");

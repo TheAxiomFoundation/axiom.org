@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { attemptEvents, type PipelineEvent } from "./pipeline-events";
-import { agentBrief, caseDetail, causeOrigin, causeText, citationLanes, formatDuration, mineFlow, quantile, rankStations, retryCutoff, ruleWords, splitMessage, trendSentence, type FlowEdge } from "./pipeline-flow";
+import { agentBrief, caseDetail, causeOrigin, causeText, citationLanes, formatDuration, inJurisdiction, mineFlow, quantile, rankStations, retryCutoff, ruleWords, splitMessage, trendSentence, type FlowEdge } from "./pipeline-flow";
 import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 import { ingestEvents, type IngestInputs } from "./pipeline-ingest";
 
@@ -379,5 +379,16 @@ describe("mineFlow with corpus releases", () => {
     expect(brief).toContain("Not measured: Target gate (gate not live yet).");
     expect(brief).toContain("4 corpus releases in the window.");
     expect(brief).toContain("not measured: gate not live yet");
+  });
+});
+
+describe("inJurisdiction", () => {
+  it("covers the jurisdictions under a scope, or with only the scope itself", () => {
+    expect(inJurisdiction("us-ca", "us")).toBe(true);
+    expect(inJurisdiction("us-ca", "us", true)).toBe(false);
+    expect(inJurisdiction("us", "us", true)).toBe(true);
+    expect(inJurisdiction("usx", "us")).toBe(false);
+    expect(inJurisdiction(null, "us")).toBe(false);
+    expect(inJurisdiction("dk", null, true)).toBe(true);
   });
 });
