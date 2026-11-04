@@ -515,6 +515,8 @@ export interface FlowOptions {
   now: number;
   days: number;
   jurisdiction?: string | null;
+  /** The jurisdiction alone, without those under it (us without us-ca). */
+  only?: boolean;
   targets?: StationTarget[];
   workflows?: WorkflowSignal[];
   /** Dated items to watch (waiver expiry, ...): alert within 90 days. */
@@ -572,11 +574,11 @@ const TIMED_MIN = 10;
 /** ... or this many, at a corpus release station: a few releases a week, not hundreds of runs. */
 const TIMED_MIN_RELEASE = 3;
 
-/** Whether a jurisdiction is the scope or under it (us covers us-ca). */
-export function inJurisdiction(value: string | null, scope: string | null | undefined): boolean {
+/** Whether a jurisdiction is the scope or under it (us covers us-ca), or with `only` the scope itself. */
+export function inJurisdiction(value: string | null, scope: string | null | undefined, only = false): boolean {
   if (!scope) return true;
   if (!value) return false;
-  return value === scope || value.startsWith(`${scope}-`);
+  return value === scope || (!only && value.startsWith(`${scope}-`));
 }
 
 /** Group events into cases, and each case's events into station visits. */
@@ -747,7 +749,7 @@ function placeholderStation(id: string, reason: string, rank: number, target: St
 export function mineFlow(events: PipelineEvent[], options: FlowOptions): FlowModel {
   const { now, days } = options;
   const from = now - days * DAY_MS;
-  const scoped = events.filter((e) => e.kind !== "change" && inJurisdiction(e.jurisdiction, options.jurisdiction));
+  const scoped = events.filter((e) => e.kind !== "change" && inJurisdiction(e.jurisdiction, options.jurisdiction, options.only));
   // Encoder changes are not cases; they mark when a rule was worked on.
   const changes = events.filter((e) => e.kind === "change");
   const all = buildCases(scoped);
@@ -1474,7 +1476,7 @@ const RETRY_MIN_PASS = 0.05;
 /** Alerts from stations against their targets, workflows, deadlines and rule trends. */
 function flowAlerts(model: FlowModel, factory: Case[], options: FlowOptions): FlowAlert[] {
   const alerts: FlowAlert[] = [];
-  const scope = options.jurisdiction ? `&j=${encodeURIComponent(options.jurisdiction)}` : "";
+  const scope = options.jurisdiction ? `&j=${encodeURIComponent(options.jurisdiction)}${options.only ? "&only=1" : ""}` : "";
   for (const s of model.stations) {
     const t = s.target;
     const href = `/ops?tab=line&station=${encodeURIComponent(s.id)}${scope}`;

@@ -86,7 +86,13 @@ export function FlowLine({
             <span className={styles.controlLabel} aria-hidden="true">
               Jurisdiction
             </span>
-            <ScopeNav current={params.j} options={jurisdictions} subdivisions={subdivisions} href={(j) => flowHref(params, { j, station: null })} />
+            <ScopeNav
+              current={params.j}
+              only={params.only}
+              options={jurisdictions}
+              subdivisions={subdivisions}
+              href={(j, only = false) => flowHref(params, { j, only, station: null })}
+            />
           </div>
         </div>
       </header>
@@ -122,7 +128,7 @@ export function JourneyView({
   bundles: BundleMembership[];
   error: string | null;
 }) {
-  const params: FlowParams = { window: 30, j: null, pop: "all", view: "pipeline", station: null, citation, case: detail?.case_id ?? null, program: null, bundle: null };
+  const params: FlowParams = { window: 30, j: null, only: false, pop: "all", view: "pipeline", station: null, citation, case: detail?.case_id ?? null, program: null, bundle: null };
   return (
     <div className={`${dashboard.dashboard} ${styles.page} min-h-screen pt-28 pb-16`}>
       <div className={styles.wrap}>

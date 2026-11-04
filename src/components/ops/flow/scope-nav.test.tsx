@@ -1,42 +1,49 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { ScopeNav } from "./scope-nav";
 
+const href = (j: string | null, only = false) => `/ops?j=${j ?? ""}${only ? "&only=1" : ""}`;
+const subdivisions = { us: ["us-az", "us-co"] };
+
+/** Each dropdown by its label: the chosen option and every option's label. */
+function dropdowns(current: string | null, only = false) {
+  const { unmount } = render(<ScopeNav current={current} only={only} options={["us", "dk"]} subdivisions={subdivisions} href={href} />);
+  const out = (screen.getAllByRole("combobox") as HTMLSelectElement[]).map((select) => ({
+    label: select.getAttribute("aria-label"),
+    chosen: select.selectedOptions[0]?.textContent,
+    options: [...select.options].map((o) => o.textContent),
+  }));
+  unmount();
+  return out;
+}
+
 describe("ScopeNav", () => {
-  it("links All and each root in capitals, marks the current one, and shows a scope from the address last", () => {
-    render(<ScopeNav current="nz" options={["us", "dk"]} href={(j) => `/ops?j=${j ?? ""}`} />);
-    const nav = screen.getByRole("navigation", { name: "Jurisdiction" });
-    expect([...nav.children].map((c) => [c.textContent, c.getAttribute("href"), c.getAttribute("aria-current")])).toEqual([
-      ["All", "/ops?j=", null],
-      ["US", "/ops?j=us", null],
-      ["DK", "/ops?j=dk", null],
-      ["NZ", null, "page"],
-    ]);
+  it("offers All and each root in capitals, and a scope from the address last", () => {
+    expect(dropdowns(null)).toEqual([{ label: "Jurisdiction", chosen: "All", options: ["All", "US", "DK"] }]);
+    expect(dropdowns("nz")).toEqual([{ label: "Jurisdiction", chosen: "NZ", options: ["All", "US", "DK", "NZ"] }]);
+    expect(dropdowns("dk")).toHaveLength(1);
   });
 
-  it("offers a root's subdivisions in a second row only once that root is chosen", () => {
-    const subdivisions = { us: ["us-az", "us-co"] };
-    const href = (j: string | null) => `/ops?j=${j ?? ""}`;
-    const rows = (current: string | null) => {
-      const { unmount } = render(<ScopeNav current={current} options={["us", "dk"]} subdivisions={subdivisions} href={href} />);
-      const navs = screen.getAllByRole("navigation").map((nav) => [nav.getAttribute("aria-label"), [...nav.children].map((c) => [c.textContent, c.getAttribute("aria-current")])]);
-      unmount();
-      return navs;
-    };
-    // All or another root: one row, no states.
-    expect(rows(null)).toHaveLength(1);
-    expect(rows("dk")).toHaveLength(1);
-    // US: a second row, US itself current.
-    expect(rows("us")).toEqual([
-      ["Jurisdiction", [["All", null], ["US", "page"], ["DK", null]]],
-      ["Within US", [["All US", "page"], ["AZ", null], ["CO", null]]],
-    ]);
-    // A state: US stays marked and links back to all of the US.
-    expect(rows("us-az")).toEqual([
-      ["Jurisdiction", [["All", null], ["US", "true"], ["DK", null]]],
-      ["Within US", [["All US", null], ["AZ", "page"], ["CO", null]]],
-    ]);
+  it("offers a root's subdivisions, and the root alone, once that root is chosen", () => {
+    const within = (options: string[], chosen: string) => ({ label: "Within US", chosen, options });
+    const us = ["All US", "Federal", "AZ", "CO"];
+    expect(dropdowns("us")).toEqual([{ label: "Jurisdiction", chosen: "US", options: ["All", "US", "DK"] }, within(us, "All US")]);
+    expect(dropdowns("us", true)[1]).toEqual(within(us, "Federal"));
+    expect(dropdowns("us-az")).toEqual([{ label: "Jurisdiction", chosen: "US", options: ["All", "US", "DK"] }, within(us, "AZ")]);
     // A state from the address with no runs listed still shows, last.
-    expect(rows("us-tn")[1]).toEqual(["Within US", [["All US", null], ["AZ", null], ["CO", null], ["TN", "page"]]]);
+    expect(dropdowns("us-tn")[1]).toEqual(within([...us, "TN"], "TN"));
+  });
+
+  it("switches in place when the caller can", () => {
+    const chosen: Array<[string | null, boolean | undefined]> = [];
+    render(<ScopeNav current="us" options={["us", "dk"]} subdivisions={subdivisions} href={href} onSelect={(j, only) => chosen.push([j, only])} />);
+    fireEvent.change(screen.getByRole("combobox", { name: "Within US" }), { target: { value: "us|only" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Within US" }), { target: { value: "us-az" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Jurisdiction" }), { target: { value: "" } });
+    expect(chosen).toEqual([
+      ["us", true],
+      ["us-az", false],
+      [null, false],
+    ]);
   });
 });

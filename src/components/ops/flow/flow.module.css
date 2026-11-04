@@ -92,15 +92,20 @@
 
 .scopeRows {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
   max-width: 100%;
 }
 
-.scopeRows .seg {
-  flex-wrap: wrap;
-  max-width: 100%;
+.scopeSelect {
+  padding: 5px 8px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--color-ink);
+  background: var(--color-paper);
+  border: 1px solid var(--color-rule);
+  border-radius: 8px;
 }
 
 .control .seg {
@@ -134,7 +139,7 @@
   color: var(--color-ink);
 }
 
-.seg [aria-current] {
+.seg [aria-current="page"] {
   background: var(--color-ink);
   color: var(--color-paper);
 }

@@ -114,19 +114,20 @@ export function PipelineLedger({
   const scopeName = scope ? nameOfScope(scope) : null;
 
   // Every run loads once; a jurisdiction narrows them here, and the address follows without a reload.
-  const choose = (j: string | null) => {
-    setScope(j ? { jurisdiction: j, only: false } : null);
+  const choose = (j: string | null, only = false) => {
+    setScope(j ? { jurisdiction: j, only } : null);
     setShown(DOCUMENTS_SHOWN);
     setOpenSection(null);
     const url = new URL(window.location.href);
     if (j) url.searchParams.set("j", j);
     else url.searchParams.delete("j");
-    url.searchParams.delete("only");
+    if (j && only) url.searchParams.set("only", "1");
+    else url.searchParams.delete("only");
     // null state: Next.js treats it as an outside change and updates useSearchParams (the tab links read it).
     window.history.replaceState(null, "", url);
   };
   // The address a choice stands for, for a new tab or a copied link.
-  const scopeHref = (j: string | null) => opsHref({ j: j ?? undefined }, "now");
+  const scopeHref = (j: string | null, only = false) => opsHref({ j: j ?? undefined, only: j && only ? "1" : undefined }, "now");
 
   useEffect(() => {
     let live = true;
@@ -151,7 +152,7 @@ export function PipelineLedger({
   return (
     // One grid cell: the switch sits on top of the ledger, the sidebar stays beside both.
     <div className={styles.ledgerColumn}>
-    <ScopeNav current={scope?.jurisdiction ?? null} options={roots} subdivisions={subdivisions} href={scopeHref} onSelect={choose} />
+    <ScopeNav current={scope?.jurisdiction ?? null} only={scope?.only} options={roots} subdivisions={subdivisions} href={scopeHref} onSelect={choose} />
     <section aria-label="Latest encodings" className={styles.ledger}>
       <div className={styles.ledgerHeader}>
         <div>

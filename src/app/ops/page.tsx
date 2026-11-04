@@ -58,11 +58,12 @@ export default async function OpsPage({ searchParams }: { searchParams?: Promise
       ...DEFAULT_FLOW_PARAMS,
       window: parseWindow(params.window),
       j: one(params.j),
+      only: one(params.only) === "1",
       pop: parsePopulation(one(params.pop)),
       view: "pipeline",
       station: one(params.station),
     };
-    const data = await loadFlow({ days: flowParams.window, jurisdiction: flowParams.j, population: flowParams.pop, now: referenceMs, workflows: false });
+    const data = await loadFlow({ days: flowParams.window, jurisdiction: flowParams.j, only: flowParams.only, population: flowParams.pop, now: referenceMs, workflows: false });
     // Jurisdictions to scope by: the busiest roots among dispatches.
     const dispatched = data.events.filter((e) => e.station === "dispatch").map((e) => e.jurisdiction);
     const jurisdictions = busiestRoots(dispatched);
