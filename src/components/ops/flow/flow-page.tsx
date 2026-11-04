@@ -6,8 +6,6 @@ import {
   type CitationLane,
   type FlowModel,
 } from "@/lib/axiom/pipeline-flow";
-import type { BundleMembership } from "@/lib/axiom/program-bundles";
-import { bundleHref, tiersLabel } from "@/lib/axiom/program-bundles";
 import { CaseCanvas, LanesCanvas } from "./level-canvases";
 import { flowHref, type FlowParams } from "./flow-params";
 import { PipelineEvidence } from "./pipeline-evidence";
@@ -118,14 +116,12 @@ export function JourneyView({
   stationOrder,
   lanes,
   detail,
-  bundles,
   error,
 }: {
   citation: string | null;
   stationOrder: string[];
   lanes: CitationLane[];
   detail: CaseDetail | null;
-  bundles: BundleMembership[];
   error: string | null;
 }) {
   const params: FlowParams = { window: 30, j: null, only: false, pop: "all", view: "pipeline", station: null, citation, case: detail?.case_id ?? null, program: null, bundle: null };
@@ -141,19 +137,6 @@ export function JourneyView({
             <h1 className={styles.title}>{citation ?? "Encoding journey"}</h1>
           </div>
         </header>
-
-        {bundles.length ? (
-          <p className={styles.note}>
-            In{" "}
-            {bundles.map((b, i) => (
-              <span key={b.bundle_id}>
-                {i ? ", " : ""}
-                <a href={bundleHref(b.bundle_id)}>{b.bundle_title}</a> ({tiersLabel(b)})
-              </span>
-            ))}
-            .
-          </p>
-        ) : null}
 
         {citation ? (
           <nav className={styles.crumbs} aria-label="Zoom level">

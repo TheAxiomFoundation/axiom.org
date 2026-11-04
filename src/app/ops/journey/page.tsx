@@ -2,8 +2,6 @@ import type { Metadata } from "next";
 import { JourneyView } from "@/components/ops/flow/flow-page";
 import { getCitationEvents } from "@/lib/axiom/pipeline-events-data";
 import { caseDetail, citationLanes, stationOrderOf } from "@/lib/axiom/pipeline-flow";
-import { bundleMemberships } from "@/lib/axiom/program-bundles";
-import { getBundleIndex } from "@/lib/axiom/program-bundles-data";
 import { SITE_URL } from "@/lib/urls";
 
 export const dynamic = "force-dynamic";
@@ -26,7 +24,7 @@ export const metadata: Metadata = {
  */
 export default async function OpsJourneyPage({ searchParams }: { searchParams: Promise<{ citation?: string; case?: string }> }) {
   const { citation, case: caseId } = await searchParams;
-  const [events, index] = citation ? await Promise.all([getCitationEvents(citation), getBundleIndex([citation])]) : [null, []];
+  const events = citation ? await getCitationEvents(citation) : null;
   const all = events?.events ?? [];
   const lanes = citation ? citationLanes(all, citation) : [];
   // A run of this citation only: its events are the ones read.
@@ -37,7 +35,6 @@ export default async function OpsJourneyPage({ searchParams }: { searchParams: P
       stationOrder={stationOrderOf(all)}
       lanes={lanes}
       detail={detail}
-      bundles={citation ? bundleMemberships(citation, index) : []}
       error={events?.error ?? null}
     />
   );

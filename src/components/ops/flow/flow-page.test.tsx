@@ -163,21 +163,18 @@ describe("JourneyView", () => {
         stationOrder={stationOrder}
         lanes={citationLanes(events, "us/statute/7/2017/a")}
         detail={null}
-        bundles={[{ bundle_id: "us/snap", bundle_title: "SNAP", tiers: [{ tier: "full", index: 2, title: "Full", document: "7 USC 2017" }] }]}
-       
         error={null}
       />
     );
     expect(screen.getByTestId("lanes-canvas")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "SNAP" })).toHaveAttribute("href", "/ops?tab=programs&bundle=us/snap");
     cleanup();
     const detail = caseDetail(events, "1")!;
-    render(<JourneyView citation={detail.citation} stationOrder={stationOrder} lanes={[]} detail={detail} bundles={[]} error={null} />);
+    render(<JourneyView citation={detail.citation} stationOrder={stationOrder} lanes={[]} detail={detail} error={null} />);
     expect(screen.getByRole("complementary", { name: "Run details" })).toBeTruthy();
   });
 
   it("shows a plain title with no citation", () => {
-    render(<JourneyView citation={null} stationOrder={[]} lanes={[]} detail={null} bundles={[]} error={null} />);
+    render(<JourneyView citation={null} stationOrder={[]} lanes={[]} detail={null} error={null} />);
     expect(screen.getByRole("heading", { name: "Encoding journey" })).toBeTruthy();
   });
 });
