@@ -26,22 +26,24 @@ export function ScopeSelect({
   onSelect?: (value: string) => void;
 }) {
   return (
-    <select
-      className={styles.scopeSelect}
-      aria-label={label}
-      value={current}
-      onChange={(event) => {
-        const choice = choices.find((c) => c.value === event.target.value);
-        if (!choice) return;
-        if (onSelect) onSelect(choice.value);
-        else window.location.assign(choice.href);
-      }}
-    >
-      {choices.map((choice) => (
-        <option key={choice.value} value={choice.value}>
-          {choice.label}
-        </option>
-      ))}
-    </select>
+    <span className={styles.scopeSelectWrap}>
+      <select
+        className={styles.scopeSelect}
+        aria-label={label}
+        value={current}
+        onChange={(event) => {
+          const choice = choices.find((c) => c.value === event.target.value);
+          if (!choice) return;
+          if (onSelect) onSelect(choice.value);
+          else window.location.assign(choice.href);
+        }}
+      >
+        {choices.map((choice) => (
+          <option key={choice.value} value={choice.value}>
+            {choice.label}
+          </option>
+        ))}
+      </select>
+    </span>
   );
 }
