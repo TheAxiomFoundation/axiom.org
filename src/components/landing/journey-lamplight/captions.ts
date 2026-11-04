@@ -33,7 +33,7 @@ export const CAPTIONS: Array<{ kicker: string; title: string }> = [
   { kicker: "1 / 8 · Off the shelf", title: "It starts with the law as written." },
   { kicker: "2 / 8 · The law, as published", title: "Official sources, captured word for word." },
   { kicker: "3 / 8 · The corpus", title: "Every provision has an address." },
-  { kicker: "4 / 8 · Encode and check", title: "AI drafts a rule, automated checks test it, and a rule that fails goes back." },
+  { kicker: "4 / 8 · Encode and check", title: "Automated encoding, deterministic checks, transparent validation." },
   { kicker: "5 / 8 · Cited code", title: "Every value cites the sentence it came from." },
   { kicker: "6 / 8 · The graph", title: "The rules run as one graph, and its results are checked against test cases." },
   { kicker: "7 / 8 · At scale", title: "The same process and the same checks, law by law." },

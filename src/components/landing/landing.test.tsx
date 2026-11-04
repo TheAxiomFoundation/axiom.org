@@ -102,8 +102,8 @@ describe('Landing sections', () => {
     // apply manifest; the story's captions claim no signature)
     const journey = container.querySelector('.jl-posters, .jl-track')
     const text = journey?.textContent ?? ''
-    // the encode step says that checks test the rule
-    expect(text).toMatch(/ai drafts a rule, automated checks test it/i)
+    // the encode step names its deterministic checks
+    expect(text).toMatch(/automated encoding, deterministic checks, transparent validation/i)
     expect(text).not.toMatch(/\b(certified|signed|sealed)\b/i)
   })
 
