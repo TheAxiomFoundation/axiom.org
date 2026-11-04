@@ -32,6 +32,11 @@ export interface LedgerSection {
   lastAt: string;
   /** Newest first. */
   runs: RunRow[];
+  /**
+   * The section whose run encoded this one as a module (its latest run's
+   * host), when that section is in the same document; it lists right above.
+   */
+  encodedWith: string | null;
 }
 
 export interface LedgerDocument {
@@ -116,6 +121,7 @@ export function runLedger(
       ...sectionStatus(latest),
       lastAt: latest.at ?? latest.dispatchedAt,
       runs: sorted,
+      encodedWith: latest.source === "dependent" ? (latest.host?.citation ?? null) : null,
     };
     const title = documentPath ? labels[documentPath]?.trim() || null : null;
     const document = documents.get(key) ?? {
@@ -134,7 +140,7 @@ export function runLedger(
 
   const jurisdictions = new Map<string, LedgerJurisdiction>();
   for (const { jurisdiction: code, ...document } of documents.values()) {
-    document.sections.sort(newest);
+    document.sections = withModulesUnderHost(document.sections.sort(newest));
     const group = jurisdictions.get(code) ?? { code, name: ownLevelName(code), lastAt: document.lastAt, documents: [] };
     group.documents.push(document);
     if (document.lastAt > group.lastAt) group.lastAt = document.lastAt;
@@ -143,6 +149,27 @@ export function runLedger(
   return [...jurisdictions.values()]
     .map((group) => ({ ...group, documents: group.documents.sort(newest) }))
     .sort(newest);
+}
+
+/**
+ * Each module right under the section whose run encoded it, in that
+ * section's place; a module whose host is not in the document stays a
+ * section of its own.
+ */
+function withModulesUnderHost(sections: LedgerSection[]): LedgerSection[] {
+  const byCitation = new Map(sections.map((section) => [section.citation, section]));
+  // One level: a host that is itself a module elsewhere keeps its own place.
+  const hostOf = (section: LedgerSection) => {
+    const host = section.encodedWith ? byCitation.get(section.encodedWith) : undefined;
+    return host && host !== section && !(host.encodedWith && byCitation.has(host.encodedWith)) ? host.citation : null;
+  };
+  const out: LedgerSection[] = [];
+  for (const section of sections) {
+    if (hostOf(section)) continue;
+    out.push({ ...section, encodedWith: null });
+    out.push(...sections.filter((module) => hostOf(module) === section.citation).sort((a, b) => a.citation.localeCompare(b.citation)));
+  }
+  return out;
 }
 
 /**

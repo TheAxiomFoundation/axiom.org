@@ -221,6 +221,12 @@ describe("PipelineLedger", () => {
       "Try 1gpt-6-luna1m<$0.01Ungrounded generated numeric literal",
       "Try 2gpt-6-sol2m$0.19passed",
     ]);
+    // The module lists under its host, and the two share one panel: the host's row opens it with the host's module open.
+    expect(screen.getAllByRole("button", { name: /^Runs of / }).map((b) => b.textContent)).toEqual(["416/l", "402/q"]);
+    fireEvent.click(screen.getByRole("button", { name: "Runs of us/statute/42/416/l" }));
+    expect(screen.getAllByRole("region", { name: "Latest run" })).toHaveLength(1);
+    const opened = within(screen.getByLabelText("Modules this run encoded")).getAllByRole("group");
+    expect(opened.map((m) => (m as HTMLDetailsElement).open)).toEqual([true, false]);
   });
 
   it("shows ten documents at a time", async () => {

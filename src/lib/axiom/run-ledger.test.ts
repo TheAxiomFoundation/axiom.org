@@ -51,6 +51,26 @@ describe("runLedger", () => {
     expect(statute.lastAt).toBe(day(3));
   });
 
+  it("lists a module right under the section whose run encoded it", () => {
+    const rows = runRows([
+      pipelineAttempt({ id: "1001", citation: "us/statute/42/416/l", dispatched_at: day(1) }),
+      dependentAttempt({ id: "dep:a", citation: "us/statute/42/402/q", dispatched_at: day(2) }),
+      pipelineAttempt({ id: "x", citation: "us/statute/42/500/a", dispatched_at: day(3) }),
+      // The host is in another document: the module keeps its own place.
+      dependentAttempt({ id: "dep:b", citation: "us/statute/7/2015/f", dispatched_at: day(4) }),
+    ]);
+    const sections = (key: string) =>
+      runLedger(rows)[0]
+        .documents.find((d) => d.key === key)!
+        .sections.map((s) => [s.designator, s.encodedWith]);
+    expect(sections("us:statute/42")).toEqual([
+      ["500/a", null],
+      ["416/l", null],
+      ["402/q", "us/statute/42/416/l"],
+    ]);
+    expect(sections("us:statute/7")).toEqual([["2015/f", null]]);
+  });
+
   it("takes a citation's source document from the corpus when it is known", () => {
     const rows = runRows([pipelineAttempt({ id: "x", citation: "us/guidance/usda/fns/snap-fy2026-cola/page-1", jurisdiction: "us" })]);
     const ledger = runLedger(

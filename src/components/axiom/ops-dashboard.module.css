@@ -276,6 +276,21 @@
   transition: transform 120ms ease;
 }
 
+/* A module encoded in the run of the row above: indented, with a tick in the chevron's place. */
+.ledgerToggle[data-module] {
+  padding-left: 20px;
+}
+
+.ledgerModuleMark {
+  flex-shrink: 0;
+  align-self: flex-start;
+  width: 8px;
+  height: 0.7em;
+  margin: 0 3px;
+  border-left: 1px solid var(--color-ink-muted);
+  border-bottom: 1px solid var(--color-ink-muted);
+}
+
 .ledgerToggle[aria-expanded="true"] .ledgerChevron {
   transform: rotate(90deg);
 }

@@ -275,8 +275,14 @@ function DocumentSections({
           </span>
         </TableCell>
       </TableRow>
-      {document.sections.map((section) => {
-        const open = openSection === section.citation;
+      {document.sections.map((section, index) => {
+        // A module encoded in another section's run lists under it; the two share one panel, for the row clicked.
+        const group = section.encodedWith ?? section.citation;
+        const openGroup = openSection ? (document.sections.find((s) => s.citation === openSection)?.encodedWith ?? openSection) : null;
+        const open = openGroup === group;
+        const lastOfGroup = (document.sections[index + 1]?.encodedWith ?? document.sections[index + 1]?.citation) !== group;
+        const host = document.sections.find((s) => s.citation === group) ?? section;
+        const focused = document.sections.find((s) => s.citation === openSection) ?? host;
         const label =
           section.label && plain(section.label) !== plain(section.designator) && section.label !== document.title
             ? section.label
@@ -294,12 +300,17 @@ function DocumentSections({
                 <button
                   type="button"
                   className={styles.ledgerToggle}
-                  aria-expanded={open}
+                  data-module={section.encodedWith ? "" : undefined}
+                  aria-expanded={open && (openSection === section.citation || !section.encodedWith)}
                   aria-label={`Runs of ${section.citation}`}
                   title={section.citation}
                   onClick={() => onSection(section.citation)}
                 >
-                  <ChevronRight size={14} aria-hidden className={styles.ledgerChevron} />
+                  {section.encodedWith ? (
+                    <span aria-hidden className={styles.ledgerModuleMark} title={`Encoded in the run for ${host.designator}`} />
+                  ) : (
+                    <ChevronRight size={14} aria-hidden className={styles.ledgerChevron} />
+                  )}
                   <span>{section.designator}</span>
                 </button>
                 {/* On a phone the Provision column is hidden; its name sits under the citation. */}
@@ -337,10 +348,10 @@ function DocumentSections({
                 {relativeTime(section.lastAt, referenceMs)}
               </TableCell>
             </TableRow>
-            {open && (
+            {open && lastOfGroup && (
               <TableRow className="hover:bg-transparent">
                 <TableCell colSpan={6} className={styles.ledgerRunCell}>
-                  <SectionRuns section={section} allRows={allRows} labels={labels} referenceMs={referenceMs} />
+                  <SectionRuns key={focused.citation} section={focused} allRows={allRows} labels={labels} referenceMs={referenceMs} />
                 </TableCell>
               </TableRow>
             )}
