@@ -32,11 +32,14 @@ export function FlowLine({
   error,
   params,
   jurisdictions,
+  subdivisions = {},
 }: {
   model: FlowModel;
   error: string | null;
   params: FlowParams;
   jurisdictions: string[];
+  /** The jurisdictions under each root, offered once that root is chosen. */
+  subdivisions?: Record<string, string[]>;
 }) {
   return (
     <section aria-label="The encoding line">
@@ -83,7 +86,7 @@ export function FlowLine({
             <span className={styles.controlLabel} aria-hidden="true">
               Jurisdiction
             </span>
-            <ScopeNav current={params.j} options={jurisdictions} href={(j) => flowHref(params, { j, station: null })} />
+            <ScopeNav current={params.j} options={jurisdictions} subdivisions={subdivisions} href={(j) => flowHref(params, { j, station: null })} />
           </div>
         </div>
       </header>

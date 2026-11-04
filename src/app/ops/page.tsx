@@ -10,7 +10,7 @@ import { FlowLine } from "@/components/ops/flow/flow-page";
 import flowStyles from "@/components/ops/flow/flow.module.css";
 import { DEFAULT_FLOW_PARAMS, type FlowParams } from "@/components/ops/flow/flow-params";
 import { getPipelineAttempts } from "@/lib/axiom/encoding-pipeline-data";
-import { busiestRoots, LEGACY_OPS_TABS, opsHref, sharedOpsParams } from "@/lib/axiom/ops-href";
+import { busiestRoots, LEGACY_OPS_TABS, opsHref, sharedOpsParams, subdivisionsOf } from "@/lib/axiom/ops-href";
 import { attemptJurisdiction, parseScope } from "@/lib/axiom/encoding-pipeline-insights";
 import { loadFlow, parsePopulation, parseWindow } from "@/lib/axiom/pipeline-flow-data";
 import { getBundleSummaries, getProgramBundle } from "@/lib/axiom/program-bundles-data";
@@ -64,9 +64,16 @@ export default async function OpsPage({ searchParams }: { searchParams?: Promise
     };
     const data = await loadFlow({ days: flowParams.window, jurisdiction: flowParams.j, population: flowParams.pop, now: referenceMs, workflows: false });
     // Jurisdictions to scope by: the busiest roots among dispatches.
-    const jurisdictions = busiestRoots(data.events.filter((e) => e.station === "dispatch").map((e) => e.jurisdiction));
+    const dispatched = data.events.filter((e) => e.station === "dispatch").map((e) => e.jurisdiction);
+    const jurisdictions = busiestRoots(dispatched);
     panel = (
-      <FlowLine model={data.model} error={data.error} params={flowParams} jurisdictions={jurisdictions} />
+      <FlowLine
+        model={data.model}
+        error={data.error}
+        params={flowParams}
+        jurisdictions={jurisdictions}
+        subdivisions={subdivisionsOf(dispatched, jurisdictions)}
+      />
     );
   } else if (tab === "programs") {
     const bundleId = one(params.bundle);
@@ -116,10 +123,11 @@ export default async function OpsPage({ searchParams }: { searchParams?: Promise
       collectedAt: attempts.reduce<string | null>((newest, attempt) => (!newest || attempt.collected_at > newest ? attempt.collected_at : newest), null),
     };
     // The ledger's scope: All, or one of the busiest roots (and those under it).
-    const roots = busiestRoots(attempts.map((attempt) => attemptJurisdiction(attempt)));
+    const attempted = attempts.map((attempt) => attemptJurisdiction(attempt));
+    const roots = busiestRoots(attempted);
     ledger =
       attempts.length > 0 ? (
-        <PipelineLedger key="ledger" scope={scope} roots={roots} referenceMs={referenceMs} />
+        <PipelineLedger key="ledger" scope={scope} roots={roots} subdivisions={subdivisionsOf(attempted, roots)} referenceMs={referenceMs} />
       ) : undefined;
   }
 

@@ -90,6 +90,19 @@
   color: var(--color-ink-muted);
 }
 
+.scopeRows {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  max-width: 100%;
+}
+
+.scopeRows .seg {
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
 .control .seg {
   flex-wrap: wrap;
   max-width: 100%;
@@ -121,7 +134,7 @@
   color: var(--color-ink);
 }
 
-.seg [aria-current="page"] {
+.seg [aria-current] {
   background: var(--color-ink);
   color: var(--color-paper);
 }

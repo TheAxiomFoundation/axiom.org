@@ -95,12 +95,15 @@ function StatusLegend() {
 export function PipelineLedger({
   scope: initialScope,
   roots = [],
+  subdivisions = {},
   referenceMs,
 }: {
   /** The scope the address asked for; the jurisdiction switch changes it in place. */
   scope: PipelineScope | null;
   /** The jurisdiction choices: the busiest roots. */
   roots?: string[];
+  /** The jurisdictions under each root, offered once that root is chosen. */
+  subdivisions?: Record<string, string[]>;
   referenceMs: number;
 }) {
   const [payload, setPayload] = useState<RunsPayload | null>(null);
@@ -148,7 +151,7 @@ export function PipelineLedger({
   return (
     // One grid cell: the switch sits on top of the ledger, the sidebar stays beside both.
     <div className={styles.ledgerColumn}>
-    <ScopeNav current={scope?.jurisdiction ?? null} options={roots} href={scopeHref} onSelect={choose} />
+    <ScopeNav current={scope?.jurisdiction ?? null} options={roots} subdivisions={subdivisions} href={scopeHref} onSelect={choose} />
     <section aria-label="Latest encodings" className={styles.ledger}>
       <div className={styles.ledgerHeader}>
         <div>

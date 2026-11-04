@@ -43,3 +43,20 @@ export function busiestRoots(jurisdictions: Array<string | null>, limit = 6): st
     .slice(0, limit)
     .map(([j]) => j);
 }
+
+/**
+ * The jurisdictions under each of `roots` (`us` → `us-az`, `us-co`), by name
+ * (a long row reads by name, not by count): the second row of choices, shown
+ * once a root with any is chosen.
+ */
+export function subdivisionsOf(jurisdictions: Array<string | null>, roots: string[]): Record<string, string[]> {
+  const seen = new Set<string>();
+  for (const j of jurisdictions) {
+    if (j && j.includes("-") && roots.includes(j.split("-")[0])) seen.add(j);
+  }
+  const out: Record<string, string[]> = {};
+  for (const j of [...seen].sort()) {
+    (out[j.split("-")[0]] ??= []).push(j);
+  }
+  return out;
+}
