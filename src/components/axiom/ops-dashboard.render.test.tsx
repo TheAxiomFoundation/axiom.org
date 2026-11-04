@@ -1,13 +1,11 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OpsDashboard } from "./ops-dashboard";
-import { groupRecentScopes } from "@/lib/corpus-status";
 import type {
   EncodingOpsStatus,
   EncodingStatusRun,
   LiveEncodingRun,
 } from "@/lib/corpus-status";
-import type { EncodingQueueSummary } from "@/lib/axiom/encoding-queues";
 
 const NOW = Date.parse("2026-08-11T12:00:00Z");
 
@@ -57,51 +55,6 @@ function status(overrides: Partial<EncodingOpsStatus>): EncodingOpsStatus {
   };
 }
 
-const QUEUE: EncodingQueueSummary = {
-  queueId: "us-snap-all-states-2026-07",
-  kind: "legacy",
-  path: "data/encoding-queues/us-snap-all-states-2026-07.json",
-  description: "All-state SNAP inventory.",
-  paused: true,
-  pauseReason: "Awaiting a green tip.",
-  pausedSince: null,
-  dispatchWorkflow: null,
-  total: 17784,
-  pending: 17780,
-  dispositionCounts: { completed: 3, dispatched: 1 },
-  jurisdictionCount: 51,
-  blockedNote: null,
-  attention: [],
-  notStarted: {},
-  supersedes: ["us-snap-or-ut-2026-07"],
-  frozenSince: "2026-08-05T21:39:46Z",
-  inDispatcher: 955,
-};
-
-const DISPATCHER: EncodingQueueSummary = {
-  ...QUEUE,
-  queueId: "us-snap-or-ut-pilot",
-  kind: "dispatcher",
-  path: "queues/us-snap-or-ut-pilot.json",
-  description: null,
-  pauseReason: null,
-  pausedSince: "2026-07-29T12:00:00Z",
-  dispatchWorkflow: { state: "disabled_manually", url: "https://github.com/w/snap-dispatch-queue.yml" },
-  total: 955,
-  pending: 935,
-  dispositionCounts: { skipped: 19, blocked: 1 },
-  jurisdictionCount: 2,
-  supersedes: [],
-  frozenSince: null,
-  inDispatcher: null,
-};
-
-const SCOPE = {
-  jurisdiction: "dk",
-  document_class: "statute",
-  version: "2026-08-04-dk-full-parity-tier1",
-};
-
 describe("OpsDashboard", () => {
   beforeEach(() => {
     vi.useFakeTimers({ now: NOW, toFake: ["Date", "setInterval"] });
@@ -123,8 +76,6 @@ describe("OpsDashboard", () => {
           },
         })}
         encodingError={null}
-        queues={[]}
-        recentPlaces={[]}
       />,
     );
     expect(screen.getByText(/Encoding now — 1 machine/i)).toBeInTheDocument();
@@ -132,12 +83,34 @@ describe("OpsDashboard", () => {
     expect(screen.getByText(/in progress · started/)).toBeInTheDocument();
   });
 
+  it("lists the runs that wait for the signing approval or a runner, longest first", () => {
+    render(
+      <OpsDashboard
+        initialStatus={status({})}
+        encodingError={null}
+        starting={{
+          collectedAt: "2026-08-11T11:50:00Z",
+          runs: [
+            { citation: "ca/policy/x", status: "waiting", dispatchedAt: "2026-08-08T12:00:00Z", dispatchedBy: "MaxGhenis", runUrl: "https://github.com/r/1" },
+            { citation: "us/b", status: "in_progress", dispatchedAt: "2026-08-11T11:00:00Z", dispatchedBy: "PavelMakarchuk" },
+          ],
+        }}
+      />,
+    );
+    const waiting = screen.getByRole("region", { name: "Waiting runs" });
+    expect(waiting.textContent).toContain("Waiting · 2 runs · as of 10m ago");
+    const rows = within(waiting).getAllByRole("listitem");
+    expect(rows[0].textContent).toContain("Signing approval");
+    expect(rows[0].textContent).toContain("3d");
+    expect(rows[0].textContent).toContain("by MaxGhenis");
+    expect(within(rows[0]).getByRole("link", { name: "ca/policy/x" }).getAttribute("href")).toBe("https://github.com/r/1");
+    expect(rows[1].textContent).toContain("Setup or encoding");
+  });
+
   it("shows a ledger the page passes in place of the one from encoder records", () => {
     const props = {
       initialStatus: status({}),
       encodingError: null,
-      queues: [],
-      recentPlaces: [],
     };
     render(<OpsDashboard {...props} />);
     expect(screen.getByRole("heading", { name: "Latest encodings" })).toBeInTheDocument();
@@ -147,54 +120,34 @@ describe("OpsDashboard", () => {
     expect(screen.getByRole("region", { name: "Every run" })).toBeInTheDocument();
   });
 
-  it("shows the ledger, the program bundles and the pipeline one tab at a time", () => {
+  it("shows three tabs as links and one tab's body at a time", () => {
     const props = {
       initialStatus: status({}),
       encodingError: null,
-      queues: [],
-      recentPlaces: [],
       ledger: <section aria-label="Every run" />,
-      bundles: <section aria-label="Bundles" />,
-      pipeline: <section aria-label="Where every citation is" />,
+      panel: <section aria-label="The encoding line" />,
     };
     render(<OpsDashboard {...props} />);
-    const tabs = screen.getByRole("tablist", { name: "Operations" });
-    expect(within(tabs).getAllByRole("tab").map((t) => t.textContent)).toEqual(["Ledger", "Program bundles", "Pipeline"]);
+    const tabs = screen.getByRole("navigation", { name: "Operations" });
+    expect(within(tabs).getAllByRole("link").map((t) => [t.textContent, t.getAttribute("href")])).toEqual([
+      ["Running now", "/ops"],
+      ["Pipeline", "/ops?tab=line"],
+      ["Program coverage", "/ops?tab=programs"],
+    ]);
+    expect(within(tabs).getByRole("link", { name: "Running now" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("region", { name: "Every run" })).toBeVisible();
-    expect(screen.getByRole("region", { name: "Bundles", hidden: true })).not.toBeVisible();
-    fireEvent.click(within(tabs).getByRole("tab", { name: "Program bundles" }));
-    expect(screen.getByRole("region", { name: "Bundles" })).toBeVisible();
-    expect(screen.getByRole("region", { name: "Every run", hidden: true })).not.toBeVisible();
-    expect(window.location.search).toBe("?tab=bundles");
+    expect(screen.queryByRole("region", { name: "The encoding line" })).not.toBeInTheDocument();
     cleanup();
-    render(<OpsDashboard {...props} initialTab="pipeline" />);
-    expect(screen.getByRole("region", { name: "Where every citation is" })).toBeVisible();
-    cleanup();
-    // Without the bundles and the pipeline, no tabs.
-    render(<OpsDashboard {...props} bundles={undefined} pipeline={undefined} />);
-    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
-    window.history.replaceState(null, "", "/");
-  });
-
-  it("shows the workflows strip under the fleet box, above the tabs, on every tab", () => {
-    render(
-      <OpsDashboard
-        initialStatus={status({})}
-        encodingError={null}
-        queues={[]}
-        recentPlaces={[]}
-        bundles={<section aria-label="Bundles" />}
-        initialTab="bundles"
-        workflows={<section aria-label="Workflows" />}
-      />,
-    );
-    const fleet = screen.getByRole("region", { name: "Live encoding activity" });
-    const strip = screen.getByRole("region", { name: "Workflows" });
-    const tabs = screen.getByRole("tablist", { name: "Operations" });
-    expect(strip).toBeVisible();
-    expect(fleet.compareDocumentPosition(strip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(strip.compareDocumentPosition(tabs) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(strip.nextElementSibling).toBe(tabs);
+    // The scope and the window travel with every tab link.
+    render(<OpsDashboard {...props} initialTab="line" shared={{ j: "us", window: "7" }} />);
+    expect(within(screen.getByRole("navigation", { name: "Operations" })).getAllByRole("link").map((t) => t.getAttribute("href"))).toEqual([
+      "/ops?j=us&window=7",
+      "/ops?tab=line&j=us&window=7",
+      "/ops?tab=programs&j=us&window=7",
+    ]);
+    expect(screen.getByRole("region", { name: "The encoding line" })).toBeVisible();
+    expect(screen.queryByRole("region", { name: "Every run" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Live encoding activity" })).not.toBeInTheDocument();
   });
 
   it("shows stalled runs when the heartbeat dies", () => {
@@ -204,8 +157,6 @@ describe("OpsDashboard", () => {
           live_runs: [liveRun({ last_heartbeat_at: "2026-08-11T11:30:00Z" })],
         })}
         encodingError={null}
-        queues={[]}
-        recentPlaces={[]}
       />,
     );
     expect(screen.getByText(/stalled · last heartbeat/)).toBeInTheDocument();
@@ -229,8 +180,6 @@ describe("OpsDashboard", () => {
           ],
         })}
         encodingError={null}
-        queues={[]}
-        recentPlaces={[]}
       />,
     );
     expect(
@@ -255,8 +204,6 @@ describe("OpsDashboard", () => {
           ],
         })}
         encodingError={null}
-        queues={[]}
-        recentPlaces={[]}
       />,
     );
     expect(
@@ -281,8 +228,6 @@ describe("OpsDashboard", () => {
           ],
         })}
         encodingError={null}
-        queues={[]}
-        recentPlaces={[]}
       />,
     );
     expect(screen.getByText(/Idle — no machines encoding/i)).toBeInTheDocument();
@@ -295,8 +240,6 @@ describe("OpsDashboard", () => {
       <OpsDashboard
         initialStatus={null}
         encodingError="supabase down"
-        queues={[]}
-        recentPlaces={[]}
       />,
     );
     expect(
@@ -332,8 +275,6 @@ describe("OpsDashboard", () => {
           },
         })}
         encodingError={null}
-        queues={[]}
-        recentPlaces={[]}
       />,
     );
     // Document bands: jurisdiction — name, path right-aligned.
@@ -386,8 +327,6 @@ describe("OpsDashboard", () => {
           },
         })}
         encodingError={null}
-        queues={[]}
-        recentPlaces={[]}
       />,
     );
     const table = screen.getByRole("table");
@@ -418,8 +357,6 @@ describe("OpsDashboard", () => {
           },
         })}
         encodingError={null}
-        queues={[]}
-        recentPlaces={[]}
       />,
     );
     expect(screen.getByText("Rev. Proc. 2025-32")).toBeInTheDocument();
@@ -451,8 +388,6 @@ describe("OpsDashboard", () => {
           },
         })}
         encodingError={null}
-        queues={[]}
-        recentPlaces={[]}
       />,
     );
     expect(screen.getByText("First official title")).toBeInTheDocument();
@@ -470,8 +405,6 @@ describe("OpsDashboard", () => {
           latest_runs: [run({ citation: "de:statutes/bgb/1" })],
         })}
         encodingError={null}
-        queues={[]}
-        recentPlaces={[]}
       />,
     );
     expect(screen.getByText("BGB")).toHaveAttribute(
@@ -489,166 +422,9 @@ describe("OpsDashboard", () => {
       <OpsDashboard
         initialStatus={status({})}
         encodingError={null}
-        queues={[]}
-        recentPlaces={[]}
       />,
     );
     expect(screen.getByText(/No encodings recorded yet/)).toBeInTheDocument();
-  });
-
-  it("renders a dispatcher queue's pending count, progress without skips, and how long it is paused", () => {
-    render(
-      <OpsDashboard
-        initialStatus={status({})}
-        encodingError={null}
-        queues={[DISPATCHER]}
-        recentPlaces={[]}
-      />,
-    );
-    expect(screen.getByText("Queued work")).toBeInTheDocument();
-    expect(screen.getByText("us-snap-or-ut-pilot")).toBeInTheDocument();
-    // Skipped items were never dispatched, so they are not progress.
-    expect(screen.getByText("1 of 955 dispositioned · 2 jurisdictions")).toBeInTheDocument();
-    expect(screen.getByRole("progressbar", { name: "us-snap-or-ut-pilot: 1 of 955 items dispositioned" })).toBeInTheDocument();
-    const line = screen.getByText(/^935 pending · 19 skipped · 1 blocked/);
-    expect(line).toHaveTextContent("935 pending · 19 skipped · 1 blocked · paused 13d · dispatch workflow disabled");
-    expect(within(line).getByRole("link", { name: "dispatch workflow disabled" })).toHaveAttribute(
-      "href",
-      "https://github.com/w/snap-dispatch-queue.yml",
-    );
-    expect(screen.queryByText(/Paused$/)).not.toBeInTheDocument();
-  });
-
-  it("says a paused dispatcher queue's stated reason, and nothing when it runs", () => {
-    render(
-      <OpsDashboard
-        initialStatus={status({})}
-        encodingError={null}
-        queues={[
-          { ...DISPATCHER, pauseReason: "Awaiting a green tip.", dispatchWorkflow: null },
-          { ...DISPATCHER, queueId: "running", paused: false, pausedSince: null, dispatchWorkflow: { state: "active", url: "u" } },
-        ]}
-        recentPlaces={[]}
-      />,
-    );
-    expect(screen.getAllByText(/^935 pending/).map((line) => line.textContent)).toEqual([
-      "935 pending · 19 skipped · 1 blocked · paused 13d — Awaiting a green tip",
-      "935 pending · 19 skipped · 1 blocked",
-    ]);
-    expect(screen.queryByRole("link", { name: "dispatch workflow disabled" })).not.toBeInTheDocument();
-  });
-
-  it("renders an earlier inventory as frozen, with how many of its items a live queue holds", () => {
-    render(
-      <OpsDashboard
-        initialStatus={status({})}
-        encodingError={null}
-        queues={[DISPATCHER, QUEUE, { ...QUEUE, queueId: "nowhere", frozenSince: null, inDispatcher: 0, jurisdictionCount: 1 }]}
-        recentPlaces={[]}
-      />,
-    );
-    expect(screen.getByText("inventory, frozen since Aug 5, 2026")).toBeInTheDocument();
-    expect(screen.getByText("51 jurisdictions")).toBeInTheDocument();
-    expect(
-      screen.getByText("17,784 items, 955 of them in the dispatcher, the rest in no live queue"),
-    ).toBeInTheDocument();
-    expect(screen.getByText("17,784 items, none of them in a live queue")).toBeInTheDocument();
-    expect(screen.getByText("inventory")).toBeInTheDocument();
-    // Its frozen statuses, progress, and pause note are not shown.
-    expect(screen.getAllByRole("progressbar")).toHaveLength(1);
-    expect(screen.queryByText(/of 17,784 dispositioned/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/3 completed/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Awaiting a green tip/)).not.toBeInTheDocument();
-    cleanup();
-    render(
-      <OpsDashboard
-        initialStatus={status({})}
-        encodingError={null}
-        queues={[{ ...QUEUE, inDispatcher: 17784 }]}
-        recentPlaces={[]}
-      />,
-    );
-    expect(screen.getByText("17,784 items, all of them in the dispatcher")).toBeInTheDocument();
-  });
-
-  it("renders recently ingested scopes with jurisdiction names", () => {
-    render(
-      <OpsDashboard
-        initialStatus={status({})}
-        encodingError={null}
-        queues={[]}
-        recentPlaces={groupRecentScopes([SCOPE])}
-      />,
-    );
-    expect(screen.getByText("Recently ingested")).toBeInTheDocument();
-    expect(screen.getByText("Denmark")).toBeInTheDocument();
-    expect(screen.queryByText(/\bscopes?\b/)).not.toBeInTheDocument();
-    expect(screen.getByText("Aug 4")).toBeInTheDocument();
-    expect(screen.getByText("statute")).toBeInTheDocument();
-    expect(screen.getByText("2026-08-04-dk-full-parity-tier1")).toBeInTheDocument();
-  });
-
-  it("groups scopes by place, then by date, and folds places past the first six", () => {
-    const { container } = render(
-      <OpsDashboard
-        initialStatus={status({})}
-        encodingError={null}
-        queues={[]}
-        recentPlaces={groupRecentScopes([
-          { jurisdiction: "us-co", document_class: "regulation", version: "2026-10-12-w7-regulation-co" },
-          { jurisdiction: "us", document_class: "statute", version: "2026-10-12-w7-usc-26" },
-          { jurisdiction: "us", document_class: "statute", version: "2026-10-12-w7-usc-42" },
-          { jurisdiction: "us", document_class: "guidance", version: "2026-10-12-w7-irs-pubs" },
-          { jurisdiction: "us-co", document_class: "statute", version: "2026-10-06-w6-statute-co" },
-          { jurisdiction: "uk-wakefield", document_class: "policy", version: "2026-09-05-uk-councils" },
-          ...["us-ak", "us-al", "us-ar", "us-az"].map((jurisdiction) => ({
-            jurisdiction,
-            document_class: "form",
-            version: `2026-09-01-forms-${jurisdiction}`,
-          })),
-        ])}
-      />,
-    );
-    const places = [...container.querySelectorAll('[role="listitem"] > p:first-child')].map(
-      (p) => p.textContent,
-    );
-    // US Federal first on its tie with Colorado; Arkansas is the seventh place, folded.
-    expect(places).toEqual([
-      "US Federal",
-      "Colorado",
-      "United Kingdom",
-      "Alabama",
-      "Alaska",
-      "Arizona",
-      "Arkansas",
-    ]);
-    expect(screen.getByText("2 statutes, guidance")).toBeInTheDocument();
-    expect(screen.getByText("Wakefield")).toBeInTheDocument();
-    expect(screen.getByText("Show 1 more place")).toBeInTheDocument();
-    const colorado = screen.getByText("Colorado").closest('[role="listitem"]') as HTMLElement;
-    expect(within(colorado).getByText("Oct 12")).toBeInTheDocument();
-    expect(within(colorado).getByText("Oct 6")).toBeInTheDocument();
-  });
-
-  it("names Israel from the jurisdictions seed, not a dashboard-local entry", () => {
-    // The feed's names come from the jurisdictions seed, so seeding "il"
-    // labels the ops surfaces too — no second copy to drift.
-    render(
-      <OpsDashboard
-        initialStatus={status({})}
-        encodingError={null}
-        queues={[]}
-        recentPlaces={groupRecentScopes([
-          {
-            jurisdiction: "il",
-            document_class: "statute",
-            version: "2026-09-06-il-pilot",
-          },
-        ])}
-      />,
-    );
-    expect(screen.getByText("Israel")).toBeInTheDocument();
-    expect(screen.queryByText("il")).not.toBeInTheDocument();
   });
 
   it("polls only while the page is visible, and catches up on return", async () => {
@@ -672,8 +448,6 @@ describe("OpsDashboard", () => {
         <OpsDashboard
           initialStatus={status({})}
           encodingError={null}
-          queues={[]}
-          recentPlaces={[]}
         />,
       );
       vi.advanceTimersByTime(30_000);

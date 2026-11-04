@@ -164,8 +164,8 @@ describe("parsing", () => {
   it("truncates long errors and drops blank ones", () => {
     expect(truncateError("  ")).toBeNull();
     expect(truncateError(null)).toBeNull();
-    const long = truncateError("x".repeat(600))!;
-    expect(long).toHaveLength(500);
+    const long = truncateError("x".repeat(1200))!;
+    expect(long).toHaveLength(1000);
     expect(long.endsWith("…")).toBe(true);
   });
 
@@ -884,6 +884,17 @@ describe("run details", () => {
     expect(jobPhases([step("Set up job", "20:27", "20:29"), step("Verify immutable checkout identities", "20:29", "20:31", "failure")]))
       .toEqual({ setup: 4, encode: null, publish: null });
     expect(jobPhases([{ name: "Set up job", conclusion: "skipped" }])).toEqual({ setup: null, encode: null, publish: null });
+    // From encoder 0.2.2218 the lanes run the encode loop after the encode step.
+    expect(
+      jobPhases([
+        ...setup,
+        step("Encode, review, validate, and apply", "29:04", "29:12"),
+        step("Apply prepared signature 1", "29:12", "41:10"),
+        step("Apply prepared signature 2", "41:10", "41:10", "skipped"),
+        step("Verify generated provenance", "41:10", "41:30"),
+        step("Push lane branch and open draft pull request", "41:40", "41:44"),
+      ])
+    ).toEqual({ setup: 517, encode: 726, publish: 34 });
   });
 
   it("reads each finished run's jobs once, cancelled runs first", () => {
@@ -1007,7 +1018,7 @@ describe("PR check errors", () => {
     );
     const long = log("##[endgroup]", "one", "two", "three", "four", "five: the cause", "##[error]Process completed with exit code 2.");
     expect(checkErrorFromLog(long)).toBe("four five: the cause");
-    expect(checkErrorFromLog(log("##[endgroup]", "x".repeat(500), "##[error]Process completed with exit code 1."))).toHaveLength(400);
+    expect(checkErrorFromLog(log("##[endgroup]", "x".repeat(1500), "##[error]Process completed with exit code 1."))).toHaveLength(1000);
   });
 
   it("names a cancelled job, a step that printed nothing, and a log with no failure", () => {
@@ -1410,12 +1421,37 @@ describe("causes from the encoder's log", () => {
     ).toBe("signing supervisor: private keys are forbidden in the signing supervisor");
   });
 
+  it("reads a guard's issues from the JSON result it printed", () => {
+    const guard = [
+      "##[endgroup]",
+      "{",
+      '  "repo": "/home/runner/work/axiom-encode/axiom-encode/rulespec-us",',
+      '  "passed": false,',
+      '  "issues": [',
+      '    ".axiom/encoding-manifests/us-az/x.json validation_execution.policy_pre_apply waiver identity is not current",',
+      '    ".axiom/encoding-manifests/us-az/x.json validation_waiver_set_sha256 does not match the RuleSpec toolchain-bound waiver set"',
+      "  ]",
+      "}",
+      "##[error]Process completed with exit code 1.",
+    ];
+    expect(checkErrorFromLog(guard.join("\n"))).toBe(
+      ".axiom/encoding-manifests/us-az/x.json validation_execution.policy_pre_apply waiver identity is not current; " +
+        ".axiom/encoding-manifests/us-az/x.json validation_waiver_set_sha256 does not match the RuleSpec toolchain-bound waiver set"
+    );
+    // A block that is not JSON is read as printed lines.
+    expect(checkErrorFromLog(["##[endgroup]", "{", "not json", "}", "##[error]Process completed with exit code 1."].join("\n"))).toBe(
+      "{ not json }"
+    );
+  });
+
   it("reads a stored signer bookkeeping cause once more", () => {
     const stored = `supabase_sync=skipped ${SHUTDOWN}`;
     expect(bookkeepingCause(stored)).toBe(true);
     expect(bookkeepingCause("repair_manifest=/tmp/4.repair.json axiom-apply-signer event=shutdown signatures=0")).toBe(true);
     expect(bookkeepingCause("error: rulespec ref is not the exact pull request base branch tip")).toBe(false);
     expect(bookkeepingCause(null)).toBe(false);
+    // The last brackets of a guard's JSON result, read before the issues were.
+    expect(bookkeepingCause("] }")).toBe(true);
     expect(needsLogRead({ failure_source: "log", failed_step: "encode_apply", encoder_error: stored })).toBe(true);
     expect(needsLogRead({ failure_source: "log", failed_step: "encode_apply", encoder_error: "Refusing to shrink" })).toBe(false);
     const previous = new Map([

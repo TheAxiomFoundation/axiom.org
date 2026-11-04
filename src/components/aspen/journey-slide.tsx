@@ -1,19 +1,43 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
-import { captionAt, CAPTIONS, STORY_LABEL } from "@/components/landing/journey-lamplight/captions";
-import { captionOpacity, STORY_END_MS, storyAtTime } from "@/components/landing/journey-lamplight/clock";
+import { captionAt, captionCut, CAPTIONS, OVERLAP, SCENE_START, STORY_LABEL, TOTAL } from "@/components/landing/journey-lamplight/captions";
+import { captionOpacity, END_S, PLAY_MS, S_STORY, scrollAt, storyAt, TRACK } from "@/components/landing/journey-lamplight/clock";
 import type { Director } from "@/components/landing/journey-lamplight/director";
 import "@/components/landing/style-frames/style-frames.css";
 import "@/components/landing/journey-lamplight/journey-lamplight.css";
 
-/** The first frame holds this long before the camera moves. */
-export const HOLD_MS = 1500;
-/** A frame that comes this late (a hidden tab, a stall) moves the story on by no more than this. */
-export const MAX_STEP_MS = 250;
 /** The canvas has this long to draw before the stills take over. */
 const DRAW_TIMEOUT_MS = 8000;
+
+/**
+ * Where each caption's picture has settled, in story time: the first frame; in
+ * the opening shot, just before the corpus caption comes up; then the end of
+ * each scene's hold, just before the next scene dissolves in; and the story's end.
+ */
+export const STOPS = CAPTIONS.map((_, j) =>
+  j === 0 ? 0 : j === 1 ? captionCut(2) - 0.15 : j === CAPTIONS.length - 1 ? TOTAL : SCENE_START[j - 1] - OVERLAP,
+);
+const STOPS_S = STOPS.map(scrollAt);
+
+/** A step glides at three times the old pace (the cue sheet's two and a half minutes), in 2 to 6 seconds. */
+export const STEP_MIN_MS = 2000;
+export const STEP_MAX_MS = 6000;
+const MS_PER_SCROLL_BEAT = PLAY_MS / END_S / 3;
+export const stepMs = (from: number, to: number) =>
+  Math.min(STEP_MAX_MS, Math.max(STEP_MIN_MS, Math.abs(to - from) * MS_PER_SCROLL_BEAT));
+
+/** Scroll at the homepage's own rate: its track is TRACK screen heights for END_S scroll beats. */
+export const SCREENS_PER_SCROLL_BEAT = TRACK / END_S;
+
+const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
+const clampS = (s: number) => Math.min(S_STORY, Math.max(0, s));
+/** Positions this close count as the same stop: a few pixels of trackpad drift after a step. */
+const EPS = 0.05;
+
+/** What the presenter's keys ask of the journey: true when it moved, false at its first or last caption. */
+export type JourneyControl = { next: () => boolean; back: () => boolean };
 
 // The homepage's paper stills (journey-lamplight.tsx): the first frame,
 // then one poster per beat.
@@ -34,19 +58,31 @@ function canAnimate(): boolean {
 }
 
 /**
- * Shared foundation 2/2, after its title slide: the homepage's encoding journey,
- * played at a steady pace on its own WebGL canvas with its own captions.
- * It holds the first frame, plays the eight beats in about two and a half
- * minutes, and holds the last. Space pauses and resumes it, and Home starts
- * it over; the arrows still move between slides. Without WebGL 2, or with
- * reduced motion on, the homepage's stills take turns on the same clock.
+ * Shared foundation 6/7: the homepage's encoding journey on its own WebGL
+ * canvas with its own captions, moved by the presenter, not a clock (Max,
+ * Oct 26: "more control as I'm talking over it"). It opens on the first
+ * frame and waits.
+ * - Scrolling moves it as scrolling moves the homepage, at the same rate.
+ * - The right arrow, the clicker's page key or Space glides to the next
+ *   caption and holds there; the left arrow glides back one. At the last
+ *   caption the presenter moves on to the next slide, and at the first, back.
+ *   Pressing again mid-glide goes on to the caption after; a press while the
+ *   glide to the last (or first) caption is under way lands it there at once,
+ *   and only the press after leaves the slide. While a key's glide runs, the
+ *   wheel waits, so a trackpad's coasting can't cut it short.
+ * - Home and End go straight to the first and last frame.
+ * - Coming back from the next slide (`atEnd`) opens on the last frame.
+ * The presenter's on-screen arrows still move between slides, so the journey
+ * can be skipped. A click on the picture does nothing: the homepage's links in
+ * it would take the presenter's tab away. Without WebGL 2, or with reduced
+ * motion on, the homepage's stills take turns at the same positions.
  *
  * The scaled slide would draw the canvas at 1600×900 and stretch it, and
  * the captions are sized to the screen, so the stage sits over the slide at
  * the slide's size on screen, in the presenter's overlay layer
  * ([data-aspen-overlay]), under its controls.
  */
-export function JourneySlide() {
+export function JourneySlide({ control, atEnd = false }: { control?: RefObject<JourneyControl | null>; atEnd?: boolean } = {}) {
   const slot = useRef<HTMLDivElement>(null);
   const stage = useRef<HTMLDivElement | null>(null);
   const canvas = useRef<HTMLCanvasElement | null>(null);
@@ -55,13 +91,16 @@ export function JourneySlide() {
   const posters = useRef<HTMLImageElement[]>([]);
   const bar = useRef<HTMLDivElement | null>(null);
   const director = useRef<Director | null>(null);
-  const played = useRef(0);
-  const pausedRef = useRef(false);
+  /** Where the story is, in the homepage's scroll beats (0 to S_STORY). */
+  const pos = useRef(atEnd ? S_STORY : 0);
+  /** A step under way: it starts on the first frame after the key. */
+  const glide = useRef<{ from: number; to: number; ms: number; start: number | null } | null>(null);
   const readyRef = useRef(false);
+  /** Set when the picture or its captions change hands (a first render, canvas to stills), so the next frame draws even at rest. */
+  const redraw = useRef(true);
   const [box, setBox] = useState<Box | null>(null);
   const [mode, setMode] = useState<"canvas" | "stills">(() => (canAnimate() ? "canvas" : "stills"));
   const [drawn, setDrawn] = useState(false);
-  const [paused, setPaused] = useState(false);
   const [host, setHost] = useState<Element | null>(null);
 
   useEffect(() => setHost(document.querySelector("[data-aspen-overlay]") ?? document.body), []);
@@ -87,15 +126,15 @@ export function JourneySlide() {
     };
   }, []);
 
-  // The stills need nothing loaded; the canvas waits for its first frame.
+  // The stills need nothing loaded; the canvas waits for its first frame. Either way the next frame draws.
   useEffect(() => {
     if (mode === "stills") readyRef.current = true;
+    redraw.current = true;
   }, [mode]);
 
-  // The clock: story time from the time played, held at the start and the end.
+  // Each frame: a step's glide, then the story time at the position.
   useEffect(() => {
     let raf = 0;
-    let last: number | null = null;
     let shown = -1;
     const apply = (P: number) => {
       caps.current.forEach((el, j) => {
@@ -108,42 +147,96 @@ export function JourneySlide() {
       director.current?.setProgress(P);
     };
     const tick = (now: number) => {
-      if (last !== null && readyRef.current && !pausedRef.current) played.current += Math.min(MAX_STEP_MS, now - last);
-      last = now;
-      const P = storyAtTime(played.current - HOLD_MS);
-      if (P !== shown) {
+      const g = glide.current;
+      if (g) {
+        if (g.start === null) g.start = now;
+        const t = Math.min(1, (now - g.start) / g.ms);
+        pos.current = g.from + (g.to - g.from) * ease(t);
+        if (t >= 1) glide.current = null;
+      }
+      const P = storyAt(pos.current);
+      if (P !== shown || redraw.current) {
         apply(P);
         shown = P;
+        redraw.current = false;
       }
-      if (bar.current) bar.current.style.width = `${(100 * Math.min(1, Math.max(0, played.current - HOLD_MS) / STORY_END_MS)).toFixed(2)}%`;
+      if (bar.current) bar.current.style.width = `${((100 * pos.current) / S_STORY).toFixed(2)}%`;
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  // Space pauses and resumes; Home starts over. The presenter leaves Space to this slide.
+  // The presenter's keys: a caption on or back, from where a step under way is headed.
+  useEffect(() => {
+    if (!control) return;
+    const go = (dir: 1 | -1) => {
+      const at = glide.current?.to ?? pos.current;
+      const to = dir > 0 ? STOPS_S.find((s) => s > at + EPS) : STOPS_S.findLast((s) => s < at - EPS);
+      if (to === undefined) {
+        // Past the first or last caption the key is the presenter's once the story is at rest. A press
+        // while the glide to it runs lands it there now (the picture catches up as a scroll does), so
+        // the key always shows something, and the next one moves on.
+        if (!glide.current) return false;
+        pos.current = glide.current.to;
+        glide.current = null;
+        return true;
+      }
+      glide.current = { from: pos.current, to, ms: stepMs(pos.current, to), start: null };
+      return true;
+    };
+    const mine: JourneyControl = { next: () => go(1), back: () => go(-1) };
+    control.current = mine;
+    return () => {
+      if (control.current === mine) control.current = null;
+    };
+  }, [control]);
+
+  // Home and End go straight to the first and last frame: eased, the camera would travel through the story.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
-      if (e.key === " ") {
-        e.preventDefault();
-        pausedRef.current = !pausedRef.current;
-        setPaused(pausedRef.current);
-      } else if (e.key === "Home") {
-        e.preventDefault();
-        played.current = 0;
-        // Straight to the first frame: eased, the camera would travel back through the story.
-        director.current?.jump(0);
-      }
+      if (e.key !== "Home" && e.key !== "End") return;
+      e.preventDefault();
+      glide.current = null;
+      pos.current = e.key === "Home" ? 0 : S_STORY;
+      director.current?.jump(storyAt(pos.current));
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // Scrolling moves the story as it moves the homepage's. The presenter never scrolls, so the
+  // journey takes the wheel while it's up, and a sideways swipe can't take the browser back.
+  useEffect(() => {
+    const onWheel = (e: WheelEvent) => {
+      if (e.ctrlKey) return; // a pinch zooms
+      e.preventDefault();
+      if (glide.current) return;
+      const px = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * window.innerHeight : e.deltaY;
+      pos.current = clampS(pos.current + px / (window.innerHeight * SCREENS_PER_SCROLL_BEAT));
+    };
+    window.addEventListener("wheel", onWheel, { passive: false });
+    return () => window.removeEventListener("wheel", onWheel);
+  }, []);
+
   // The homepage's director on this canvas, once the stage is on screen.
   const placed = box !== null && host !== null;
+
+  // A click stops at the stage, before the canvas: its links would take the presenter's tab away.
+  // Hovering still shows where they go. Cancelling it too keeps a link reached by Tab and Enter from
+  // following itself.
+  useEffect(() => {
+    const el = stage.current;
+    if (!el) return;
+    const stop = (e: MouseEvent) => {
+      e.stopPropagation();
+      e.preventDefault();
+    };
+    el.addEventListener("click", stop, true);
+    return () => el.removeEventListener("click", stop, true);
+  }, [placed]);
   useEffect(() => {
     if (mode !== "canvas" || !placed || !canvas.current || !stage.current) return;
     const el = stage.current;
@@ -173,7 +266,7 @@ export function JourneySlide() {
         });
         if (dead) return made.dispose();
         director.current = made;
-        made.jump(storyAtTime(played.current - HOLD_MS));
+        made.jump(storyAt(pos.current));
       })
       .catch((e) => {
         console.error("journey slide: the scenes could not be built", e);
@@ -201,7 +294,6 @@ export function JourneySlide() {
           <div
             ref={stage}
             data-journey={mode}
-            data-paused={paused ? "true" : "false"}
             className={`jl-stage sf--lamplight jl-stage--paper${drawn ? " is-drawn" : ""}`}
             // On the homepage the stage is see-through over the page (.jl--paper);
             // here it is the page: the canvas turns its white see-through.
@@ -217,8 +309,9 @@ export function JourneySlide() {
           >
             {mode === "canvas" ? (
               <>
+                {/* Stepped back into, the stage waits on the last frame, not the first. */}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img className="jl-poster-bg" src={STANDIN} alt="" aria-hidden />
+                <img className="jl-poster-bg" src={atEnd ? POSTER(CAPTIONS.length - 1) : STANDIN} alt="" aria-hidden />
                 <canvas ref={canvas} className={drawn ? "jl-canvas is-ready" : "jl-canvas"} role="img" aria-label={STORY_LABEL} />
                 {CAPTIONS.map((_, i) => (
                   <div
@@ -237,7 +330,10 @@ export function JourneySlide() {
                   <img
                     key={c.kicker}
                     ref={(el) => {
-                      if (el) posters.current[i] = el;
+                      if (el) {
+                        posters.current[i] = el;
+                        redraw.current = true;
+                      }
                     }}
                     src={POSTER(i)}
                     alt=""
@@ -252,17 +348,15 @@ export function JourneySlide() {
                 key={c.kicker}
                 className="jl-cap"
                 ref={(el) => {
-                  if (el) caps.current[i] = el;
+                  if (el) {
+                    caps.current[i] = el;
+                    redraw.current = true;
+                  }
                 }}
               >
                 <span className="jl-title">{c.title}</span>
               </div>
             ))}
-            {paused && (
-              <span className="absolute right-[24px] top-[20px] rounded-full bg-[var(--color-paper)]/90 px-[14px] py-[4px] font-body text-[15px] text-[var(--color-ink-secondary)]">
-                Paused: Space plays on
-              </span>
-            )}
             <div aria-hidden className="absolute inset-x-0 bottom-0 h-[3px] bg-[var(--color-rule-subtle)]">
               <div ref={bar} className="h-full bg-[var(--color-accent)]" style={{ width: "0%" }} />
             </div>

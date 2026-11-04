@@ -77,7 +77,9 @@ export function composeGraphViewerUrl(focus: string): string {
   return `${viewerBase()}?compose=${encodeURIComponent(focus)}`;
 }
 
-const DEFAULT_BUILDER_BASE = "https://dashboard-builder-flax.vercel.app";
+// axiom.org serves the builder at /gallery/builder through a vercel.json
+// rewrite; links name that address, not the builder's Vercel host.
+const DEFAULT_BUILDER_BASE = "https://axiom.org/gallery/builder";
 
 /**
  * Deep link into the dashboard builder with this rule preselected as

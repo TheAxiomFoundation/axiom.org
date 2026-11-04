@@ -654,7 +654,11 @@ export const DISCUSSION_TOPICS = [
   "Reporting and renewals",
 ] as const;
 
-/** The uses people vote on before the small groups, from the session plan. */
+/**
+ * The uses people vote on before the small groups, from the session plan. Four, one per group:
+ * there are notetakers for four groups (Ariel, Oct 26). "Create application interfaces" was cut
+ * as the closest to "Build caseworker flows" (Max, Oct 26).
+ */
 export const USE_CASES = [
   {
     id: "see-edit",
@@ -670,11 +674,6 @@ export const USE_CASES = [
     id: "flows",
     label: "Build caseworker flows",
     detail: "Ask only the questions each case needs.",
-  },
-  {
-    id: "apply",
-    label: "Create application interfaces",
-    detail: "New ways to apply, on the same rules as the eligibility system.",
   },
   {
     id: "test",
@@ -878,24 +877,50 @@ export const FRONT_DOOR = {
 // some of them, none adjudicated yet; that is why it is a pilot. Never call
 // it a published PolicyBench result. The screens say "our rules engine" and
 // leave PolicyEngine unnamed (Max, Oct 25).
+//
+// Since Oct 26 (Max: "accuracy/cost/latency impacts all together on the
+// slide, even if just luna ... just web vs web+v3tool ... dont mention it's
+// v3, just say our rules engine like before"; "if flash-lite is sketchy we
+// can just drop it"), the slide shows web search alone against web search
+// and our rules engine, where the rules engine is PolicyBench's calculator v3
+// (the web+pe3 arm, harness 294e98fe). Hand-copied from
+//   ~/reviews/policybench-v2-microcosm-2026-10/v3-aspen-2026-10-26/live/numbers.json
+// at updatedAt 2026-10-27T01:04:41Z, final for all three models on all 100 of the
+// pilot's households: numbers.<model>.{households, nonzero.web, nonzero.v3,
+// v3VsWeb (a paired household bootstrap), cost.{web,v3} (the paper's
+// costPerHousehold), latencySeconds.{web,v3} (the paper's
+// medianWallSeconds)}. The web runs are the paper's (Oct 23–25, UTC); the
+// rules-engine runs are Oct 26–27. Each web arm reproduces the pilot's
+// (cost.paper100, latencySeconds.paper100). Luna sent 8 web searches in 100
+// households with the rules engine, Flash-Lite none and Sonnet 1; their list price is
+// in the cost. Flash-Lite, off the slide while its first households ran
+// easier than the full 100, is back now it has all 100. Claude Sonnet 5.5
+// joined when its rules-engine run (from 00:40Z) reached all 100 (Max: "wire
+// in claude once its done"); its first 20 households ran easier for web
+// search (73% against 59% on all 100), so no partial row shipped. Its web
+// arm is the pilot's 164 of 276.
 // ---------------------------------------------------------------------------
 
 export interface EnginePilotRow {
   model: string;
-  /** Nonzero dollar amounts within $1 of the reference, of the pilot's `amounts`. */
+  /** Households answered with our rules engine so far, and the nonzero dollar amounts they hold. */
+  households: number;
+  amounts: number;
+  /** Nonzero dollar amounts within $1 of the reference, of `amounts`, with each arm. */
   web: number;
   both: number;
-  /** The change from web search alone, in points, with its 95% interval, as the export rounds them. */
+  /** The change from web search alone, in points, with its 95% interval (paired household bootstrap). */
   change: { points: number; lo: number; hi: number };
   /** Mean list-price cost per household, in dollars. */
   cost: { web: number; both: number };
+  /** Median seconds a household took, start to finish. */
+  seconds: { web: number; both: number };
 }
 
 export interface EnginePilot {
   title: string;
-  /** Households per model, and the nonzero dollar amounts they hold. */
-  households: number;
-  amounts: number;
+  /** Households in the full set. */
+  of: number;
   arms: { web: string; both: string };
   note: string;
   rows: readonly EnginePilotRow[];
@@ -915,19 +940,48 @@ export function percentChange(from: number, to: number): number {
 
 export const ENGINE_PILOT: EnginePilot = {
   title: "The same models, given our rules engine as a tool",
-  households: 100,
-  amounts: 276,
+  of: 100,
   arms: { web: "Web search", both: "Web search and our rules engine" },
-  note: "Nonzero dollar amounts within $1 of the reference: 276 per model across 100 US households",
+  note: "Nonzero dollar amounts within $1 of the reference: 276 across 100 US households",
   rows: [
-    { model: "GPT-6 Luna", web: 152, both: 212, change: { points: 21.7, lo: 13.9, hi: 29.3 }, cost: { web: 0.0558, both: 0.0078 } },
-    { model: "Claude Sonnet 5.5", web: 164, both: 268, change: { points: 37.7, lo: 31.3, hi: 44.1 }, cost: { web: 0.1122, both: 0.0781 } },
-    { model: "Gemini 3.5 Flash-Lite", web: 64, both: 151, change: { points: 31.5, lo: 24.6, hi: 38.5 }, cost: { web: 0.3431, both: 0.0313 } },
+    {
+      model: "GPT-6 Luna",
+      households: 100,
+      amounts: 276,
+      web: 152,
+      both: 269,
+      // The exact difference, 100 × (269 − 152) / 276 = 42.39 (the file rounds it to 42.4).
+      change: { points: 42.39, lo: 36.1, hi: 48.8 },
+      cost: { web: 0.0558, both: 0.0033 },
+      seconds: { web: 79.497, both: 30.11 },
+    },
+    {
+      model: "Gemini 3.5 Flash-Lite",
+      households: 100,
+      amounts: 276,
+      web: 64,
+      both: 243,
+      // The exact difference, 100 × (243 − 64) / 276 = 64.86 (the file rounds it to 64.9).
+      change: { points: 64.86, lo: 58.4, hi: 71.2 },
+      cost: { web: 0.3431, both: 0.0168 },
+      seconds: { web: 14.163, both: 13.276 },
+    },
+    {
+      model: "Claude Sonnet 5.5",
+      households: 100,
+      amounts: 276,
+      web: 164,
+      both: 276,
+      // The exact difference, 100 × (276 − 164) / 276 = 40.58 (the file rounds it to 40.6).
+      change: { points: 40.58, lo: 35.0, hi: 46.2 },
+      cost: { web: 0.1122, both: 0.0622 },
+      seconds: { web: 47.04, both: 17.918 },
+    },
   ],
   measures:
-    "Our rules engine also computes PolicyBench's reference answers, so this shows whether a model can describe a household to it, not whether the engine is right. The models ran through their APIs with our prompt, not in chat apps.",
+    "Our rules engine also computes PolicyBench's reference answers, so this shows whether a model can describe a household to it, not whether the engine is right. Each model ran through its API with our prompt, not in a chat app.",
   source:
-    "Preliminary internal pilot · PolicyBench, our benchmark · runs October 23–25, 2026 · 100 US households · intervals are 95% · cost per household at API list prices, searches included",
+    "Preliminary internal pilot · PolicyBench, our benchmark · 100 US households · web search runs October 23–25, rules engine October 26–27, 2026 · intervals are 95% · cost per household at API list prices, searches included",
 };
 
 /**
@@ -942,21 +996,25 @@ export const ENGINE_PILOT: EnginePilot = {
  * The question names the household, the amount, the month and the program.
  * Utah's Family Employment Program pays at most $662 a month for a household
  * of three (DWS Eligibility Manual, Table 1, FEP maximum assistance; DWS's
- * "Do I qualify?" page lists the same $662). Plain AI cites the older $498.
- * On the live chatbot on Oct 25, 2026, plain AI said $498 10 times out of
- * 10, and AI with the engine said $662 10 times out of 10. The $662 is the
- * engine's ut_fep_payment_standard_amount, which carries no "not fully
- * encoded" flag. The engine does flag Utah's eligibility checks, and the
- * reply says so. "This month" names the month without a date: asked "in
- * October 2026", plain AI hedged that the date is in the future 9 times out
- * of 10.
+ * "Do I qualify?" page lists the same $662). Plain AI cites $498, Utah's
+ * maximum in July 2013 (CRS report R43634). On the live chatbot on Oct 25,
+ * 2026, plain AI said about $498 10 times out of 10, though 7 of those
+ * replies added that it couldn't confirm the current rate, 6 of them naming
+ * the wrong month. AI with the engine said $662 10 times out of 10. The $662
+ * is the engine's ut_fep_payment_standard_amount, which carries no "not
+ * fully encoded" flag in any of the 34 tool results across 30 engine replies
+ * (three wordings). The engine does flag Utah's eligibility checks: all 30
+ * replies list them, and every reply to this question says eligibility isn't
+ * established. Asked "in October 2026" instead of "this month", plain AI
+ * qualified the October amount 10 times out of 10, and called the date
+ * future in 5.
  *
  * It replaced "Single mom with two kids: does Alabama or Georgia pay more
  * TANF?" after the Oct 25 dry run: both of those outputs were flagged "not
  * fully encoded", and the question didn't say whether it meant the maximum
- * or an average. Refugee SNAP eligibility had no flags, but plain AI caught
- * the 2025 change in 2 of 10 runs and hedged in a third, and the engine's
- * answers hedged too.
+ * or an average. Refugee SNAP eligibility had no "not fully encoded" flags,
+ * but plain AI caught the 2025 change in 2 of 10 runs and hedged in a third,
+ * and the engine's answers hedged too.
  */
 export const LIVE_DEMO = {
   title: "The same AI model, on its own and with the Axiom rules engine",

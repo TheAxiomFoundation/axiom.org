@@ -109,7 +109,7 @@ export default function ValidationPage() {
           <div className="flex flex-wrap items-baseline justify-between gap-3 mb-6">
             <h2 className="heading-section m-0">The oracle dashboard</h2>
             <a
-              href="https://axiom-oracles.vercel.app"
+              href="https://axiom.org/oracles"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 font-mono text-[0.75rem] tracking-[0.12em] uppercase text-[var(--color-accent)] hover:text-[var(--color-accent-hover)] transition-colors no-underline"

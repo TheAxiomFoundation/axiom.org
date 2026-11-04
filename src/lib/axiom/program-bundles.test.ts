@@ -530,11 +530,11 @@ describe("measuredByPart", () => {
 });
 
 describe("bundle links", () => {
-  it("opens a bundle in the /ops bundles tab, and goes back to the tab's grid on its program", () => {
-    expect(bundleHref("us-az/snap")).toBe("/ops?tab=bundles&bundle=us-az/snap");
-    expect(bundleHref("us/snap", "provisions")).toBe("/ops?tab=bundles&bundle=us/snap&count=provisions");
-    expect(bundlesTabHref("snap")).toBe("/ops?tab=bundles&program=snap");
-    expect(bundlesTabHref("snap", "provisions")).toBe("/ops?tab=bundles&program=snap&count=provisions");
-    expect(bundlesTabHref(null)).toBe("/ops?tab=bundles");
+  it("opens a bundle in the /ops Programs tab, and goes back to the tab's grid on its program", () => {
+    expect(bundleHref("us-az/snap")).toBe("/ops?tab=programs&bundle=us-az/snap");
+    expect(bundleHref("us/snap", "provisions")).toBe("/ops?tab=programs&bundle=us/snap&count=provisions");
+    expect(bundlesTabHref("snap")).toBe("/ops?tab=programs&program=snap");
+    expect(bundlesTabHref("snap", "provisions")).toBe("/ops?tab=programs&program=snap&count=provisions");
+    expect(bundlesTabHref(null)).toBe("/ops?tab=programs");
   });
 });

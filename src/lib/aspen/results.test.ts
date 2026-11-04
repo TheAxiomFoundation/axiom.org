@@ -301,7 +301,7 @@ describe('aspen results', () => {
       events: [
         { run_id: 'r', kind: 'breakout', payload: { useCase: 'flows', note: 'Pilot in one county', raised: 'Training time' } },
         { run_id: 'r', kind: 'breakout', payload: { useCase: null, note: '', raised: 'Union rules' } },
-        { run_id: 'r', kind: 'breakout', payload: { useCase: 'apply', note: '', raised: '' } },
+        { run_id: 'r', kind: 'breakout', payload: { useCase: 'test', note: '', raised: '' } },
       ],
     })
     expect(breakouts.notes).toEqual([
@@ -324,15 +324,14 @@ describe('aspen results', () => {
       events: [
         { run_id: 'r', kind: 'vote', payload: { useCase: 'project' } },
         { run_id: 'r', kind: 'vote', payload: { useCase: 'project' } },
-        { run_id: 'r', kind: 'vote', payload: { useCase: 'apply' } },
+        { run_id: 'r', kind: 'vote', payload: { useCase: 'flows' } },
         { run_id: 'r', kind: 'vote', payload: { useCase: 'test' } },
       ],
     })
     expect(votes.map((c) => [c.id, c.count])).toEqual([
       ['see-edit', 0],
       ['project', 2],
-      ['flows', 0],
-      ['apply', 1],
+      ['flows', 1],
       ['test', 1],
     ])
     // Votes are not group ideas.

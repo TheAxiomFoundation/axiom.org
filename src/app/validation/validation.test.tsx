@@ -91,7 +91,7 @@ describe('ValidationPage', () => {
     )
     expect(
       screen.getByRole('link', { name: /open full size/i }),
-    ).toHaveAttribute('href', 'https://axiom-oracles.vercel.app')
+    ).toHaveAttribute('href', 'https://axiom.org/oracles')
   })
 
   it('invites ecosystem contributions in the closing band', () => {
