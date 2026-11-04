@@ -276,6 +276,21 @@
   transition: transform 120ms ease;
 }
 
+/* A module encoded in a run listed in another document: one muted line, a link to that row. */
+.ledgerEncodedIn {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--color-ink-muted);
+  text-decoration: none;
+}
+
+.ledgerEncodedIn:hover {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 /* A module encoded in the run of the row above: indented, with a tick in the chevron's place. */
 .ledgerToggle[data-module] {
   padding-left: 20px;

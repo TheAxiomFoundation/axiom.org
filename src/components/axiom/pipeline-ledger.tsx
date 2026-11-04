@@ -318,6 +318,7 @@ function DocumentSections({
               </TableCell>
               <TableCell className={`${styles.ledgerWide} px-2 py-1.5 align-baseline whitespace-normal text-[var(--color-ink-secondary)]`}>
                 {label}
+                {section.encodedIn && <EncodedIn host={section.encodedIn} onSection={onSection} />}
               </TableCell>
               <TableCell className={`${styles.ledgerWide} px-2 py-1.5 align-baseline`}>
                 <span className={styles.ledgerBundles}>
@@ -359,6 +360,31 @@ function DocumentSections({
         );
       })}
     </>
+  );
+}
+
+/**
+ * The section whose run encoded this one, listed in another document: its
+ * row opens in place when it is on the page, else its full history.
+ */
+function EncodedIn({ host, onSection }: { host: NonNullable<LedgerSection["encodedIn"]>; onSection: (citation: string) => void }) {
+  return (
+    <a
+      className={styles.ledgerEncodedIn}
+      href={`/ops/journey?citation=${encodeURIComponent(host.citation)}`}
+      title={host.document ? `${host.document} · ${host.name}` : host.citation}
+      onClick={(event) => {
+        const row = [...window.document.querySelectorAll<HTMLButtonElement>("button[aria-label^='Runs of ']")].find(
+          (button) => button.getAttribute("aria-label") === `Runs of ${host.citation}`
+        );
+        if (!row) return;
+        event.preventDefault();
+        if (row.getAttribute("aria-expanded") !== "true") onSection(host.citation);
+        row.scrollIntoView({ behavior: "smooth", block: "center" });
+      }}
+    >
+      Encoded with {host.name} ↗
+    </a>
   );
 }
 

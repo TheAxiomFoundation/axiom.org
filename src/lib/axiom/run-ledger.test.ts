@@ -69,6 +69,12 @@ describe("runLedger", () => {
       ["402/q", "us/statute/42/416/l"],
     ]);
     expect(sections("us:statute/7")).toEqual([["2015/f", null]]);
+    // Its host is listed elsewhere (here, not at all): a line names it.
+    expect(runLedger(rows)[0].documents.find((d) => d.key === "us:statute/7")!.sections[0].encodedIn).toEqual({
+      citation: "us/statute/42/416/l",
+      name: "416/l",
+      document: "42",
+    });
   });
 
   it("takes a citation's source document from the corpus when it is known", () => {

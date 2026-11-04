@@ -229,6 +229,21 @@ describe("PipelineLedger", () => {
     expect(opened.map((m) => (m as HTMLDetailsElement).open)).toEqual([true, false]);
   });
 
+  it("links a module to the section whose run encoded it, when that section lists in another document", async () => {
+    serve({
+      rows: runRows([
+        mergedAttempt({ id: "1001", citation: "us/statute/26/219", jurisdiction: "us", pr_state: "open", pr_merged_at: null }),
+        dependentAttempt({ citation: "us/guidance/irs/notice-2025-67/page-4", jurisdiction: "us" }),
+      ]),
+    });
+    render(<PipelineLedger scope={null} referenceMs={NOW} />);
+    const line = await screen.findByRole("link", { name: /^Encoded with / });
+    expect(line).toHaveTextContent("Encoded with 219 ↗");
+    Element.prototype.scrollIntoView = () => {};
+    fireEvent.click(line);
+    expect(screen.getByRole("button", { name: "Runs of us/statute/26/219" })).toHaveAttribute("aria-expanded", "true");
+  });
+
   it("shows ten documents at a time", async () => {
     serve({
       rows: runRows(
