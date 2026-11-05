@@ -27,6 +27,7 @@ import {
   buildMirrorIndex,
   checkErrorFromLog,
   checkErrorLookups,
+  dispatchInputsFromLog,
   prCheckJobs,
   needsLogRead,
   needsStepRead,
@@ -1092,6 +1093,25 @@ describe("PR check errors", () => {
     const merged = pr({ state: "MERGED", mergedAt: "2026-09-30T00:00:00Z", failedJobs: [{ name: "x", id: 79 }] });
     expect(buildAttempts(inputs({ prs: [merged] }))[0]).toMatchObject({ pr_check_job_id: null, pr_check_error: null });
     expect(buildAttempts(inputs({ prs: [pr()] }))[0]).not.toHaveProperty("pr_check_job_id");
+  });
+});
+
+describe("dispatch inputs from the encode job's log", () => {
+  it("takes the first value each input's env names, and null for one left empty", () => {
+    const log = [
+      "2026-10-19T12:54:00.0000000Z ##[group]Run something",
+      "2026-10-19T12:54:00.0000000Z env:",
+      "2026-10-19T12:54:00.0000000Z   REVIEW_FINDING: Repair only the entity ownership mismatch in us/regulations/7-cfr/273/4.yaml.",
+      "2026-10-19T12:54:00.0000000Z   REPLACE_RULESPEC_PATH: us/regulations/7-cfr/273/4.yaml",
+      "2026-10-19T12:54:00.0000000Z   REPAIR_RUN_ID: ",
+      "2026-10-19T12:55:00.0000000Z   REVIEW_FINDING: later step, same input",
+    ].join("\n");
+    expect(dispatchInputsFromLog(log, "now")).toEqual({
+      replace_path: "us/regulations/7-cfr/273/4.yaml",
+      review_finding: "Repair only the entity ownership mismatch in us/regulations/7-cfr/273/4.yaml.",
+      repair_run_id: null,
+      read_at: "now",
+    });
   });
 });
 

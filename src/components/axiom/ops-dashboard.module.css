@@ -294,6 +294,75 @@
   transition: transform 120ms ease;
 }
 
+/* A section's runs as phases: the initial encode, then each re-encode with
+   what it was for. A re-encode sits indented under a rule, so the two read
+   as different work at a glance. */
+.phases {
+  display: grid;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.phase {
+  display: grid;
+  gap: 4px;
+}
+
+.phase[data-kind="reencode"] {
+  margin-left: 4px;
+  padding-left: 14px;
+  border-left: 2px solid var(--color-accent);
+}
+
+.phaseHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin: 0;
+}
+
+.phaseHead > .ledgerLabel {
+  min-width: 108px;
+  margin: 0;
+}
+
+.phaseFacts {
+  color: var(--color-ink-secondary);
+}
+
+.phaseFacts [data-tone="done"] {
+  color: var(--color-success);
+}
+
+.phaseFacts [data-tone="failed"] {
+  color: var(--color-error);
+}
+
+.phaseFinding {
+  margin: 0;
+  overflow: hidden;
+  color: var(--color-ink);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.phaseFinding:not([data-given]) {
+  color: var(--color-ink-muted);
+}
+
+.phaseFolded {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-ink-muted);
+}
+
+.phaseHistory {
+  justify-self: end;
+  font-size: 13px;
+  color: var(--color-accent);
+}
+
 /* What holds an open PR: one card, its head (how long, why, who), then the linked work as a tree. */
 .blocked {
   display: grid;

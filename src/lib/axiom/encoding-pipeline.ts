@@ -9,6 +9,7 @@
  * derivation over those rows, so a new stage rule never needs a backfill.
  */
 
+import type { DispatchInputs } from "./encoding-pipeline-collect";
 import type { PrLinks } from "./pr-links";
 import { normalizeCitation } from "./ops-citations";
 
@@ -123,6 +124,8 @@ export interface PipelineAttempt {
   pr_requested_reviewers?: string[] | null;
   /** What the open PR waits on: its linked PRs and issues, review and comments (pr-links.ts). */
   pr_links?: PrLinks | null;
+  /** What the dispatch asked for: the merged file it replaces and the finding it addresses (read for re-encodes only). */
+  dispatch_inputs?: DispatchInputs | null;
   pr_merge_commit?: string | null;
   /** For a PR merged into a side branch: that branch's own PR into the
    *  default branch (head = the side branch), which carries the change

@@ -28,6 +28,8 @@ import {
   sectionBrief,
   type BlockedBrief,
   type LedgerDocument,
+  type RunMark,
+  type RunPhase,
   type LedgerSection,
   type LedgerTone,
 } from "@/lib/axiom/run-ledger";
@@ -461,31 +463,95 @@ function SectionRuns({
           </ul>
         </div>
       )}
-      <p className={styles.ledgerNow}>
-        <span className={styles.ledgerLabel}>Runs</span>
-        <span className={styles.ledgerMarks} role="list" aria-label="Every run, oldest first">
-          {brief.marks.map((mark) => (
-            <button
-              key={mark.id}
-              type="button"
-              role="listitem"
-              className={styles.ledgerMark}
-              data-tone={mark.tone}
-              aria-pressed={mark.id === run.id}
-              title={mark.title}
-              aria-label={mark.title}
-              onClick={() => setChosen(mark.id)}
-            />
-          ))}
-        </span>
-        <a href={`/ops/journey?citation=${encodeURIComponent(section.citation)}`}>Full history →</a>
-      </p>
+      {brief.phases.length > 1 ? (
+        <RunPhases phases={brief.phases} chosen={run.id} onChoose={setChosen} historyHref={`/ops/journey?citation=${encodeURIComponent(section.citation)}`} />
+      ) : (
+        <p className={styles.ledgerNow}>
+          <span className={styles.ledgerLabel}>Runs</span>
+          <Marks marks={brief.marks} chosen={run.id} onChoose={setChosen} />
+          <a href={`/ops/journey?citation=${encodeURIComponent(section.citation)}`}>Full history →</a>
+        </p>
+      )}
       <SharedRunTrack row={run} section={section.citation} allRows={allRows} labels={labels} referenceMs={referenceMs} latest={run === section.runs[0]} />
     </div>
   );
 }
 
 const SHORT_DAY = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+
+/** Every run as a mark, oldest first; a mark picks the run the card shows. */
+function Marks({ marks, chosen, onChoose }: { marks: RunMark[]; chosen: string; onChoose: (id: string) => void }) {
+  return (
+    <span className={styles.ledgerMarks} role="list" aria-label="Every run, oldest first">
+      {marks.map((mark) => (
+        <button
+          key={mark.id}
+          type="button"
+          role="listitem"
+          className={styles.ledgerMark}
+          data-tone={mark.tone}
+          aria-pressed={mark.id === chosen}
+          title={mark.title}
+          aria-label={mark.title}
+          onClick={() => onChoose(mark.id)}
+        />
+      ))}
+    </span>
+  );
+}
+
+/** Re-encodes shown one by one; older ones fold into a line. */
+const PHASES_SHOWN = 3;
+
+const daySpan = (from: string, to: string) => {
+  const [a, b] = [SHORT_DAY.format(new Date(from)), SHORT_DAY.format(new Date(to))];
+  return a === b ? a : `${a} – ${b}`;
+};
+
+/** A finding's first sentence: what the re-encode was for. */
+const firstSentence = (text: string) => text.split(/(?<=\.)\s/)[0];
+
+/**
+ * A section that merged and then ran again, as its phases: the initial
+ * encode, then each re-encode with what it was dispatched to fix, each with
+ * its own marks. Who dispatched what is from the runs' own inputs.
+ */
+function RunPhases({ phases, chosen, onChoose, historyHref }: { phases: RunPhase[]; chosen: string; onChoose: (id: string) => void; historyHref: string }) {
+  const reencodes = phases.filter((phase) => phase.kind === "reencode");
+  const folded = reencodes.slice(0, Math.max(0, reencodes.length - PHASES_SHOWN));
+  const shown = phases.filter((phase) => !folded.includes(phase));
+  return (
+    <div className={styles.phases}>
+      {folded.length > 0 && (
+        <p className={styles.phaseFolded}>
+          {folded.length} earlier re-encodes · {folded.reduce((sum, phase) => sum + phase.runs, 0)} runs · {daySpan(folded[0].from, folded.at(-1)!.to)}
+        </p>
+      )}
+      {shown.map((phase) => (
+        <div key={`${phase.kind}|${phase.from}`} className={styles.phase} data-kind={phase.kind}>
+          <p className={styles.phaseHead}>
+            <span className={styles.ledgerLabel}>{phase.kind === "encode" ? "Initial encode" : "Re-encode"}</span>
+            <span className={styles.phaseFacts}>
+              {daySpan(phase.from, phase.to)} · {phase.runs} {phase.runs === 1 ? "run" : "runs"} ·{" "}
+              <span data-tone={phase.merged.length ? "done" : phase.result.tone}>
+                {phase.merged.length ? `merged ${phase.merged.at(-1)!.label}${phase.merged.length > 1 ? ` +${phase.merged.length - 1}` : ""}` : phase.result.status.toLowerCase()}
+              </span>
+            </span>
+          </p>
+          {phase.kind === "reencode" && (
+            <p className={styles.phaseFinding} data-given={phase.finding ? "" : undefined} title={phase.finding ?? undefined}>
+              {phase.finding ? firstSentence(phase.finding) : `No finding given${phase.replaces ? ` · replaces ${phase.replaces}` : ""}`}
+            </p>
+          )}
+          <Marks marks={phase.marks} chosen={chosen} onChoose={onChoose} />
+        </div>
+      ))}
+      <a className={styles.phaseHistory} href={historyHref}>
+        Full history →
+      </a>
+    </div>
+  );
+}
 
 /** "1d 18h", "5h 12m": how long something has been open. */
 function openFor(ms: number): string {

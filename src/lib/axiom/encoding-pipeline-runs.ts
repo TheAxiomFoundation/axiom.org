@@ -98,6 +98,12 @@ export interface RunRow {
     mergedAt: string | null;
     closedAt: string | null;
   } | null;
+  /**
+   * What a re-encode asked for, from its dispatch inputs: the merged file it
+   * replaces and the finding it addresses; null when not read (only runs
+   * after a citation's first merge are).
+   */
+  purpose: { replaces: string | null; finding: string | null } | null;
   merged: "main" | "off main" | null;
   /** When the change reached main: the PR's merge, or its side branch's. */
   mainMergedAt: string | null;
@@ -254,6 +260,7 @@ export function runRow(dispatch: PipelineAttempt, hosts: Map<string, string> = n
             closedAt: attempt.pr_closed_at,
           }
         : null,
+    purpose: attempt.dispatch_inputs ? { replaces: attempt.dispatch_inputs.replace_path, finding: attempt.dispatch_inputs.review_finding } : null,
     merged,
     mainMergedAt: mainMergedAt(attempt),
     via:

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { runRow, runRows } from "./encoding-pipeline-runs";
-import { causeHeadline, newestDocuments, readableTitle, runLedger, runModules, sectionBrief, sectionOverview, sectionStatus } from "./run-ledger";
+import { causeHeadline, newestDocuments, readableTitle, runLedger, runModules, runPhases, sectionBrief, sectionOverview, sectionStatus } from "./run-ledger";
 import { dependentAttempt, mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 
 const day = (n: number) => `2026-09-${String(n).padStart(2, "0")}T10:00:00Z`;
@@ -349,6 +349,30 @@ describe("sectionBrief of a PR that waits on linked work", () => {
       ["axiom-encode#2059"],
       ["axiom-encode#2058"],
     ]);
+  });
+});
+
+describe("runPhases", () => {
+  it("splits the runs at the first merge, and the re-encodes by what they asked for", () => {
+    const inputs = (finding: string | null) => ({ replace_path: "us/regulations/7-cfr/273/4.yaml", review_finding: finding, repair_run_id: null, read_at: "x" });
+    const rows = runRows([
+      pipelineAttempt({ id: "1", dispatched_at: day(1) }),
+      pipelineAttempt({ id: "2", dispatched_at: day(2) }),
+      mergedAttempt({ id: "3", dispatched_at: day(3), pr_merged_at: "2026-09-03T12:00:00Z", tests_status: "pass" }),
+      // After the merge, inputs not read: a re-encode by its time.
+      pipelineAttempt({ id: "4", dispatched_at: day(4) }),
+      pipelineAttempt({ id: "5", dispatched_at: day(5), dispatch_inputs: inputs("Repair only the entity ownership mismatch. Use 273.4(c).") }),
+      pipelineAttempt({ id: "6", dispatched_at: day(6), dispatch_inputs: inputs("Repair only the entity ownership mismatch. Use 273.4(c).") }),
+    ]);
+    const marks = rows.map((r) => ({ id: r.id, tone: "failed" as const, title: r.id, url: "u" }));
+    const phases = runPhases(rows, marks);
+    expect(phases.map((p) => [p.kind, p.runs, p.merged.length, p.finding, p.marks.map((m) => m.id)])).toEqual([
+      ["encode", 3, 1, null, ["1", "2", "3"]],
+      ["reencode", 1, 0, null, ["4"]],
+      ["reencode", 2, 0, "Repair only the entity ownership mismatch. Use 273.4(c).", ["5", "6"]],
+    ]);
+    // Never merged: one phase, the encode.
+    expect(runPhases(rows.filter((r) => r.id < "3"), marks).map((p) => p.kind)).toEqual(["encode"]);
   });
 });
 

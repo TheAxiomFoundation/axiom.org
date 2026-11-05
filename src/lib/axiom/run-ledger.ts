@@ -312,6 +312,61 @@ export function sectionOverview(section: LedgerSection): SectionOverview {
 }
 
 /** One run as a mark in a section's history row. */
+/**
+ * One stretch of a section's runs, for telling an encode from a re-encode:
+ * the initial encode, up to the first merge into main, then each re-encode,
+ * runs in a row that asked for the same thing (their dispatch inputs).
+ */
+export interface RunPhase {
+  kind: "encode" | "reencode";
+  /** The finding a re-encode was dispatched to address, as its dispatcher wrote it. */
+  finding: string | null;
+  /** The merged file a re-encode replaces. */
+  replaces: string | null;
+  from: string;
+  to: string;
+  runs: number;
+  /** The PRs the phase merged into main. */
+  merged: Array<{ label: string; url: string }>;
+  /** How its last run ended. */
+  result: { status: string; tone: LedgerTone };
+  /** Oldest first. */
+  marks: RunMark[];
+}
+
+/**
+ * A section's runs as phases, oldest first: every run up to the first merge
+ * into main is the initial encode, and every run after it a re-encode,
+ * split where the finding it was dispatched for (its inputs) changes. A
+ * merge outside the pipeline (a side branch's own PR) is no run: it joins
+ * the phase it falls in.
+ */
+export function runPhases(runs: RunRow[], marks: RunMark[]): RunPhase[] {
+  const markOf = new Map(marks.map((mark) => [mark.id, mark]));
+  const phases: Array<RunPhase & { key: string }> = [];
+  let merged = false;
+  for (const run of [...runs].reverse()) {
+    const at = run.at ?? run.dispatchedAt;
+    const outside = run.source === "outside";
+    const finding = merged ? (run.purpose?.finding ?? null) : null;
+    const key = outside && phases.length ? phases.at(-1)!.key : merged ? `re|${finding ?? ""}` : "encode";
+    let phase = phases.at(-1);
+    if (!phase || phase.key !== key) {
+      phase = { key, kind: merged ? "reencode" : "encode", finding, replaces: merged ? (run.purpose?.replaces ?? null) : null, from: at, to: at, runs: 0, merged: [], result: sectionStatus(run), marks: [] };
+      phases.push(phase);
+    }
+    phase.to = at;
+    if (merged) phase.replaces ??= run.purpose?.replaces ?? null;
+    if (!outside) phase.runs += 1;
+    phase.result = sectionStatus(run);
+    if (run.merged === "main" && run.pr) phase.merged.push({ label: run.pr.label, url: run.pr.url });
+    const mark = markOf.get(run.id);
+    if (mark) phase.marks.push(mark);
+    if (run.merged === "main") merged = true;
+  }
+  return phases.map(({ key: _key, ...phase }) => phase);
+}
+
 export interface RunMark {
   id: string;
   tone: LedgerTone | "cancelled";
@@ -341,6 +396,8 @@ export interface SectionBrief {
   checks: string | null;
   /** What holds the latest run's open PR, from GitHub's records (pr-links.ts); null when it is not held or not read. */
   blocked: BlockedBrief | null;
+  /** The runs as the initial encode and each re-encode, oldest first (see runPhases). */
+  phases: RunPhase[];
   marks: RunMark[];
 }
 
@@ -445,7 +502,7 @@ export function sectionBrief(section: LedgerSection): SectionBrief {
     };
   });
 
-  return { encoded: !!done, headline, now: done ? reencode(latest, done) : nextStep(latest), repeated, checks: done ? null : failingChecks(latest), blocked: done ? null : blockedBrief(latest), marks };
+  return { encoded: !!done, headline, now: done ? reencode(latest, done) : nextStep(latest), repeated, checks: done ? null : failingChecks(latest), blocked: done ? null : blockedBrief(latest), marks, phases: runPhases(runs, marks) };
 }
 
 /** For an encoded section: a later run is a re-encode, and its outcome does not undo the merged encoding. */

@@ -1443,6 +1443,8 @@ export interface CollectInputs {
   checkErrors?: Map<string, string>;
   /** What each open PR waits on, read this pass, by "repo#number" (see pr-links.ts); absent until its column exists. */
   prLinks?: Map<string, PrLinks>;
+  /** Dispatch inputs read this pass, by run id (see dispatchInputLookups); absent until their column exists. */
+  dispatchInputs?: Map<string, DispatchInputs>;
   /** Successful index syncs since the oldest merge whose first sync is not recorded. */
   syncRuns?: SyncRun[];
   /** Where those syncs were listed from (see syncWindowStart): a merge before it is not covered. */
@@ -1515,6 +1517,69 @@ export function linkPrsToRuns(
     else orphans.push(pr);
   }
   return { byRun, orphans };
+}
+
+/**
+ * What a dispatch asked for, from its inputs: the existing file it
+ * replaces (a re-encode of a merged module) and the finding it addresses.
+ * The workflow run API does not return the inputs; the encode job's log
+ * prints them in each step's env.
+ */
+export interface DispatchInputs {
+  replace_path: string | null;
+  review_finding: string | null;
+  repair_run_id: string | null;
+  read_at: string;
+}
+
+/** The encode job, whose steps' env carry the dispatch inputs. */
+export const ENCODE_JOB = "Queue protected signed RuleSpec re-encode";
+const INPUT_MAX_CHARS = 600;
+
+/** A dispatch's inputs from its encode job's log: the first value each env names. */
+export function dispatchInputsFromLog(log: string, readAt: string): DispatchInputs {
+  const first = (name: string) => {
+    const match = new RegExp(String.raw`^\S*\s+${name}: (\S.*)$`, "m").exec(log.replace(/\r/g, ""));
+    return match ? clipTo(match[1].replace(ANSI_RE, ""), INPUT_MAX_CHARS) : null;
+  };
+  return { replace_path: first("REPLACE_RULESPEC_PATH"), review_finding: first("REVIEW_FINDING"), repair_run_id: first("REPAIR_RUN_ID"), read_at: readAt };
+}
+
+/**
+ * Runs whose inputs say what a re-encode was for: each run of a citation
+ * dispatched after that citation's first merge (see firstMerges), whose
+ * inputs are not read yet, newest first. A run's inputs never change.
+ */
+export function dispatchInputLookups(
+  runs: WorkflowRun[],
+  firstMerge: Map<string, string>,
+  previous: Map<string, Partial<PipelineAttempt>>,
+  limit: number
+): WorkflowRun[] {
+  return runs
+    .filter((run) => {
+      const citation = parseRunTitle(run.display_title)?.citation;
+      const merged = citation ? firstMerge.get(citation) : undefined;
+      return !!merged && run.created_at > merged && !previous.get(String(run.id))?.dispatch_inputs;
+    })
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))
+    .slice(0, limit);
+}
+
+/**
+ * Each citation's first merge of a signed manifest PR: into its default
+ * branch, or into a side branch that has since reached it (mainMerge).
+ * The side branch's own merge is later; the PR's is when the encode ended.
+ */
+export function firstMerges(prs: ManifestPr[]): Map<string, string> {
+  const first = new Map<string, string>();
+  for (const pr of prs) {
+    const citation = prCitation(pr.title);
+    if (!citation || !mainMerge(pr) || !pr.mergedAt) continue;
+    const seen = first.get(citation);
+    if (!seen || pr.mergedAt < seen) first.set(citation, pr.mergedAt);
+  }
+  return first;
 }
 
 /** A check's name without its matrix entry: "validate / validate (us-ak)" is "validate / validate". */
@@ -1861,6 +1926,8 @@ export function buildAttempts(inputs: CollectInputs): PipelineAttempt[] {
       run_status: run.status,
       run_conclusion: completed ? run.conclusion : null,
       dispatched_by: run.triggering_actor ?? null,
+      // A run's inputs never change: read once, then carried.
+      ...(inputs.dispatchInputs ? { dispatch_inputs: inputs.dispatchInputs.get(id) ?? previous?.dispatch_inputs ?? null } : {}),
     };
     const sha = run.head_sha ?? previous?.encoder_sha ?? null;
     if (sha) {

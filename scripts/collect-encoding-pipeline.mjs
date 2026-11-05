@@ -87,6 +87,10 @@ import {
   buildAttempts,
   checkErrorFromLog,
   checkErrorLookups,
+  dispatchInputLookups,
+  dispatchInputsFromLog,
+  ENCODE_JOB,
+  firstMerges,
   containmentQueries,
   containsKey,
   errorRule,
@@ -129,6 +133,7 @@ const outPath = argValue("--out");
 const lookupLimit = Number(argValue("--failure-lookups") ?? 60);
 const runDetailLimit = Number(argValue("--run-detail-lookups") ?? 80);
 const checkErrorLimit = Number(argValue("--check-error-lookups") ?? 60);
+const dispatchInputLimit = Number(argValue("--dispatch-input-lookups") ?? 60);
 const mergeTestLimit = Number(argValue("--merge-test-lookups") ?? 40);
 const dryRun = Boolean(outPath);
 
@@ -277,6 +282,7 @@ async function readPrevious() {
     if (await columnsExist(TIME_CARRIED)) columns += `,${TIME_CARRIED.join(",")},pr_merge_commit`;
     if (await columnsExist(FIRST_TESTS_CARRIED)) columns += `,${FIRST_TESTS_CARRIED.join(",")}`;
     if (await columnsExist(SIDE_CARRIED)) columns += `,${SIDE_CARRIED.join(",")}`;
+    if (await columnsExist(["dispatch_inputs"])) columns += ",dispatch_inputs";
     const rows = await read(columns);
     // Rows of modules merged outside the pipeline carry their PR whole (its
     // files are never read again), and dependent rows their stages: read every column.
@@ -913,6 +919,32 @@ async function lookUpRunDetails(runs) {
   return details;
 }
 
+/** Each run's dispatch inputs, from its encode job's log, by run id; a run whose job or log cannot be read is left out. */
+async function readDispatchInputs(runs, nowIso) {
+  const inputs = new Map();
+  const queue = [...runs];
+  await Promise.all(
+    Array.from({ length: LOOKUP_CONCURRENCY }, async () => {
+      for (let run = queue.shift(); run; run = queue.shift()) {
+        try {
+          const body = await githubJson(`repos/${GITHUB_ORG}/${ENCODE_REPO}/actions/runs/${run.id}/jobs?per_page=50`);
+          const job = (body.jobs ?? []).find((j) => j.name === ENCODE_JOB);
+          if (!job) {
+            // A run stopped before its encode job asked for nothing it printed: record that, so it is not asked again.
+            inputs.set(String(run.id), { replace_path: null, review_finding: null, repair_run_id: null, read_at: nowIso });
+            continue;
+          }
+          const res = await github(`repos/${GITHUB_ORG}/${ENCODE_REPO}/actions/jobs/${job.id}/logs`);
+          inputs.set(String(run.id), dispatchInputsFromLog(await res.text(), nowIso));
+        } catch (error) {
+          console.warn(`inputs of run ${run.id}: ${error.message}`);
+        }
+      }
+    }),
+  );
+  return inputs;
+}
+
 const VERSION_CONCURRENCY = 8;
 
 /** Package versions for axiom-encode commits, from each commit's pyproject.toml. */
@@ -1383,7 +1415,11 @@ async function main() {
       `validation at ${mergeValidation.size} of ${mergeLookups.length} merge commits`,
   );
 
-  // Added by the 2026-11-05 migration: what each open PR waits on.
+  // Added by the 2026-11-05 migration: what each re-encode asked for, and what each open PR waits on.
+  const inputsTracked = dryRun || (await columnsExist(["dispatch_inputs"]));
+  const inputRuns = inputsTracked ? dispatchInputLookups(runs, firstMerges(prs), previous, dispatchInputLimit) : [];
+  const dispatchInputs = inputsTracked ? await readDispatchInputs(inputRuns, new Date(nowMs).toISOString()) : null;
+  if (dispatchInputs) console.log(`read the inputs of ${dispatchInputs.size} of ${inputRuns.length} re-encodes`);
   const linksTracked = dryRun || (await columnsExist(["pr_links"]));
   const linked = linksTracked ? await readPrLinks(prs, new Date(nowMs).toISOString()) : null;
   if (linked) console.log(`read what ${linked.links.size} open PRs wait on: ${linked.items} linked items`);
@@ -1392,6 +1428,7 @@ async function main() {
     runs,
     prs,
     prLinks: linked?.links,
+    dispatchInputs: dispatchInputs ?? undefined,
     encoderRuns,
     mirror,
     compile,
