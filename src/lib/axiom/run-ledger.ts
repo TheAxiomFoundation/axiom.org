@@ -6,6 +6,7 @@
  * outside the pipeline and modules encoded inside another citation's run.
  */
 
+import { inPin, type PrLink, type PrLinks } from "./pr-links";
 import { causeHeadline, type RunRow } from "./encoding-pipeline-runs";
 
 export { causeHeadline };
@@ -317,6 +318,8 @@ export interface SectionBrief {
   repeated: Array<{ label: string; cause: string | null; detail: string | null; count: number; url: string }>;
   /** The latest run's PR checks, when they fail: how many, and what their log printed. */
   checks: string | null;
+  /** What holds the latest run's open PR, from GitHub's records (pr-links.ts); null when it is not held or not read. */
+  blocked: BlockedBrief | null;
   marks: RunMark[];
 }
 
@@ -353,6 +356,38 @@ function nextStep(latest: RunRow): SectionBrief["now"] {
   return { text: status, link: pr };
 }
 
+export interface BlockedBrief {
+  /** When the PR opened. */
+  since: string;
+  review: PrLinks["review"];
+  comments: PrLinks["comments"];
+  /** Linked items still open: what the PR waits on, its own links first. */
+  waits: PrLink[];
+  /** Merged encoder fixes the PR's repo's pin has not reached. */
+  unpinned: PrLink[];
+  /** The rest: merged or closed. */
+  done: PrLink[];
+  pin: string | null;
+}
+
+/** An open PR that its checks or its review hold, with what GitHub links to it. */
+function blockedBrief(latest: RunRow): BlockedBrief | null {
+  const pr = latest.pr;
+  if (!pr?.links || (pr.state !== "open" && pr.state !== "draft") || sectionStatus(latest).tone !== "failed") return null;
+  const { links, pin } = pr.links;
+  const open = (link: PrLink) => link.state === "open" || link.state === "draft";
+  const unpinned = links.filter((link) => inPin(link, pin) === false);
+  return {
+    since: pr.openedAt ?? latest.at,
+    review: pr.links.review,
+    comments: pr.links.comments,
+    waits: links.filter(open).sort((a, b) => a.step - b.step),
+    unpinned,
+    done: links.filter((link) => !open(link) && !unpinned.includes(link)),
+    pin,
+  };
+}
+
 export function sectionBrief(section: LedgerSection): SectionBrief {
   const runs = section.runs;
   const latest = runs[0];
@@ -385,7 +420,7 @@ export function sectionBrief(section: LedgerSection): SectionBrief {
     };
   });
 
-  return { encoded: !!done, headline, now: done ? reencode(latest, done) : nextStep(latest), repeated, checks: done ? null : failingChecks(latest), marks };
+  return { encoded: !!done, headline, now: done ? reencode(latest, done) : nextStep(latest), repeated, checks: done ? null : failingChecks(latest), blocked: done ? null : blockedBrief(latest), marks };
 }
 
 /** For an encoded section: a later run is a re-encode, and its outcome does not undo the merged encoding. */

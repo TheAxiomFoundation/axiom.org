@@ -4,6 +4,7 @@
  * through the gates between dispatch and tests passing on main.
  */
 
+import type { PrLinks } from "./pr-links";
 import { checkCluster } from "./check-clusters";
 import {
   attemptSource,
@@ -91,6 +92,8 @@ export interface RunRow {
     failing: number;
     /** The cluster the failing checks' log names (check-clusters.ts), as words. */
     cluster: string | null;
+    /** What the open PR waits on (pr-links.ts); a module encoded in another run has its host's. */
+    links: PrLinks | null;
     openedAt: string | null;
     mergedAt: string | null;
     closedAt: string | null;
@@ -245,6 +248,7 @@ export function runRow(dispatch: PipelineAttempt, hosts: Map<string, string> = n
             review: attempt.pr_review ?? null,
             failing: attempt.pr_failed_checks?.length ?? 0,
             cluster: attempt.pr_checks === "failure" ? (checkCluster(attempt.pr_check_error)?.label ?? null) : null,
+            links: attempt.pr_links ?? null,
             openedAt: attempt.pr_created_at,
             mergedAt: attempt.pr_merged_at,
             closedAt: attempt.pr_closed_at,
@@ -283,8 +287,15 @@ export function runRows(attempts: PipelineAttempt[], hostsFrom: PipelineAttempt[
   const hosts = hostCitations(hostsFrom);
   const hostRuns = new Map(hostsFrom.filter((attempt) => attemptSource(attempt) === "dispatch").map((attempt) => [attempt.id, attempt]));
   return attempts
-    .map((attempt) => withHostOutcome(runRow(attempt, hosts), hostRuns))
+    .map((attempt) => withHost(runRow(attempt, hosts), hostRuns))
     .sort((a, b) => b.at.localeCompare(a.at) || b.id.localeCompare(a.id));
+}
+
+/** A module encoded inside another citation's run shares that run's PR: what it waits on is the host's record. */
+function withHost(row: RunRow, hostRuns: Map<string, PipelineAttempt>): RunRow {
+  const host = row.source === "dependent" && row.host ? hostRuns.get(row.host.id) : undefined;
+  if (host?.pr_links && row.pr && !row.pr.links && row.pr.url === host.pr_url) row = { ...row, pr: { ...row.pr, links: host.pr_links } };
+  return withHostOutcome(row, hostRuns);
 }
 
 /**

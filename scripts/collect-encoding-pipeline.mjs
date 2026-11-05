@@ -111,6 +111,7 @@ import {
   viaPrFor,
 } from "../src/lib/axiom/encoding-pipeline-collect.ts";
 import { attemptSource } from "../src/lib/axiom/encoding-pipeline.ts";
+import { LINK_ORG, prLinks, refOf, refsToRead } from "../src/lib/axiom/pr-links.ts";
 import { GITHUB_ORG, githubHeaders } from "./lib/rulespec-discovery.mjs";
 import { resolveOracleDataRef } from "./lib/oracle-data-ref.mjs";
 
@@ -936,6 +937,93 @@ async function readEncoderVersions(shas) {
   return versions;
 }
 
+const LINK_REFS = `timelineItems(itemTypes: [CROSS_REFERENCED_EVENT], last: 40) {
+  nodes { ... on CrossReferencedEvent { source { __typename ... on PullRequest { number repository { name } } ... on Issue { number repository { name } } } } }
+}
+comments(last: 1) { totalCount nodes { createdAt author { login } } }`;
+const LINK_FIELDS = `__typename
+... on PullRequest {
+  number url title body state isDraft mergedAt reviewDecision
+  repository { name } mergeCommit { oid }
+  files(first: 20) { totalCount nodes { path } }
+  latestReviews(first: 10) { nodes { author { login } state submittedAt } }
+  ${LINK_REFS}
+}
+... on Issue { number url title body state repository { name } ${LINK_REFS} }`;
+// Each item carries its cross-references and files: 10 a query stays inside GitHub's per-query limit.
+const LINK_BATCH = 10;
+
+/** Items by ref ("rulespec-us#2023"), read in batches; an item that cannot be read is left out. */
+async function readLinkNodes(refs) {
+  const nodes = new Map();
+  for (let i = 0; i < refs.length; i += LINK_BATCH) {
+    const batch = refs.slice(i, i + LINK_BATCH);
+    const fields = batch.map((ref, j) => {
+      const [repo, number] = ref.split("#");
+      return `i${j}: repository(owner: "${LINK_ORG}", name: ${JSON.stringify(repo)}) { issueOrPullRequest(number: ${Number(number)}) { ${LINK_FIELDS} } }`;
+    });
+    try {
+      // A missing repo or number fails only its own field: keep the rest.
+      const body = await githubJson("graphql", { method: "POST", body: JSON.stringify({ query: `query { ${fields.join("\n")} }` }) });
+      batch.forEach((ref, j) => {
+        const node = body?.data?.[`i${j}`]?.issueOrPullRequest;
+        if (node?.number) nodes.set(ref, node);
+      });
+    } catch (error) {
+      console.warn(`links of ${batch.join(", ")}: ${error.message}`);
+    }
+  }
+  return nodes;
+}
+
+/** Each repo's encoder pin, from .axiom/workflow-toolchain.toml on its default branch. */
+async function readEncoderPins(repos) {
+  const pins = new Map();
+  for (const repo of repos) {
+    try {
+      const res = await fetch(`https://raw.githubusercontent.com/${GITHUB_ORG}/${repo}/HEAD/.axiom/workflow-toolchain.toml`);
+      const version = res.ok ? /^axiom_encode_version\s*=\s*"([^"]+)"/m.exec(await res.text())?.[1] : null;
+      if (version) pins.set(repo, version);
+    } catch (error) {
+      console.warn(`encoder pin of ${repo}: ${error.message}`);
+    }
+  }
+  return pins;
+}
+
+/**
+ * What each open PR waits on (see pr-links.ts), by its ref: the PRs and
+ * issues linked to it, two steps out, with their kind, state and, for a
+ * merged encoder fix, its version against the PR's repo's pin. Read in
+ * full every pass: a linked item changes without the PR changing.
+ */
+async function readPrLinks(prs, nowIso) {
+  const open = prs.filter((pr) => pr.state === "OPEN");
+  const nodes = await readLinkNodes(open.map((pr) => refOf(pr.repo, pr.number)));
+  // Step 1, then step 2 from the open items step 1 found.
+  for (let round = 0; round < 2; round++) {
+    const want = new Set();
+    for (const pr of open) {
+      const node = nodes.get(refOf(pr.repo, pr.number));
+      if (node) for (const ref of refsToRead(node, nodes)) want.add(ref);
+    }
+    if (!want.size) break;
+    for (const [ref, node] of await readLinkNodes([...want])) nodes.set(ref, node);
+  }
+  const merges = [...nodes.values()]
+    .filter((node) => node.repository?.name === ENCODE_REPO && node.mergeCommit?.oid)
+    .map((node) => node.mergeCommit.oid);
+  const versions = await readEncoderVersions([...new Set(merges)]);
+  const pins = await readEncoderPins([...new Set(open.map((pr) => pr.repo))]);
+  const links = new Map();
+  for (const pr of open) {
+    const ref = refOf(pr.repo, pr.number);
+    const node = nodes.get(ref);
+    if (node) links.set(ref, prLinks(node, nodes, pins.get(pr.repo) ?? null, versions, nowIso));
+  }
+  return { links, items: nodes.size };
+}
+
 /** What each failing PR job printed before it failed, by job id. */
 async function readCheckErrors(jobs) {
   const errors = new Map();
@@ -1295,9 +1383,15 @@ async function main() {
       `validation at ${mergeValidation.size} of ${mergeLookups.length} merge commits`,
   );
 
+  // Added by the 2026-11-05 migration: what each open PR waits on.
+  const linksTracked = dryRun || (await columnsExist(["pr_links"]));
+  const linked = linksTracked ? await readPrLinks(prs, new Date(nowMs).toISOString()) : null;
+  if (linked) console.log(`read what ${linked.links.size} open PRs wait on: ${linked.items} linked items`);
+
   const attempts = buildAttempts({
     runs,
     prs,
+    prLinks: linked?.links,
     encoderRuns,
     mirror,
     compile,

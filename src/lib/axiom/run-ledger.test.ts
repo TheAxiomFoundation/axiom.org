@@ -302,7 +302,43 @@ describe("sectionBrief of a PR whose checks fail", () => {
       text: "PR checks fail: Legacy manifest · changes requested",
       link: { label: "rulespec-us#2022 ↗", url: "https://github.com/x/pull/2022" },
     });
+    expect(brief.blocked).toBeNull();
     expect(brief.checks).toBe("2 checks fail: x.json replacement authority is invalid: legacy replacement manifest");
+  });
+});
+
+describe("sectionBrief of a PR that waits on linked work", () => {
+  it("sorts what GitHub links to the PR: still open, merged but not in the pin, done", () => {
+    const link = (ref: string, kind: "pin" | "encoder", state: "draft" | "merged", version: string | null = null, step: 1 | 2 = 1) => ({
+      ref, url: `https://github.com/x/${ref}`, title: ref, kind, state, review: null, reviewer: null, mergedAt: null, version, step, via: step === 2 ? "rulespec-us#2023" : null,
+    });
+    const rows = runRows([
+      pipelineAttempt({
+        run_conclusion: "success",
+        pr_url: "https://github.com/x/pull/2022",
+        pr_state: "open",
+        pr_created_at: "2026-11-04T04:28:11Z",
+        pr_checks: "failure",
+        pr_links: {
+          review: { by: "MaxGhenis", state: "changes_requested", at: "2026-11-04T06:19:01Z" },
+          comments: { count: 13, lastAt: "2026-11-05T15:08:31Z", lastBy: "PavelMakarchuk" },
+          pin: "0.2.2248",
+          links: [
+            link("axiom-encode#2058", "encoder", "merged", "0.2.2240"),
+            link("axiom-encode#2059", "encoder", "merged", "0.2.2308", 2),
+            link("rulespec-us#2023", "pin", "draft"),
+          ],
+          readAt: "2026-11-05T16:00:00Z",
+        },
+      }),
+    ]);
+    const blocked = sectionBrief(runLedger(rows)[0].documents[0].sections[0]).blocked!;
+    expect([blocked.since, blocked.waits.map((l) => l.ref), blocked.unpinned.map((l) => l.ref), blocked.done.map((l) => l.ref)]).toEqual([
+      "2026-11-04T04:28:11Z",
+      ["rulespec-us#2023"],
+      ["axiom-encode#2059"],
+      ["axiom-encode#2058"],
+    ]);
   });
 });
 

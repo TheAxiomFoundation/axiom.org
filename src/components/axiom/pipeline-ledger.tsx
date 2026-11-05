@@ -10,6 +10,7 @@ import { inScope, scopeName as nameOfScope, type PipelineScope } from "@/lib/axi
 import { opsHref } from "@/lib/axiom/ops-href";
 import { ScopeNav } from "@/components/ops/flow/scope-nav";
 import { runTimeline, type RunRow, type RunTimeline } from "@/lib/axiom/encoding-pipeline-runs";
+import { inPin, LINK_KIND_LABEL, type PrLink } from "@/lib/axiom/pr-links";
 import { durationLabel } from "@/lib/axiom/encoding-pipeline";
 import {
   bundleHref,
@@ -24,6 +25,7 @@ import {
   runLedger,
   runModules,
   sectionBrief,
+  type BlockedBrief,
   type LedgerDocument,
   type LedgerSection,
   type LedgerTone,
@@ -425,6 +427,7 @@ function SectionRuns({
           )}
         </p>
       )}
+      {brief.blocked && <Blocked blocked={brief.blocked} referenceMs={referenceMs} />}
       {brief.checks && (
         <p className={styles.ledgerNow}>
           <span className={styles.ledgerLabel}>Checks</span>
@@ -472,6 +475,66 @@ function SectionRuns({
       </p>
       <SharedRunTrack row={run} section={section.citation} allRows={allRows} labels={labels} referenceMs={referenceMs} latest={run === section.runs[0]} />
     </div>
+  );
+}
+
+const SHORT_DAY = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+const STATE_WORDS: Record<PrLink["state"], string> = { open: "open", draft: "draft", merged: "merged", closed: "closed" };
+
+/** A linked item: its ref as the link, then what it is and where it stands. */
+function LinkedItem({ link, pin }: { link: PrLink; pin: string | null }) {
+  const facts = [
+    LINK_KIND_LABEL[link.kind],
+    STATE_WORDS[link.state] + (link.state === "merged" && link.version ? ` in ${link.version}` : ""),
+    link.review === "changes_requested" ? `changes requested${link.reviewer ? ` by ${link.reviewer}` : ""}` : link.review === "approved" ? "approved" : null,
+    inPin(link, pin) === false && pin ? `pin is ${pin}` : null,
+    link.via ? `through ${link.via}` : null,
+  ].filter(Boolean);
+  return (
+    <li title={link.title}>
+      <a href={link.url} target="_blank" rel="noreferrer">
+        {link.ref}
+      </a>{" "}
+      <span>{facts.join(" · ")}</span> <span className={styles.ledgerLinkTitle}>{link.title}</span>
+    </li>
+  );
+}
+
+/**
+ * What holds an open PR, from GitHub's records only: how long it has been
+ * open, its last review, and the PRs and issues linked to it, what is still
+ * open first. Nothing here reads the meaning of a comment.
+ */
+function Blocked({ blocked, referenceMs }: { blocked: BlockedBrief; referenceMs: number }) {
+  const facts = [
+    `open ${span(Math.max(0, referenceMs - Date.parse(blocked.since)))}`,
+    blocked.review ? `${blocked.review.state.replaceAll("_", " ")} by ${blocked.review.by}, ${SHORT_DAY.format(new Date(blocked.review.at))}` : "no review yet",
+    blocked.comments.count ? `${blocked.comments.count} comments${blocked.comments.lastAt ? `, last ${SHORT_DAY.format(new Date(blocked.comments.lastAt))}` : ""}` : null,
+  ].filter(Boolean);
+  const lines: Array<[string, PrLink[]]> = [
+    ["Waits on", blocked.waits],
+    ["Not in the pin", blocked.unpinned],
+    ["Done", blocked.done],
+  ];
+  return (
+    <>
+      <p className={styles.ledgerNow}>
+        <span className={styles.ledgerLabel}>PR</span>
+        <span>{facts.join(" · ")}</span>
+      </p>
+      {lines
+        .filter(([, links]) => links.length)
+        .map(([label, links]) => (
+          <div key={label} className={styles.ledgerNow}>
+            <span className={styles.ledgerLabel}>{label}</span>
+            <ul className={styles.ledgerLinks} aria-label={label}>
+              {links.map((link) => (
+                <LinkedItem key={link.ref} link={link} pin={blocked.pin} />
+              ))}
+            </ul>
+          </div>
+        ))}
+    </>
   );
 }
 

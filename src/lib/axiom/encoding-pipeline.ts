@@ -9,6 +9,7 @@
  * derivation over those rows, so a new stage rule never needs a backfill.
  */
 
+import type { PrLinks } from "./pr-links";
 import { normalizeCitation } from "./ops-citations";
 
 /**
@@ -120,6 +121,8 @@ export interface PipelineAttempt {
   pr_cancelled_checks?: number | null;
   /** Users or teams a review is requested from. */
   pr_requested_reviewers?: string[] | null;
+  /** What the open PR waits on: its linked PRs and issues, review and comments (pr-links.ts). */
+  pr_links?: PrLinks | null;
   pr_merge_commit?: string | null;
   /** For a PR merged into a side branch: that branch's own PR into the
    *  default branch (head = the side branch), which carries the change

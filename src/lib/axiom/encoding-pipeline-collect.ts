@@ -23,6 +23,7 @@
  * Kept free of I/O so every join rule is unit-tested.
  */
 
+import type { PrLinks } from "./pr-links";
 import {
   attemptSource,
   dependentAttemptId,
@@ -1440,6 +1441,8 @@ export interface CollectInputs {
   encoderVersions?: Map<string, string>;
   /** What failing PR jobs printed, read this pass, by job id (see checkErrorLookups). */
   checkErrors?: Map<string, string>;
+  /** What each open PR waits on, read this pass, by "repo#number" (see pr-links.ts); absent until its column exists. */
+  prLinks?: Map<string, PrLinks>;
   /** Successful index syncs since the oldest merge whose first sync is not recorded. */
   syncRuns?: SyncRun[];
   /** Where those syncs were listed from (see syncWindowStart): a merge before it is not covered. */
@@ -1461,6 +1464,7 @@ interface JoinContext {
   waivers: Map<string, Set<string>>;
   oracle: Map<string, OracleVerdict> | null;
   checkErrors: Map<string, string>;
+  prLinks: Map<string, PrLinks> | null;
   syncRuns: SyncRun[] | null;
   syncSince: string | null;
   mergeValidation: MergeValidation;
@@ -1611,6 +1615,8 @@ function withPr(
       : {}),
     ...(pr.mergeCommit !== undefined ? { pr_merge_commit: pr.mergeCommit } : {}),
     ...prCheckError(pr, state, context.checkErrors, previous),
+    // Only an open PR waits on anything.
+    ...(context.prLinks ? { pr_links: state === "draft" || state === "open" ? (context.prLinks.get(`${pr.repo}#${pr.number}`) ?? null) : null } : {}),
     ...(pr.via !== undefined ? viaFields(state === "merged" && targetsDefault === false ? pr.via : null) : {}),
   };
   // From here on, the merge into the default branch: the PR's own, or its side branch's.
@@ -1815,6 +1821,7 @@ export function buildAttempts(inputs: CollectInputs): PipelineAttempt[] {
     waivers: inputs.waivers ?? new Map(),
     oracle: inputs.oracle ?? null,
     checkErrors: inputs.checkErrors ?? new Map(),
+    prLinks: inputs.prLinks ?? null,
     syncRuns: inputs.syncRuns ?? null,
     syncSince: inputs.syncSince ?? null,
     mergeValidation: inputs.mergeValidation ?? new Map(),

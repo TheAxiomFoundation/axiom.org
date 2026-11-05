@@ -276,6 +276,33 @@
   transition: transform 120ms ease;
 }
 
+/* What an open PR waits on: one line each, its ref, its facts, its title muted and cut. */
+.ledgerLinks {
+  grid-column: 2 / -1;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ledgerLinks li {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.ledgerLinks a {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  color: var(--color-accent);
+}
+
+.ledgerLinkTitle {
+  color: var(--color-ink-muted);
+}
+
 /* What the failing PR checks printed: two lines at most, the rest on hover. */
 .ledgerChecks {
   display: -webkit-box;
