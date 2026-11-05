@@ -538,9 +538,9 @@ function RunPhases({ phases, chosen, onChoose, historyHref }: { phases: RunPhase
               </span>
             </span>
           </p>
-          {phase.kind === "reencode" && (
+          {phase.kind === "reencode" && (phase.finding || phase.replaces) && (
             <p className={styles.phaseFinding} data-given={phase.finding ? "" : undefined} title={phase.finding ?? undefined}>
-              {phase.finding ? firstSentence(phase.finding) : `No finding given${phase.replaces ? ` · replaces ${phase.replaces}` : ""}`}
+              {phase.finding ? firstSentence(phase.finding) : `Replaces ${phase.replaces}`}
             </p>
           )}
           <Marks marks={phase.marks} chosen={chosen} onChoose={onChoose} />
