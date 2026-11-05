@@ -92,6 +92,27 @@ export function sectionStatus(latest: RunRow): { status: string; tone: LedgerTon
 
 const newest = <T extends { lastAt: string }>(a: T, b: T) => b.lastAt.localeCompare(a.lastAt);
 
+/** Words an all-caps title keeps as they are: program and agency names, and legal abbreviations. */
+const KEEP_CAPS = new Set(["SNAP", "TANF", "WIC", "SSI", "SSA", "EITC", "CTC", "IRS", "USDA", "FNS", "CFR", "USC", "U.S.C.", "C.F.R.", "US", "U.S.", "DES", "NA", "ECE", "BCE", "ABAWD", "LIHEAP", "CHIP", "ACA", "HHS", "CMS", "OBBB", "OBBBA", "COLA", "FY", "DC"]);
+/** Small words lowercase inside a title. */
+const SMALL_WORDS = new Set(["a", "an", "and", "as", "at", "by", "for", "from", "in", "into", "of", "on", "or", "the", "to", "with"]);
+
+/**
+ * A source title in capitals ("CERTIFICATION OF ELIGIBLE HOUSEHOLDS") in
+ * title case ("Certification of Eligible Households"); a title with any
+ * lowercase letter is the source's own casing, and stays.
+ */
+export function readableTitle(title: string): string {
+  if (/[a-z]/.test(title) || !/[A-Z]{2}/.test(title)) return title;
+  let first = true;
+  return title.replace(/[A-Z][A-Z.'’-]*/g, (word) => {
+    const lower = word.toLowerCase();
+    const out = KEEP_CAPS.has(word) || /^[IVXLC]+$/.test(word) && word.length > 1 ? word : !first && SMALL_WORDS.has(lower) ? lower : lower.charAt(0).toUpperCase() + lower.slice(1);
+    first = false;
+    return out;
+  });
+}
+
 /**
  * Group runs by jurisdiction, document, and section, newest activity first
  * at every level. A citation's source document comes from the corpus when

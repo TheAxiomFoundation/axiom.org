@@ -22,6 +22,7 @@ import {
 } from "@/lib/axiom/program-bundles";
 import {
   newestDocuments,
+  readableTitle,
   runLedger,
   runModules,
   sectionBrief,
@@ -189,8 +190,8 @@ export function PipelineLedger({
                     {jurisdiction.name}
                   </TableHead>
                 </TableRow>
-                {/* Each jurisdiction's own column labels, under its name. */}
-                <TableRow className="border-b border-[var(--color-rule)] hover:bg-transparent">
+                {/* Each jurisdiction's own column labels, under its name; sticky on a wide screen. */}
+                <TableRow className={`${styles.ledgerColumns} border-b border-[var(--color-rule)] hover:bg-transparent`}>
                   <TableHead scope="col" className="h-8 w-[34%] px-0 font-mono text-[10px] font-normal uppercase tracking-wider text-[var(--color-ink-muted)]">
                     Section
                   </TableHead>
@@ -272,7 +273,7 @@ function DocumentSections({
             className="text-sm font-semibold text-[var(--color-ink)]"
             title={document.titled ? document.path || undefined : "Document identifier; source title not yet indexed"}
           >
-            {document.title}
+            {readableTitle(document.title)}
           </span>
         </TableCell>
       </TableRow>

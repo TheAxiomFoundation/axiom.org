@@ -298,7 +298,7 @@ describe("PipelineLedger", () => {
     await screen.findByRole("table");
     expect(screen.getByText("Updated 12m ago.")).toHaveAttribute("title", "2026-09-30T11:48:00Z");
     // The document path is in the title's tooltip, not in the band.
-    expect(screen.getByText("INTERNAL REVENUE CODE")).toHaveAttribute("title", "us/statute/26");
+    expect(screen.getByText("Internal Revenue Code")).toHaveAttribute("title", "us/statute/26");
     expect(screen.queryByText("us/statute/26")).not.toBeInTheDocument();
     const legend = screen.getByRole("button", { name: "What Status means" });
     fireEvent.click(legend);

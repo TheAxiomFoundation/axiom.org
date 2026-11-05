@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { runRow, runRows } from "./encoding-pipeline-runs";
-import { causeHeadline, newestDocuments, runLedger, runModules, sectionBrief, sectionOverview, sectionStatus } from "./run-ledger";
+import { causeHeadline, newestDocuments, readableTitle, runLedger, runModules, sectionBrief, sectionOverview, sectionStatus } from "./run-ledger";
 import { dependentAttempt, mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 
 const day = (n: number) => `2026-09-${String(n).padStart(2, "0")}T10:00:00Z`;
@@ -93,6 +93,16 @@ describe("runLedger", () => {
       "SNAP FY 2026 Maximum Allotments",
       "page-1",
     ]);
+  });
+});
+
+describe("readableTitle", () => {
+  it("puts a title in capitals in title case, and keeps any other casing", () => {
+    expect(readableTitle("CERTIFICATION OF ELIGIBLE HOUSEHOLDS")).toBe("Certification of Eligible Households");
+    expect(readableTitle("THE PUBLIC HEALTH AND WELFARE")).toBe("The Public Health and Welfare");
+    expect(readableTitle("SNAP ELIGIBILITY UNDER TITLE IV")).toBe("SNAP Eligibility Under Title IV");
+    expect(readableTitle("Arizona DES FAA5: B NA Categorical Eligibility")).toBe("Arizona DES FAA5: B NA Categorical Eligibility");
+    expect(readableTitle("7")).toBe("7");
   });
 });
 
