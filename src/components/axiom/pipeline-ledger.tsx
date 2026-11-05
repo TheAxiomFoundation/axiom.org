@@ -209,11 +209,14 @@ export function PipelineLedger({
             </TableHeader>
             {newestDocuments(ledger, shown).map((jurisdiction) => (
               <TableBody key={jurisdiction.code}>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead colSpan={6} scope="rowgroup" className={styles.jurisdictionBand}>
-                    {jurisdiction.name}
-                  </TableHead>
-                </TableRow>
+                {/* One jurisdiction in scope: the subtitle names it, and a band would only repeat it. */}
+                {ledger.length > 1 && (
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead colSpan={6} scope="rowgroup" className={styles.jurisdictionBand}>
+                      {jurisdiction.name}
+                    </TableHead>
+                  </TableRow>
+                )}
                 {jurisdiction.documents.map((document) => (
                   <DocumentSections
                     key={document.key}

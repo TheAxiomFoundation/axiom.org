@@ -28,12 +28,16 @@ describe("PipelineLedger", () => {
     window.history.replaceState(null, "", "/ops?j=us");
     render(<PipelineLedger scope={{ jurisdiction: "us", only: false }} roots={["us", "nz"]} referenceMs={NOW} />);
     const ledger = await screen.findByRole("table");
-    expect(within(ledger).getByRole("rowheader", { name: "US Federal" })).toBeInTheDocument();
-    expect(within(ledger).queryByRole("rowheader", { name: "New Zealand" })).not.toBeInTheDocument();
+    const us = { name: "Runs of us/statute/7/2015/f" };
+    const nz = { name: "Runs of nz/statute/act/public/2018/0032/section/75" };
+    // One jurisdiction in scope: its rows, and no band that repeats the subtitle.
+    expect(within(ledger).getByRole("button", us)).toBeInTheDocument();
+    expect(within(ledger).queryByRole("button", nz)).not.toBeInTheDocument();
+    expect(within(ledger).queryByRole("rowheader")).not.toBeInTheDocument();
     const jurisdiction = screen.getByRole("combobox", { name: "Jurisdiction" });
     fireEvent.change(jurisdiction, { target: { value: "nz" } });
-    expect(within(ledger).getByRole("rowheader", { name: "New Zealand" })).toBeInTheDocument();
-    expect(within(ledger).queryByRole("rowheader", { name: "US Federal" })).not.toBeInTheDocument();
+    expect(within(ledger).getByRole("button", nz)).toBeInTheDocument();
+    expect(within(ledger).queryByRole("button", us)).not.toBeInTheDocument();
     expect(window.location.search).toBe("?j=nz");
     fireEvent.change(jurisdiction, { target: { value: "" } });
     expect(within(ledger).getByRole("rowheader", { name: "US Federal" })).toBeInTheDocument();
