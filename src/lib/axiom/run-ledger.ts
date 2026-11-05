@@ -359,6 +359,8 @@ function nextStep(latest: RunRow): SectionBrief["now"] {
 export interface BlockedBrief {
   /** When the PR opened. */
   since: string;
+  /** What holds it: "PR checks fail · Legacy manifest", "Changes requested". */
+  cause: string;
   review: PrLinks["review"];
   comments: PrLinks["comments"];
   /** Linked items still open: what the PR waits on, its own links first. */
@@ -377,8 +379,10 @@ function blockedBrief(latest: RunRow): BlockedBrief | null {
   const { links, pin } = pr.links;
   const open = (link: PrLink) => link.state === "open" || link.state === "draft";
   const unpinned = links.filter((link) => inPin(link, pin) === false);
+  const { status } = sectionStatus(latest);
   return {
     since: pr.openedAt ?? latest.at,
+    cause: pr.checks === "failure" && pr.cluster ? `${status} · ${pr.cluster}` : status,
     review: pr.links.review,
     comments: pr.links.comments,
     waits: links.filter(open).sort((a, b) => a.step - b.step),

@@ -276,31 +276,164 @@
   transition: transform 120ms ease;
 }
 
-/* What an open PR waits on: one line each, its ref, its facts, its title muted and cut. */
-.ledgerLinks {
-  grid-column: 2 / -1;
+/* What holds an open PR: one card, its head (how long, why, who), then the linked work as a tree. */
+.blocked {
   display: grid;
-  gap: 2px;
-  min-width: 0;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--color-rule);
+  border-left: 3px solid var(--color-error);
+  border-radius: 10px;
+  background: var(--color-paper);
+}
+
+.blockedHead {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+
+.blockedHead > a {
+  font-size: 12px;
+  color: var(--color-accent);
+  white-space: nowrap;
+}
+
+.blockedHeadline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.blockedCause {
+  font-weight: 500;
+  color: var(--color-error);
+}
+
+.blockedDetail {
+  grid-column: 1 / -1;
+  margin: 0;
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--color-ink-muted);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.blockedTree {
+  display: grid;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-rule-subtle);
+}
+
+.blockedTree > .ledgerLabel {
+  margin: 0;
+}
+
+.blockedTree ul {
+  display: grid;
+  gap: 10px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.ledgerLinks li {
+.blockedChildren {
+  margin: 8px 0 0 3px !important;
+  padding-left: 16px !important;
+  border-left: 1px solid var(--color-rule);
+}
+
+.blockedItem {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 10px;
+}
+
+.blockedDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-ink-muted);
+  transform: translateY(-1px);
+}
+
+.blockedDot[data-tone="failed"] {
+  background: var(--color-error);
+}
+
+.blockedDot[data-tone="waiting"] {
+  background: var(--color-accent);
+}
+
+.blockedDot[data-tone="done"] {
+  background: var(--color-success);
+}
+
+.blockedTitle {
   overflow: hidden;
+  font-size: 13px;
+  color: var(--color-ink);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-decoration: none;
+}
+
+.blockedTitle:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.blockedPill {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  white-space: nowrap;
+  color: var(--color-ink-secondary);
+  background: color-mix(in srgb, var(--color-ink) 6%, transparent);
+}
+
+.blockedPill[data-tone="failed"] {
+  color: var(--color-error);
+  background: color-mix(in srgb, var(--color-error) 10%, transparent);
+}
+
+.blockedPill[data-tone="waiting"] {
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+}
+
+.blockedPill[data-tone="done"] {
+  color: var(--color-success);
+  background: color-mix(in srgb, var(--color-success) 10%, transparent);
+}
+
+.blockedMeta {
+  grid-column: 2 / -1;
+  overflow: hidden;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--color-ink-muted);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
-.ledgerLinks a {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 12px;
-  color: var(--color-accent);
-}
-
-.ledgerLinkTitle {
-  color: var(--color-ink-muted);
+@media (max-width: 699px) {
+  .blockedItem {
+    grid-template-columns: 8px minmax(0, 1fr);
+  }
+  .blockedPill {
+    grid-column: 2;
+    justify-self: start;
+  }
 }
 
 /* What the failing PR checks printed: two lines at most, the rest on hover. */

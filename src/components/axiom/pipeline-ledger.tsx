@@ -416,7 +416,7 @@ function SectionRuns({
       <p className={styles.ledgerSummary} data-encoded={brief.encoded || undefined}>
         <strong>{brief.headline}</strong>
       </p>
-      {brief.now && (
+      {brief.now && !brief.blocked && (
         <p className={styles.ledgerNow}>
           <span className={styles.ledgerLabel}>Now</span>
           <span>{brief.now.text}</span>
@@ -427,8 +427,15 @@ function SectionRuns({
           )}
         </p>
       )}
-      {brief.blocked && <Blocked blocked={brief.blocked} referenceMs={referenceMs} />}
-      {brief.checks && (
+      {brief.blocked && (
+        <Blocked
+          blocked={brief.blocked}
+          checks={brief.checks}
+          pr={brief.now?.link ?? null}
+          referenceMs={referenceMs}
+        />
+      )}
+      {brief.checks && !brief.blocked && (
         <p className={styles.ledgerNow}>
           <span className={styles.ledgerLabel}>Checks</span>
           <span className={styles.ledgerChecks} title={brief.checks}>
@@ -479,62 +486,125 @@ function SectionRuns({
 }
 
 const SHORT_DAY = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
-const STATE_WORDS: Record<PrLink["state"], string> = { open: "open", draft: "draft", merged: "merged", closed: "closed" };
 
-/** A linked item: its ref as the link, then what it is and where it stands. */
+/** "1d 18h", "5h 12m": how long something has been open. */
+function openFor(ms: number): string {
+  const hours = Math.floor(ms / 3_600_000);
+  if (hours >= 24) return `${Math.floor(hours / 24)}d ${hours % 24}h`;
+  return `${hours}h ${Math.floor((ms % 3_600_000) / 60_000)}m`;
+}
+
+/** A linked item's state as a pill: what it says and its tone. */
+function linkStatus(link: PrLink, pin: string | null): { text: string; tone: LedgerTone | "muted" } {
+  const open = link.state === "open" || link.state === "draft";
+  const state = link.state === "draft" ? "Draft" : link.state === "open" ? "Open" : link.state === "merged" ? "Merged" : "Closed";
+  if (open && link.review === "changes_requested") return { text: `${state} · changes requested`, tone: "failed" };
+  if (open) return { text: state, tone: "waiting" };
+  if (inPin(link, pin) === false) return { text: "Merged · not in the pin", tone: "waiting" };
+  return { text: state, tone: link.state === "merged" ? "done" : "muted" };
+}
+
+/** The links as a tree: each item linked to the PR, with the items linked through it under it; still open first. */
+function linkTree(blocked: BlockedBrief): Array<{ link: PrLink; children: PrLink[] }> {
+  const all = [...blocked.waits, ...blocked.unpinned, ...blocked.done];
+  const rank = (link: PrLink) => (blocked.waits.includes(link) ? 0 : blocked.unpinned.includes(link) ? 1 : 2);
+  const byRank = (a: PrLink, b: PrLink) => rank(a) - rank(b);
+  const roots = all.filter((link) => link.step === 1).sort(byRank);
+  const placed = new Set(roots.map((link) => link.ref));
+  const tree = roots.map((link) => ({ link, children: all.filter((child) => child.via === link.ref).sort(byRank) }));
+  for (const node of tree) for (const child of node.children) placed.add(child.ref);
+  // A step-2 item whose step-1 item is not listed stands on its own.
+  for (const link of all) if (!placed.has(link.ref)) tree.push({ link, children: [] });
+  return tree;
+}
+
 function LinkedItem({ link, pin }: { link: PrLink; pin: string | null }) {
-  const facts = [
+  const status = linkStatus(link, pin);
+  const meta = [
+    link.ref,
     LINK_KIND_LABEL[link.kind],
-    STATE_WORDS[link.state] + (link.state === "merged" && link.version ? ` in ${link.version}` : ""),
-    link.review === "changes_requested" ? `changes requested${link.reviewer ? ` by ${link.reviewer}` : ""}` : link.review === "approved" ? "approved" : null,
-    inPin(link, pin) === false && pin ? `pin is ${pin}` : null,
-    link.via ? `through ${link.via}` : null,
+    link.version ? (inPin(link, pin) === false && pin ? `${link.version}, pin is ${pin}` : link.version) : null,
+    link.reviewer && link.review ? link.reviewer : null,
   ].filter(Boolean);
   return (
-    <li title={link.title}>
-      <a href={link.url} target="_blank" rel="noreferrer">
-        {link.ref}
-      </a>{" "}
-      <span>{facts.join(" · ")}</span> <span className={styles.ledgerLinkTitle}>{link.title}</span>
-    </li>
+    <div className={styles.blockedItem}>
+      <span aria-hidden className={styles.blockedDot} data-tone={status.tone} />
+      <a className={styles.blockedTitle} href={link.url} target="_blank" rel="noreferrer" title={link.title}>
+        {link.title}
+      </a>
+      <span className={styles.blockedPill} data-tone={status.tone}>
+        {status.text}
+      </span>
+      <span className={styles.blockedMeta}>{meta.join(" · ")}</span>
+    </div>
   );
 }
 
 /**
- * What holds an open PR, from GitHub's records only: how long it has been
- * open, its last review, and the PRs and issues linked to it, what is still
- * open first. Nothing here reads the meaning of a comment.
+ * What holds an open PR, as one card, from GitHub's records only: how long
+ * it has been open and why (its checks' cause, its last review), then the
+ * work linked to it as a tree, what is still open first. Nothing here reads
+ * the meaning of a comment.
  */
-function Blocked({ blocked, referenceMs }: { blocked: BlockedBrief; referenceMs: number }) {
-  const facts = [
-    `open ${span(Math.max(0, referenceMs - Date.parse(blocked.since)))}`,
-    blocked.review ? `${blocked.review.state.replaceAll("_", " ")} by ${blocked.review.by}, ${SHORT_DAY.format(new Date(blocked.review.at))}` : "no review yet",
-    blocked.comments.count ? `${blocked.comments.count} comments${blocked.comments.lastAt ? `, last ${SHORT_DAY.format(new Date(blocked.comments.lastAt))}` : ""}` : null,
-  ].filter(Boolean);
-  const lines: Array<[string, PrLink[]]> = [
-    ["Waits on", blocked.waits],
-    ["Not in the pin", blocked.unpinned],
-    ["Done", blocked.done],
-  ];
+function Blocked({
+  blocked,
+  checks,
+  pr,
+  referenceMs,
+}: {
+  blocked: BlockedBrief;
+  checks: string | null;
+  pr: { label: string; url: string } | null;
+  referenceMs: number;
+}) {
+  const review = blocked.review
+    ? `${blocked.review.state === "changes_requested" ? "Changes requested" : blocked.review.state === "approved" ? "Approved" : blocked.review.state.replaceAll("_", " ")} by ${blocked.review.by} · ${SHORT_DAY.format(new Date(blocked.review.at))}`
+    : "No review yet";
+  const comments = blocked.comments.count
+    ? `${blocked.comments.count} comments${blocked.comments.lastAt ? `, last ${SHORT_DAY.format(new Date(blocked.comments.lastAt))}` : ""}`
+    : null;
+  const tree = linkTree(blocked);
   return (
-    <>
-      <p className={styles.ledgerNow}>
-        <span className={styles.ledgerLabel}>PR</span>
-        <span>{facts.join(" · ")}</span>
-      </p>
-      {lines
-        .filter(([, links]) => links.length)
-        .map(([label, links]) => (
-          <div key={label} className={styles.ledgerNow}>
-            <span className={styles.ledgerLabel}>{label}</span>
-            <ul className={styles.ledgerLinks} aria-label={label}>
-              {links.map((link) => (
-                <LinkedItem key={link.ref} link={link} pin={blocked.pin} />
-              ))}
-            </ul>
-          </div>
-        ))}
-    </>
+    <section className={styles.blocked} aria-label="What holds the PR">
+      <header className={styles.blockedHead}>
+        <p className={styles.blockedHeadline}>
+          <span>Blocked for {openFor(Math.max(0, referenceMs - Date.parse(blocked.since)))}</span>
+          <span className={styles.blockedCause}>{blocked.cause}</span>
+        </p>
+        {pr && (
+          <a href={pr.url} target="_blank" rel="noreferrer">
+            {pr.label} ↗
+          </a>
+        )}
+        {checks && (
+          <p className={styles.blockedDetail} title={checks}>
+            {checks}
+          </p>
+        )}
+        <p className={styles.blockedDetail}>{[review, comments].filter(Boolean).join(" · ")}</p>
+      </header>
+      {tree.length > 0 && (
+        <div className={styles.blockedTree}>
+          <p className={styles.ledgerLabel}>Linked work</p>
+          <ul aria-label="Linked work">
+            {tree.map(({ link, children }) => (
+              <li key={link.ref}>
+                <LinkedItem link={link} pin={blocked.pin} />
+                {children.length > 0 && (
+                  <ul className={styles.blockedChildren}>
+                    {children.map((child) => (
+                      <li key={child.ref}>
+                        <LinkedItem link={child} pin={blocked.pin} />
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
   );
 }
 
