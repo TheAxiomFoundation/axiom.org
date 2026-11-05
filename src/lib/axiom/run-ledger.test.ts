@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { runRow, runRows } from "./encoding-pipeline-runs";
 import { causeHeadline, newestDocuments, readableTitle, runLedger, runModules, runPhases, sectionBrief, sectionOverview, sectionStatus } from "./run-ledger";
-import { dependentAttempt, mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
+import { dependentAttempt, mergedAttempt, outsideAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 
 const day = (n: number) => `2026-09-${String(n).padStart(2, "0")}T10:00:00Z`;
 
@@ -349,6 +349,41 @@ describe("sectionBrief of a PR that waits on linked work", () => {
       ["axiom-encode#2059"],
       ["axiom-encode#2058"],
     ]);
+  });
+});
+
+describe("one merge, one record", () => {
+  it("keeps one record of a merge into main, judges its tests once, and reads main's state past a failed re-encode", () => {
+    const citation = "us/statute/7/2017/a";
+    const rows = runRows([
+      // The run's PR merged into a side branch; the side branch reached main at commit c.
+      mergedAttempt({
+        id: "run",
+        citation,
+        dispatched_at: "2026-09-20T10:00:00Z",
+        pr_number: 1412,
+        pr_base_branch: "fix/side",
+        pr_targets_default: false,
+        pr_via_number: 1392,
+        pr_via_state: "merged",
+        pr_via_merged_at: "2026-09-25T20:11:00Z",
+        pr_via_merge_commit: "c",
+        tests_status: "pass",
+        tests_first_status: "pass",
+      }),
+      // The side branch's own PR, recorded as a merge outside the pipeline at the same commit, under today's waiver.
+      outsideAttempt({ citation, pr_number: 1392, pr_merge_commit: "c", pr_merged_at: "2026-09-25T20:11:00Z", tests_status: "waived", tests_first_status: "pass" }),
+      // A re-encode since, which failed in setup.
+      pipelineAttempt({ id: "re", citation, dispatched_at: "2026-10-19T12:53:00Z", failed_step: "setup" }),
+    ]);
+    const [section] = runLedger(rows)[0].documents[0].sections;
+    expect(section.runs.map((r) => r.id)).toEqual(["re", "run"]);
+    expect(section.status).toBe("Tests waived");
+    const brief = sectionBrief(section);
+    expect(brief.headline).toBe("In main · merged rulespec-us#1412 · tests waived");
+    expect(brief.now?.text).toMatch(/^Re-encode on Oct 19 — /);
+    // The merge mark is judged at the merge.
+    expect(brief.marks.map((m) => m.tone)).toEqual(["done", "failed"]);
   });
 });
 

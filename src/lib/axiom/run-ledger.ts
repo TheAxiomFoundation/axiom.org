@@ -85,6 +85,8 @@ export function sectionStatus(latest: RunRow): { status: string; tone: LedgerTon
       : { status: "Merged into another branch", tone: "failed" };
   }
   if (latest.tests === "pass") return { status: "Tests pass", tone: "done" };
+  // In main under a validation waiver: its shard skips it, so nothing vouches for it.
+  if (latest.tests === "waived") return { status: "Tests waived", tone: "waiting" };
   if (latest.tests === "fail") return { status: "Tests fail", tone: "failed" };
   if (latest.index === "missing") return { status: "Not indexed", tone: "failed" };
   return { status: "In main", tone: "waiting" };
@@ -127,7 +129,8 @@ export function runLedger(
   for (const row of rows) bySection.set(row.citation, [...(bySection.get(row.citation) ?? []), row]);
 
   const documents = new Map<string, LedgerDocument & { jurisdiction: string }>();
-  for (const [citation, runs] of bySection) {
+  for (const [citation, all] of bySection) {
+    const runs = oneRecordPerMerge(all);
     // Newest first by when each happened: a PR merged outside the pipeline counts from its merge.
     const sorted = [...runs].sort((a, b) => (b.at ?? b.dispatchedAt).localeCompare(a.at ?? a.dispatchedAt));
     const latest = sorted[0];
@@ -147,7 +150,7 @@ export function runLedger(
       citation,
       designator: isDocument ? (key.split("/").pop() ?? key) : within,
       label: isDocument ? deepestLabelForCitation(citation, labels) : sectionLabelForCitation(citation, labels),
-      ...sectionStatus(latest),
+      ...sectionStatus(standing(sorted)),
       lastAt: latest.at ?? latest.dispatchedAt,
       runs: sorted,
       encodedWith: latest.source === "dependent" ? (latest.host?.citation ?? null) : null,
@@ -213,6 +216,39 @@ function withModulesUnderHost(sections: LedgerSection[]): LedgerSection[] {
     out.push(...sections.filter((module) => hostOf(module) === section.citation).sort((a, b) => a.citation.localeCompare(b.citation)));
   }
   return out;
+}
+
+/**
+ * One record of each merge into main, and one judgment of its tests now. A
+ * side branch's own PR is also recorded as a merge outside the pipeline;
+ * when a run of the section reached main at the same commit, that record is
+ * the same merge, and it goes. A waiver on the module counts for every
+ * record of the commit: the module is waived on main, whichever record says so.
+ */
+function oneRecordPerMerge(rows: RunRow[]): RunRow[] {
+  const byCommit = new Map<string, RunRow[]>();
+  for (const row of rows) if (row.mainCommit) byCommit.set(row.mainCommit, [...(byCommit.get(row.mainCommit) ?? []), row]);
+  const drop = new Set<RunRow>();
+  const waived = new Set<string>();
+  for (const [commit, records] of byCommit) {
+    if (records.some((row) => row.tests === "waived")) waived.add(commit);
+    if (records.some((row) => row.source !== "outside")) for (const row of records) if (row.source === "outside") drop.add(row);
+  }
+  return rows
+    .filter((row) => !drop.has(row))
+    .map((row) => (row.mainCommit && waived.has(row.mainCommit) && row.tests !== "waived" ? { ...row, tests: "waived" as const } : row));
+}
+
+/**
+ * The run a section's status reads: the latest, unless the section is in
+ * main and only re-encodes ran since. A re-encode that failed leaves main as
+ * it was, so main's state is the section's; the panel tells of the re-encode.
+ */
+function standing(sorted: RunRow[]): RunRow {
+  const latest = sorted[0];
+  const inMain = sorted.find((run) => run.merged === "main");
+  if (!inMain || inMain === latest) return latest;
+  return latest.outcome === "failed" || latest.outcome === "cancelled" ? inMain : latest;
 }
 
 /**
@@ -476,9 +512,13 @@ export function sectionBrief(section: LedgerSection): SectionBrief {
   const done = runs.find((run) => sectionStatus(run).tone === "done");
   const merged = runs.filter((run) => run.merged === "main").length;
   const oldest = runs[runs.length - 1];
+  // In main under a waiver: merged and passed at the merge, a defect found since.
+  const inMain = done ? null : runs.find((run) => run.merged === "main" && run.tests === "waived");
   const headline = done
     ? ["Encoded", done.pr ? `merged ${done.pr.label}` : null, "tests pass"].filter(Boolean).join(" · ")
-    : `Not encoded yet · ${runs.length} ${runs.length === 1 ? "run" : "runs"}${runs.length > 1 ? ` since ${day(oldest.at ?? oldest.dispatchedAt)}` : ""}, ${merged ? `${merged} merged` : "none merged"}`;
+    : inMain
+      ? ["In main", inMain.pr ? `merged ${inMain.pr.label}` : null, sectionStatus(inMain).status.toLowerCase()].filter(Boolean).join(" · ")
+      : `Not encoded yet · ${runs.length} ${runs.length === 1 ? "run" : "runs"}${runs.length > 1 ? ` since ${day(oldest.at ?? oldest.dispatchedAt)}` : ""}, ${merged ? `${merged} merged` : "none merged"}`;
 
   // A failure that came back while the section is stuck: the same stop and
   // cause in two runs or more since its last run that passed, with the newest
@@ -494,15 +534,19 @@ export function sectionBrief(section: LedgerSection): SectionBrief {
 
   const marks = [...runs].reverse().map((run): RunMark => {
     const { status, tone } = sectionStatus(run);
+    // A merge is judged at the merge: what came after (a waiver) is the section's status, not the mark's.
+    const passedAtMerge = run.merged === "main" && run.testsFirst === "pass";
     return {
       id: run.id,
-      tone: run.outcome === "cancelled" ? "cancelled" : tone,
-      title: `${day(run.at ?? run.dispatchedAt)} · ${status}${stopCause(run) ? `: ${stopCause(run)}` : ""}`,
+      tone: run.outcome === "cancelled" ? "cancelled" : passedAtMerge ? "done" : tone,
+      title: passedAtMerge && tone !== "done"
+        ? `${day(run.at ?? run.dispatchedAt)} · Merged; tests passed at the merge (${status.toLowerCase()} now)`
+        : `${day(run.at ?? run.dispatchedAt)} · ${status}${stopCause(run) ? `: ${stopCause(run)}` : ""}`,
       url: run.pr && run.outcome === "encoded" ? run.pr.url : run.runUrl,
     };
   });
 
-  return { encoded: !!done, headline, now: done ? reencode(latest, done) : nextStep(latest), repeated, checks: done ? null : failingChecks(latest), blocked: done ? null : blockedBrief(latest), marks, phases: runPhases(runs, marks) };
+  return { encoded: !!done, headline, now: done ? reencode(latest, done) : inMain && inMain !== latest ? reencode(latest, inMain) : nextStep(latest), repeated, checks: done ? null : failingChecks(latest), blocked: done ? null : blockedBrief(latest), marks, phases: runPhases(runs, marks) };
 }
 
 /** For an encoded section: a later run is a re-encode, and its outcome does not undo the merged encoding. */

@@ -17,6 +17,7 @@ import {
   errorMessage,
   failureReason,
   hostCitations,
+  mainMergeCommit,
   mainMergedAt,
   reachedMain,
   viaPrLabel,
@@ -107,6 +108,8 @@ export interface RunRow {
   merged: "main" | "off main" | null;
   /** When the change reached main: the PR's merge, or its side branch's. */
   mainMergedAt: string | null;
+  /** The commit the change reached main at: two records of one merge share it. */
+  mainCommit: string | null;
   /** For a merge into a side branch: that branch's own PR into main. */
   via: { label: string; url: string | null; state: NonNullable<PipelineAttempt["pr_via_state"]> } | null;
   index: "indexed" | "missing" | "awaiting" | null;
@@ -263,6 +266,7 @@ export function runRow(dispatch: PipelineAttempt, hosts: Map<string, string> = n
     purpose: attempt.dispatch_inputs ? { replaces: attempt.dispatch_inputs.replace_path, finding: attempt.dispatch_inputs.review_finding } : null,
     merged,
     mainMergedAt: mainMergedAt(attempt),
+    mainCommit: mainMergeCommit(attempt),
     via:
       viaLabel && attempt.pr_via_state
         ? { label: viaLabel, url: attempt.pr_via_url ?? null, state: attempt.pr_via_state }

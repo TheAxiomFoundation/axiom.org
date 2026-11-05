@@ -338,6 +338,12 @@ export function mainMergedAt(attempt: PipelineAttempt): string | null {
   return attempt.pr_targets_default === false ? (attempt.pr_via_merged_at ?? null) : attempt.pr_merged_at;
 }
 
+/** The commit the change reached the default branch at: the PR's merge, or its side branch's. */
+export function mainMergeCommit(attempt: PipelineAttempt): string | null {
+  if (!reachedMain(attempt)) return null;
+  return attempt.pr_targets_default === false ? (attempt.pr_via_merge_commit ?? null) : (attempt.pr_merge_commit ?? null);
+}
+
 /** The side branch's own PR, as "rulespec-us#911". */
 export function viaPrLabel(attempt: PipelineAttempt): string | null {
   if (attempt.pr_via_number == null) return null;
