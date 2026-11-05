@@ -30,10 +30,9 @@ describe("PipelineLedger", () => {
     const ledger = await screen.findByRole("table");
     const us = { name: "Runs of us/statute/7/2015/f" };
     const nz = { name: "Runs of nz/statute/act/public/2018/0032/section/75" };
-    // One jurisdiction in scope: its rows, and no band that repeats the subtitle.
+    expect(within(ledger).getByRole("rowheader", { name: "US Federal" })).toBeInTheDocument();
     expect(within(ledger).getByRole("button", us)).toBeInTheDocument();
     expect(within(ledger).queryByRole("button", nz)).not.toBeInTheDocument();
-    expect(within(ledger).queryByRole("rowheader")).not.toBeInTheDocument();
     const jurisdiction = screen.getByRole("combobox", { name: "Jurisdiction" });
     fireEvent.change(jurisdiction, { target: { value: "nz" } });
     expect(within(ledger).getByRole("button", nz)).toBeInTheDocument();

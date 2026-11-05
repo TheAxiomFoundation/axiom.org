@@ -5,7 +5,7 @@ import { ChevronRight } from "lucide-react";
 import styles from "./ops-dashboard.module.css";
 import { relativeTime } from "./ops-dashboard";
 import { Explain } from "./explain";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableRow } from "@/components/ui/table";
 import { inScope, scopeName as nameOfScope, type PipelineScope } from "@/lib/axiom/encoding-pipeline-insights";
 import { opsHref } from "@/lib/axiom/ops-href";
 import { ScopeNav } from "@/components/ops/flow/scope-nav";
@@ -182,41 +182,37 @@ export function PipelineLedger({
       ) : (
         <>
           <Table className={styles.ledgerTable}>
-            <TableHeader>
-              <TableRow className="border-b border-[var(--color-rule)] hover:bg-transparent">
-                <TableHead className="h-8 w-[34%] px-0 font-mono text-[10px] font-normal uppercase tracking-wider text-[var(--color-ink-muted)]">
-                  Section
-                </TableHead>
-                <TableHead className={`${styles.ledgerWide} h-8 px-2 font-mono text-[10px] font-normal uppercase tracking-wider text-[var(--color-ink-muted)]`}>
-                  Provision
-                </TableHead>
-                <TableHead className={`${styles.ledgerWide} h-8 w-40 px-2 font-mono text-[10px] font-normal uppercase tracking-wider text-[var(--color-ink-muted)]`}>
-                  Bundle
-                </TableHead>
-                <TableHead className="h-8 w-36 px-2 font-mono text-[10px] font-normal uppercase tracking-wider text-[var(--color-ink-muted)]">
-                  <span className="inline-flex items-center gap-1.5">
-                    Status
-                    <StatusLegend />
-                  </span>
-                </TableHead>
-                <TableHead className={`${styles.ledgerWide} h-8 w-16 px-2 text-right font-mono text-[10px] font-normal uppercase tracking-wider text-[var(--color-ink-muted)]`}>
-                  Runs
-                </TableHead>
-                <TableHead className="h-8 w-20 px-0 text-right font-mono text-[10px] font-normal uppercase tracking-wider text-[var(--color-ink-muted)]">
-                  Last run
-                </TableHead>
-              </TableRow>
-            </TableHeader>
             {newestDocuments(ledger, shown).map((jurisdiction) => (
               <TableBody key={jurisdiction.code}>
-                {/* One jurisdiction in scope: the subtitle names it, and a band would only repeat it. */}
-                {ledger.length > 1 && (
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead colSpan={6} scope="rowgroup" className={styles.jurisdictionBand}>
-                      {jurisdiction.name}
-                    </TableHead>
-                  </TableRow>
-                )}
+                <TableRow className="hover:bg-transparent">
+                  <TableHead colSpan={6} scope="rowgroup" className={styles.jurisdictionBand}>
+                    {jurisdiction.name}
+                  </TableHead>
+                </TableRow>
+                {/* Each jurisdiction's own column labels, under its name. */}
+                <TableRow className="border-b border-[var(--color-rule)] hover:bg-transparent">
+                  <TableHead scope="col" className="h-8 w-[34%] px-0 font-mono text-[10px] font-normal uppercase tracking-wider text-[var(--color-ink-muted)]">
+                    Section
+                  </TableHead>
+                  <TableHead scope="col" className={`${styles.ledgerWide} h-8 px-2 font-mono text-[10px] font-normal uppercase tracking-wider text-[var(--color-ink-muted)]`}>
+                    Provision
+                  </TableHead>
+                  <TableHead scope="col" className={`${styles.ledgerWide} h-8 w-40 px-2 font-mono text-[10px] font-normal uppercase tracking-wider text-[var(--color-ink-muted)]`}>
+                    Bundle
+                  </TableHead>
+                  <TableHead scope="col" className="h-8 w-36 px-2 font-mono text-[10px] font-normal uppercase tracking-wider text-[var(--color-ink-muted)]">
+                    <span className="inline-flex items-center gap-1.5">
+                      Status
+                      <StatusLegend />
+                    </span>
+                  </TableHead>
+                  <TableHead scope="col" className={`${styles.ledgerWide} h-8 w-16 px-2 text-right font-mono text-[10px] font-normal uppercase tracking-wider text-[var(--color-ink-muted)]`}>
+                    Runs
+                  </TableHead>
+                  <TableHead scope="col" className="h-8 w-20 px-0 text-right font-mono text-[10px] font-normal uppercase tracking-wider text-[var(--color-ink-muted)]">
+                    Last run
+                  </TableHead>
+                </TableRow>
                 {jurisdiction.documents.map((document) => (
                   <DocumentSections
                     key={document.key}

@@ -729,22 +729,20 @@
   border-color: var(--color-rule);
 }
 
-/* A jurisdiction opens with a rule and its name as a small label, so it
-   groups the documents under it without competing with their titles; only
-   when several jurisdictions are listed. */
+/* A jurisdiction opens with a strong rule and a large name, so the
+   country breaks stand apart from the lighter document rows under them;
+   its column labels follow under the name. */
 .ledgerTable .jurisdictionBand {
-  padding: 18px 24px 8px;
-  vertical-align: bottom;
+  padding: 22px 24px;
+  vertical-align: middle;
   background: var(--color-paper-elevated);
   border-top: 2px solid var(--color-ink);
   border-bottom: 1px solid var(--color-rule);
-  color: var(--color-ink-secondary);
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  line-height: 1.3;
-  text-transform: uppercase;
+  color: var(--color-ink);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
 }
 
 .ledgerTable tbody:first-of-type .jurisdictionBand {
