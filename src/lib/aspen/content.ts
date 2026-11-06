@@ -112,7 +112,7 @@ export const STAGES: readonly Stage[] = [
     label: "Next steps",
     title: "Next steps",
     agenda: "A short form for states that want to go further.",
-    // The TV's Next steps is one slide, the ask and the form, with no line under the heading (Oct 26).
+    // The TV's Next steps is two slides, the tiers, then the ask and the form, with no line under the heading (Oct 26).
     summary: "",
     phoneSummary: "Tell us if your state wants to go further.",
   },
@@ -1029,7 +1029,7 @@ export function liveDemoUrl(): string {
 
 /** The same rules for every system: what one shared set of rules gives each group. */
 export const SAME_RULES = {
-  /** Shared foundation 5/6's heading: after the journey, what the rules let a government do (Oct 26). */
+  /** Shared foundation 7/7's heading: after the journey, what the rules let a government do (Oct 26). */
   heading: "What does one set of open rules enable for governments?",
   /** Under the governments boxes, leading into Small groups. */
   prompt: "What other ideas do you have?",
@@ -1065,14 +1065,17 @@ export function percent(part: number, whole: number): number {
 // The fix
 // ---------------------------------------------------------------------------
 
-/** What makes the one set of rules checkable: the dark box on Shared foundation 1/4. */
+/** What makes the one set of rules checkable: the open box on Shared foundation 3/7 to 5/7, the rules slides. */
 export const FOUNDATION_TRAITS = [
   "Every value is built to cite the provision it comes from",
   "Every change carries its effective date",
   "Every release is versioned, so you can see what changed",
 ] as const;
 
-/** Under the boxes on Shared foundation 1/4, emphasized as in the main deck's value proposition. */
+/**
+ * The statement under the one set of rules, shown with the last group on Shared foundation 5/7 (it
+ * holds its place, unseen, on 3/7 and 4/7), emphasized as in the main deck's value proposition.
+ */
 export const ONE_SET_STATEMENT = {
   text: "Every system that helps people discover and enroll in economic security programs runs on the same rules,",
   accent: "reducing cost, duplication and error at once.",
@@ -1101,40 +1104,7 @@ export const ONE_SET_OF_RULES = [
   { label: "Research", detail: "Evaluators and analysts run the same rules." },
 ] as const;
 
-/**
- * The encoding pipeline, a former Shared foundation slide (off the deck since the dry run, Oct 25; the journey covers it).
- * Copied from the InnovateUS deck (axiom-slides, public/decks/innovateus-2026-10,
- * slide 12; axiom.org/slides/innovateus-2026-10#12), wording unchanged. Each
- * step's small illustration lives with the slide; its text lives here.
- */
-export const ENCODING_PIPELINE = {
-  heading: "The encoding pipeline",
-  lead:
-    "We take the law from its official sources, encode it rule by rule, and apply each rule only after its required checks pass. " +
-    "An AI judge flags issues for review. Every value keeps the citation it came from. " +
-    "One artifact then serves every surface, from a chatbot to a government rules engine.",
-  steps: [
-    { name: "Intake", caption: "Hundreds of official sources", foot: "Goal: keep every version" },
-    { name: "Corpus", caption: "The whole law, word for word", foot: null },
-    { name: "Encoding loop", caption: "Drafted, checked, redrafted", foot: "↺ Applied only when required checks pass" },
-    { name: "RuleSpec", caption: "One rule, fully cited", foot: null },
-    { name: "Graph", caption: "The spec becomes a node", foot: "Typed · cited · executable" },
-    { name: "Compile and serve", caption: "One artifact, every surface", foot: null },
-  ],
-  sources: ["eCFR", "USLM", "state codes ×47", "policy manuals"],
-  checks: [
-    { label: "deterministic", required: true },
-    { label: "comparison models, where available", required: true },
-    { label: "AI judge, advisory", required: false },
-  ],
-  surfaces: [
-    { name: "Chatbot", who: "AI labs" },
-    { name: "Rules engine", who: "government" },
-    { name: "API/MCP", who: "builders" },
-  ],
-} as const;
-
-/** Shared foundation 4/4's heading. */
+/** Next steps 1/2's heading, over the tiers (Oct 26). */
 export const BUILD_HEADING = "How do we build one open set of rules?";
 
 /**
@@ -1175,27 +1145,6 @@ export const GOLDEN_A = [
     medal: "gold",
   },
 ] as const;
-
-/**
- * The ask, shown just before the next-steps form: what Silver A takes from
- * a state, and what it never asks for. From Max's Aspen prototype spec
- * (axiom-audiences docs/aspen-page-spec.md).
- */
-export const SILVER_ASK = {
-  title: "Validate and open rules with us",
-  lead: "Silver A is the first step. Gold A is the destination.",
-  takes: [
-    "3–5 people across policy, operations and technology, a few hours a month.",
-    "Manuals, guidance, test cases and access to legacy rules code.",
-    "One multi-day on-site session.",
-  ],
-  guardrails: [
-    "No production integration.",
-    "No client personal information.",
-    "No commitment to buy.",
-    "Your reviewers are the final authority.",
-  ],
-} as const;
 
 export const NEXT_STEPS = {
   ask: "Work with us. Your partnership is the path to solving this nationally.",

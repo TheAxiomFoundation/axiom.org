@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { newerControl } from "@/lib/aspen/control";
 import type { Control } from "@/lib/aspen/types";
 import type { RunSummary } from "@/lib/aspen/results";
 
@@ -35,6 +36,10 @@ const TAB = Math.random().toString(36).slice(2);
 let claimed = false;
 // Whether its claim is written, so other tabs can see it.
 let holding = false;
+// How many times enterRun has moved this page from one run to another (runSwitches).
+let switches = 0;
+// The run enterRun last entered, for a page whose storage can't be read (blocked): recordedRun.
+let runInMemory: string | null = null;
 
 function newId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -86,15 +91,21 @@ export function writeStored(key: string, value: unknown, session = false) {
 /**
  * Ties this device's saved chat, Rate it answers and vote to the room's
  * run. When the presenter starts a new run (after a rehearsal), a device
- * that saved them under the old run drops them, so a test phone starts
+ * that was in the old run drops what it saved there, so a test phone starts
  * clean at the event. A device with no recorded run adopts the current one
- * and keeps what it has. Returns true when it dropped anything.
+ * and keeps what it has. Returns true when it moved the device from one run
+ * to another, whether or not it had anything to drop, so the page starts
+ * the new run afresh (aspen-app's runEpoch); and when it dropped anything
+ * though it couldn't record the new run (storage full), once. A page whose
+ * storage is blocked keeps the run in memory (recordedRun), so each move
+ * counts there too.
  */
 export function enterRun(runId: string): boolean {
   if (heldElsewhere()) return false;
-  const previous = readStored<string>(RUN_KEY);
+  const previous = recordedRun();
   if (previous === runId) return false;
   writeStored(RUN_KEY, runId);
+  runInMemory = runId;
   if (previous === null) return false;
   let dropped = false;
   for (const key of [CHAT_KEY, OVERALL_KEY, VOTE_KEY, RATING_KEY, PLEDGE_KEY, ...RETIRED_KEYS]) {
@@ -106,7 +117,51 @@ export function enterRun(runId: string): boolean {
       // Blocked storage holds nothing to drop.
     }
   }
-  return dropped;
+  // Storage too full to keep the room's row (roomFrom) may have room now.
+  storeRoomAgain();
+  // A move counts once the new run is recorded: a device that can't record it would otherwise move
+  // again at every poll.
+  const moved = dropped || recordedRun() === runId;
+  if (moved) switches += 1;
+  return moved;
+}
+
+/**
+ * The run enterRun last recorded on this device: in storage, or, where storage can't be read
+ * (blocked), in this page's memory. Without it a phone with blocked storage would adopt every run
+ * afresh, never count a switch, and keep the old run's form and chat on screen (the review of #376).
+ */
+function recordedRun(): string | null {
+  let raw: string | null;
+  try {
+    raw = window.localStorage.getItem(RUN_KEY);
+  } catch {
+    return runInMemory;
+  }
+  try {
+    const run: unknown = raw ? JSON.parse(raw) : null;
+    return typeof run === "string" ? run : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The run this device's saved answers belong to (what enterRun last recorded), or null before it has seen a live one. */
+export function currentRun(): string | null {
+  return recordedRun();
+}
+
+/**
+ * A count that goes up each time enterRun moves the device from one run to
+ * another, which is when the page remounts what the old run showed
+ * (aspen-app's runEpoch). Something that opened under one count and sees
+ * another is from a run the device has left, even before the remount
+ * reaches it, whether or not that run had saved anything (the review of
+ * #376). Adopting a run, on a device that had none, leaves the count alone:
+ * what such a device saved, or sent, belongs to the run it adopts.
+ */
+export function runSwitches(): number {
+  return switches;
 }
 
 /**
@@ -207,17 +262,35 @@ export function saveMark(rev: number): string {
   return `${rev}:${TAB}`;
 }
 
+/**
+ * Posts JSON and returns the status and the answer's body ({} when the body
+ * is not JSON). With `timeoutMs`, a request that neither answers nor fails in
+ * time is aborted and rejects, as a dropped connection does, whether it
+ * stalls waiting for the answer or while reading it.
+ */
 export async function postJson<T = Record<string, unknown>>(
   url: string,
   body: unknown,
+  timeoutMs?: number,
 ): Promise<{ ok: boolean; status: number; data: T }> {
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const data = (await response.json().catch(() => ({}))) as T;
-  return { ok: response.ok, status: response.status, data };
+  const controller = timeoutMs ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : undefined;
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      ...(controller ? { signal: controller.signal } : {}),
+    });
+    const data = (await response.json().catch((error: unknown) => {
+      // A body the timeout cuts off is a failed request, not an empty answer.
+      if (controller?.signal.aborted) throw error;
+      return {};
+    })) as T;
+    return { ok: response.ok, status: response.status, data };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** How long a save may take before it counts as failed, so one stalled request never holds up the taps after it. */
@@ -257,36 +330,50 @@ export function sendEvent(kind: string, payload: Record<string, unknown>, stage?
 }
 
 /**
- * How long a poll of the room may take before it counts as failed. A request
- * that stalls on venue Wi-Fi then never holds a phone that just joined on
- * Welcome, or stops a phone following the room (the review of #370).
+ * How long a poll of the room, or the presenter's move of it, may take before
+ * it counts as failed. A request that stalls on venue Wi-Fi then never holds a
+ * phone that just joined on Welcome, stops a phone following the room, or
+ * keeps the TV from syncing while a move hangs (the reviews of #370).
  */
 export const CONTROL_TIMEOUT_MS = 8_000;
 
 /**
  * Polls a JSON endpoint while `enabled`; keeps the last good value. With
  * `timeoutMs`, a request that neither answers nor fails in time is aborted,
- * counts as failed, and the next poll runs on schedule.
+ * counts as failed, and the next poll runs on schedule; leaving the page, or
+ * a new url, aborts the request in flight and its timer at once. `onData`
+ * gets each good value as it arrives, before the next render.
  */
-export function usePoll<T>(url: string | null, intervalMs: number, timeoutMs?: number): { data: T | null; failed: boolean } {
+export function usePoll<T>(
+  url: string | null,
+  intervalMs: number,
+  timeoutMs?: number,
+  onData?: (data: T) => void,
+): { data: T | null; failed: boolean } {
   const [data, setData] = useState<T | null>(null);
   const [failed, setFailed] = useState(false);
   const urlRef = useRef(url);
   urlRef.current = url;
+  const onDataRef = useRef(onData);
+  onDataRef.current = onData;
 
   useEffect(() => {
     if (!url) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    // The request in flight, when it can be aborted, and its timeout.
+    let inFlight: { controller: AbortController; abort?: ReturnType<typeof setTimeout> } | null = null;
     const tick = async () => {
       const controller = timeoutMs ? new AbortController() : null;
       const abort = controller ? setTimeout(() => controller.abort(), timeoutMs) : undefined;
+      inFlight = controller ? { controller, abort } : null;
       try {
         const response = await fetch(url, controller ? { cache: "no-store", signal: controller.signal } : { cache: "no-store" });
         if (!response.ok) throw new Error(String(response.status));
         // A body the timeout cuts off throws here, so it counts as failed.
         const next = (await response.json()) as T;
         if (!cancelled && urlRef.current === url) {
+          onDataRef.current?.(next);
           setData(next);
           setFailed(false);
         }
@@ -294,6 +381,7 @@ export function usePoll<T>(url: string | null, intervalMs: number, timeoutMs?: n
         if (!cancelled) setFailed(true);
       } finally {
         clearTimeout(abort);
+        inFlight = null;
       }
       if (!cancelled) timer = setTimeout(tick, document.hidden ? intervalMs * 3 : intervalMs);
     };
@@ -301,14 +389,121 @@ export function usePoll<T>(url: string | null, intervalMs: number, timeoutMs?: n
     return () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
+      if (inFlight) {
+        clearTimeout(inFlight.abort);
+        inFlight.controller.abort();
+      }
     };
   }, [url, intervalMs, timeoutMs]);
 
   return { data, failed };
 }
 
-export function useControl(intervalMs = 4000) {
-  return usePoll<Control>("/api/aspen/state", intervalMs, CONTROL_TIMEOUT_MS);
+export function useControl(intervalMs = 4000, onData?: (control: Control) => void) {
+  return usePoll<Control>("/api/aspen/state", intervalMs, CONTROL_TIMEOUT_MS, onData);
+}
+
+/** The newest live row of the room this device has read, and when (roomFrom). Never dropped with a run's answers. */
+const ROOM_KEY = "aspen.room";
+/**
+ * How long the newest live row a device has read outranks an older one. Each server instance keeps
+ * the row it read for two seconds (store.ts readControl), so a poll that reaches another instance can
+ * get a row older than one the device already has, for at most that long plus a poll's timeout. Held
+ * a minute, never for good: a row someone puts in the store by hand with an older stamp is followed a
+ * minute after the device followed the newer one. The minute counts either way on the device's clock,
+ * so a clock corrected by a second, on a reload say, still holds the row (the review of #376).
+ */
+export const ROOM_HOLD_MS = 60_000;
+// The row this page followed last, and when: what a reload forgets, and all a page keeps when its
+// storage is blocked or full.
+let roomInMemory: { row: Control; at: number } | null = null;
+
+function isRow(value: unknown): value is Control {
+  const row = value as Partial<Control> | null;
+  return (
+    typeof row?.runId === "string" &&
+    typeof row.stage === "string" &&
+    typeof row.live === "boolean" &&
+    (row.updatedAt === null || typeof row.updatedAt === "string")
+  );
+}
+
+/**
+ * The row a phone follows, given the one a poll just read: that row, unless it is live and older than
+ * a live row this device read in the last ROOM_HOLD_MS (in this tab or another, before a reload or
+ * after); then that newer row. So a poll that reaches a server instance still holding an older row
+ * never sends a phone back to an earlier stage, or to the run before, where enterRun would drop the
+ * answers saved in this one (the review of #376). A row that isn't live (a failed store read) passes
+ * through: the phone opens every stage, as it always has without a live room.
+ */
+export function roomFrom(row: Control, now = Date.now()): Control {
+  if (!row.live) return row;
+  const stored = storedRoom();
+  // The newer of the two: storage can hold another tab's newer row, or an older one this page couldn't
+  // replace (the review of #376).
+  const held = stored && roomInMemory ? (newerControl(roomInMemory.row, stored.row) === stored.row ? stored : roomInMemory) : (stored ?? roomInMemory);
+  // A clock corrected back puts `now` before the stamp: under a minute, the row still holds.
+  if (held?.row.live && Math.abs(now - held.at) < ROOM_HOLD_MS && newerControl(held.row, row) === held.row) {
+    return held.row;
+  }
+  keepRoom({ row, at: now });
+  return row;
+}
+
+/** The row the device's storage holds (this tab's or another's, before a reload or after), if it can be read. */
+function storedRoom(): { row: Control; at: number } | null {
+  try {
+    const raw = window.localStorage.getItem(ROOM_KEY);
+    const saved = raw ? (JSON.parse(raw) as { row?: unknown; at?: unknown }) : null;
+    return saved && isRow(saved.row) && typeof saved.at === "number" ? { row: saved.row, at: saved.at } : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Keeps the row a phone follows, in this page's memory and in storage, which holds it across a reload.
+ * Storage too full to take it gives up the older row it held, which would outlast a reload and hold the
+ * room the phone has left, and tries again in its space; enterRun tries again once it has made room.
+ */
+function keepRoom(read: { row: Control; at: number }) {
+  roomInMemory = read;
+  const value = JSON.stringify(read);
+  try {
+    window.localStorage.setItem(ROOM_KEY, value);
+    return;
+  } catch {
+    // Full, or blocked.
+  }
+  try {
+    window.localStorage.removeItem(ROOM_KEY);
+    window.localStorage.setItem(ROOM_KEY, value);
+  } catch {
+    // The page's memory holds it.
+  }
+}
+
+/** Puts the row this page follows in storage, if storage holds none: once enterRun has made room. */
+function storeRoomAgain() {
+  if (!roomInMemory || storedRoom()) return;
+  try {
+    window.localStorage.setItem(ROOM_KEY, JSON.stringify(roomInMemory));
+  } catch {
+    // Still full, or blocked.
+  }
+}
+
+/** Test hook: forgets what a page keeps in memory (the room's row and, with blocked storage, its run), as a reload does. */
+export function _resetRoom() {
+  roomInMemory = null;
+  runInMemory = null;
+}
+
+/** The room for a phone: the control polls (useControl), each through roomFrom. */
+export function useRoom(intervalMs = 4000): { data: Control | null; failed: boolean } {
+  const [room, setRoom] = useState<Control | null>(null);
+  const { failed } = useControl(intervalMs, (row) => setRoom(roomFrom(row)));
+  return { data: room, failed };
 }
 
 export interface ResultsPayload {
@@ -317,9 +512,16 @@ export interface ResultsPayload {
   summary: RunSummary;
 }
 
+/**
+ * How long a results poll may take before it counts as failed: long, since a whole run can load slowly,
+ * but not for ever, or one request that stalls on venue Wi-Fi would stop the results updating for good
+ * (the review of #376).
+ */
+export const RESULTS_TIMEOUT_MS = 60_000;
+
 export function useResults(enabled: boolean, intervalMs = 5000, runId?: string) {
   const url = enabled ? `/api/aspen/results${runId ? `?run=${encodeURIComponent(runId)}` : ""}` : null;
-  return usePoll<ResultsPayload>(url, intervalMs);
+  return usePoll<ResultsPayload>(url, intervalMs, RESULTS_TIMEOUT_MS);
 }
 
 /** "$1,234" for numbers, the raw value otherwise. */

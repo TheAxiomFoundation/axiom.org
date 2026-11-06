@@ -7,6 +7,7 @@ import type {
   PublicPledge,
   RunData,
 } from "./types";
+import { newerControl } from "./control";
 
 /**
  * Storage for the Aspen convening page. Production writes to the
@@ -20,7 +21,13 @@ import type {
 export interface AspenStore {
   kind: "supabase" | "memory";
   getControl(): Promise<Control>;
-  setControl(patch: { runId?: string; stage?: string }): Promise<Control>;
+  /**
+   * Moves the room to a stage, or starts a run, or both. With `inRun`, the run
+   * the move was made in, only while the room is still in that run: a move the
+   * presenter gave up on that reaches the store after a run switch changes
+   * nothing. Answers with the row as it is after.
+   */
+  setControl(patch: { runId?: string; stage?: string; inRun?: string }): Promise<Control>;
   upsertParticipant(row: ParticipantRow): Promise<void>;
   insertPrompt(row: PromptRow): Promise<void>;
   /**
@@ -160,23 +167,34 @@ export function createSupabaseStore(
 
   const runFilter = (runId: string) => `run_id=eq.${encodeURIComponent(runId)}`;
 
+  async function getControl(): Promise<Control> {
+    const rows = await request<ControlRow[]>("aspen_control?id=eq.live&select=run_id,stage,updated_at");
+    return toControl(rows[0]);
+  }
+
   return {
     kind: "supabase",
-    async getControl() {
-      const rows = await request<ControlRow[]>(
-        "aspen_control?id=eq.live&select=run_id,stage,updated_at",
-      );
-      return toControl(rows[0]);
-    },
+    getControl,
     async setControl(patch) {
-      const body: Record<string, string> = { updated_at: new Date().toISOString() };
+      const updatedAt = new Date().toISOString();
+      const body: Record<string, string> = { updated_at: updatedAt };
       if (patch.runId) body.run_id = patch.runId;
       if (patch.stage) body.stage = patch.stage;
+      // Only over an older row, checked in the same update: two moves whose writes land out of order
+      // leave the row on the later one, so the row always holds the newest stamp, which is how the TV
+      // orders rows (control.ts newerControl; the review of #376). A write a later one already
+      // beat changes nothing and answers with the row as it is. That holds for the whole write: a run
+      // switch that a later stage-only move beat to the row keeps the old run, so the presenter sends
+      // no move across a run switch, and sends a run switch beaten that way once more (presenter-app's
+      // move). With `inRun`, the same update also checks the row is still in that run, so a move that
+      // reaches the store after a run switch, though the presenter gave up on it before sending the
+      // switch, changes nothing (the review of #376).
+      const inRun = patch.inRun ? `&run_id=eq.${encodeURIComponent(patch.inRun)}` : "";
       const rows = await request<ControlRow[]>(
-        "aspen_control?id=eq.live&select=run_id,stage,updated_at",
+        `aspen_control?id=eq.live&updated_at=lt.${encodeURIComponent(updatedAt)}${inRun}&select=run_id,stage,updated_at`,
         { method: "PATCH", body, prefer: "return=representation" },
       );
-      return toControl(rows[0]);
+      return rows[0] ? toControl(rows[0]) : getControl();
     },
     async upsertParticipant(row) {
       await request("aspen_participants?on_conflict=id", {
@@ -255,11 +273,15 @@ export function createMemoryStore(state: MemoryState = freshMemory()): AspenStor
       return { ...state.control };
     },
     async setControl(patch) {
+      if (patch.inRun && patch.inRun !== state.control.runId) return { ...state.control };
+      // Each write is stamped after the one before, even when the clock steps back, so the TV takes
+      // the newest write for the newest row (control.ts newerControl), as the phones do.
+      const last = Date.parse(state.control.updatedAt ?? "") || 0;
       state.control = {
         ...state.control,
         ...(patch.runId ? { runId: patch.runId } : {}),
         ...(patch.stage ? { stage: patch.stage } : {}),
-        updatedAt: now(),
+        updatedAt: new Date(Math.max(Date.now(), last + 1)).toISOString(),
       };
       return { ...state.control };
     },
@@ -331,37 +353,78 @@ let controlCache: { at: number; value: Control } | null = null;
 const CONTROL_TTL_MS = 2000;
 
 /**
+ * Keeps the newer of the cached row and one the store answered with
+ * (newerControl), aged from when it was asked for. So a read that started
+ * before a write and answers after it never puts the older row back over the
+ * write's, which would send the phones polling this instance back to the old
+ * run and drop what they saved in the new one (the review of #376). Returns
+ * the row kept.
+ */
+function remember(asked: number, value: Control): Control {
+  const kept = newerControl(controlCache?.value ?? null, value);
+  if (kept === value) controlCache = { at: asked, value };
+  return kept;
+}
+
+// This instance's read of the store in flight, if any: when it was asked for, and its answer, or null if
+// the store failed. Like the cache, it is the instance's, not a store object's: each request builds its
+// own store (getStore).
+let controlRead: { asked: number; value: Promise<Control | null> } | null = null;
+
+/**
  * The active run and stage, cached for two seconds per instance so a
- * room of phones polling does not each hit the database. A store error
- * (e.g. the migration has not run yet) falls back to the default run.
+ * room of phones polling does not each hit the database: the newest row
+ * this instance has read or written. A store error (e.g. the migration
+ * has not run yet) falls back to the default run.
+ *
+ * A read asked for while this instance's last read of the store is still
+ * in flight, under two seconds after that one was asked for, takes its
+ * answer: a row no older than the cache could serve. So a slow store,
+ * whose answers would age out of the cache as they arrive, still gets one
+ * read at a time from each instance, not one per phone (the review of #376).
+ * A read that fails is not shared: a request that joined it asks the store
+ * itself. Otherwise a write route that joined a phone's failed poll would
+ * save what it was sent under the default run.
  */
 export async function readControl(store: AspenStore | null, fresh = false): Promise<Control> {
   if (!store) return { ...DEFAULT_CONTROL };
-  if (!fresh && controlCache && Date.now() - controlCache.at < CONTROL_TTL_MS) {
+  const asked = Date.now();
+  if (!fresh && controlCache && asked - controlCache.at < CONTROL_TTL_MS) {
     return controlCache.value;
   }
-  try {
-    const value = await store.getControl();
-    controlCache = { at: Date.now(), value };
-    return value;
-  } catch (error) {
-    console.error("[aspen] control read failed:", error);
-    return { ...DEFAULT_CONTROL };
+  if (!fresh && controlRead && asked - controlRead.asked < CONTROL_TTL_MS) {
+    return (await controlRead.value) ?? readControl(store, true);
   }
+  const value = (async () => {
+    try {
+      return remember(asked, await store.getControl());
+    } catch (error) {
+      console.error("[aspen] control read failed:", error);
+      return null;
+    }
+  })();
+  const read = { asked, value };
+  controlRead = read;
+  void value.finally(() => {
+    if (controlRead === read) controlRead = null;
+  });
+  return (await value) ?? { ...DEFAULT_CONTROL };
 }
 
-/** Writes the control row and refreshes this instance's cache. */
+/** Writes the control row, answers with the store's answer, and keeps it in this instance's cache if it is the newest. */
 export async function writeControl(
   store: AspenStore,
-  patch: { runId?: string; stage?: string },
+  patch: { runId?: string; stage?: string; inRun?: string },
 ): Promise<Control> {
+  const asked = Date.now();
   const value = await store.setControl(patch);
-  controlCache = { at: Date.now(), value };
+  remember(asked, value);
   return value;
 }
 
 export function _resetControlCache() {
   controlCache = null;
+  controlRead = null;
 }
 
 /** Runs a write and logs instead of throwing: a failed save never breaks the room's session. */

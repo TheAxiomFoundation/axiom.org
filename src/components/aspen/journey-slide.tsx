@@ -36,8 +36,11 @@ const clampS = (s: number) => Math.min(S_STORY, Math.max(0, s));
 /** Positions this close count as the same stop: a few pixels of trackpad drift after a step. */
 const EPS = 0.05;
 
-/** What the presenter's keys ask of the journey: true when it moved, false at its first or last caption. */
-export type JourneyControl = { next: () => boolean; back: () => boolean };
+/**
+ * What the presenter's keys ask of the journey: true when it moved, false at its first or last caption.
+ * And where it is, or is headed: a position to open it on again (`from`).
+ */
+export type JourneyControl = { next: () => boolean; back: () => boolean; at: () => number };
 
 // The homepage's paper stills (journey-lamplight.tsx): the first frame,
 // then one poster per beat.
@@ -72,6 +75,8 @@ function canAnimate(): boolean {
  *   wheel waits, so a trackpad's coasting can't cut it short.
  * - Home and End go straight to the first and last frame.
  * - Coming back from the next slide (`atEnd`) opens on the last frame.
+ * - Brought back to where it was (`from`, a position `at` gave), after a
+ *   move away from it failed, it opens there.
  * The presenter's on-screen arrows still move between slides, so the journey
  * can be skipped. A click on the picture does nothing: the homepage's links in
  * it would take the presenter's tab away. Without WebGL 2, or with reduced
@@ -82,7 +87,11 @@ function canAnimate(): boolean {
  * the slide's size on screen, in the presenter's overlay layer
  * ([data-aspen-overlay]), under its controls.
  */
-export function JourneySlide({ control, atEnd = false }: { control?: RefObject<JourneyControl | null>; atEnd?: boolean } = {}) {
+export function JourneySlide({
+  control,
+  atEnd = false,
+  from,
+}: { control?: RefObject<JourneyControl | null>; atEnd?: boolean; from?: number } = {}) {
   const slot = useRef<HTMLDivElement>(null);
   const stage = useRef<HTMLDivElement | null>(null);
   const canvas = useRef<HTMLCanvasElement | null>(null);
@@ -92,7 +101,9 @@ export function JourneySlide({ control, atEnd = false }: { control?: RefObject<J
   const bar = useRef<HTMLDivElement | null>(null);
   const director = useRef<Director | null>(null);
   /** Where the story is, in the homepage's scroll beats (0 to S_STORY). */
-  const pos = useRef(atEnd ? S_STORY : 0);
+  const pos = useRef(from ?? (atEnd ? S_STORY : 0));
+  /** Where it opened when brought back (`from`): the presenter clears `from` on its next render. */
+  const opened = useRef(from).current;
   /** A step under way: it starts on the first frame after the key. */
   const glide = useRef<{ from: number; to: number; ms: number; start: number | null } | null>(null);
   const readyRef = useRef(false);
@@ -185,7 +196,7 @@ export function JourneySlide({ control, atEnd = false }: { control?: RefObject<J
       glide.current = { from: pos.current, to, ms: stepMs(pos.current, to), start: null };
       return true;
     };
-    const mine: JourneyControl = { next: () => go(1), back: () => go(-1) };
+    const mine: JourneyControl = { next: () => go(1), back: () => go(-1), at: () => glide.current?.to ?? pos.current };
     control.current = mine;
     return () => {
       if (control.current === mine) control.current = null;
@@ -309,9 +320,14 @@ export function JourneySlide({ control, atEnd = false }: { control?: RefObject<J
           >
             {mode === "canvas" ? (
               <>
-                {/* Stepped back into, the stage waits on the last frame, not the first. */}
+                {/* Stepped back into, the stage waits on the last frame, not the first; brought back, on its own. */}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img className="jl-poster-bg" src={atEnd ? POSTER(CAPTIONS.length - 1) : STANDIN} alt="" aria-hidden />
+                <img
+                  className="jl-poster-bg"
+                  src={opened !== undefined ? (opened > 0 ? POSTER(captionAt(storyAt(opened))) : STANDIN) : atEnd ? POSTER(CAPTIONS.length - 1) : STANDIN}
+                  alt=""
+                  aria-hidden
+                />
                 <canvas ref={canvas} className={drawn ? "jl-canvas is-ready" : "jl-canvas"} role="img" aria-label={STORY_LABEL} />
                 {CAPTIONS.map((_, i) => (
                   <div

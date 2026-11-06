@@ -2,14 +2,18 @@ import { act, render, renderHook, screen, waitFor } from "@testing-library/react
 import fc from "fast-check";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  _resetRoom,
   CHAT_KEY,
   CONTROL_TIMEOUT_MS,
   OVERALL_KEY,
   PLEDGE_KEY,
   RATING_KEY,
+  RESULTS_TIMEOUT_MS,
+  ROOM_HOLD_MS,
   SAVE_TIMEOUT_MS,
   TAB_KEY,
   VOTE_KEY,
+  currentRun,
   enterRun,
   formatValue,
   heldElsewhere,
@@ -19,6 +23,8 @@ import {
   participantId,
   postJson,
   readStored,
+  roomFrom,
+  runSwitches,
   saveJson,
   sendEvent,
   useControl,
@@ -27,6 +33,8 @@ import {
   useTabHold,
   writeStored,
 } from "./client";
+
+import type { Control } from "@/lib/aspen/types";
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
@@ -147,19 +155,119 @@ describe("enterRun", () => {
     expect(readStored("aspen.run")).toBe("phoenix");
   });
 
-  it("records a new run without reporting a drop when nothing was saved", () => {
+  it("records a new run, and reports the move, even when nothing was saved to drop", () => {
     writeStored("aspen.run", "rehearsal");
-    expect(enterRun("phoenix")).toBe(false);
+    const before = runSwitches();
+    expect(enterRun("phoenix")).toBe(true);
     expect(readStored("aspen.run")).toBe("phoenix");
+    expect(runSwitches()).toBe(before + 1);
+    expect(enterRun("phoenix")).toBe(false);
+    expect(runSwitches()).toBe(before + 1);
   });
 
-  it("never throws when storage is blocked", () => {
+  it("never throws when storage is blocked, and moves no more than once when it can't record the run", () => {
     writeStored("aspen.run", "rehearsal");
+    localStorage.setItem(CHAT_KEY, "{}");
     vi.spyOn(Storage.prototype, "getItem").mockImplementation((key: string) => {
       if (key === "aspen.run") return JSON.stringify("rehearsal");
       throw new Error("blocked");
     });
     expect(enterRun("phoenix")).toBe(false);
+    vi.restoreAllMocks();
+    // Storage full: the run can't be recorded. It drops the old run's answers once, and doesn't move again
+    // at the next poll.
+    writeStored("aspen.run", "rehearsal");
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("full");
+    });
+    const before = runSwitches();
+    expect(enterRun("phoenix")).toBe(true);
+    expect(localStorage.getItem(CHAT_KEY)).toBeNull();
+    expect(enterRun("phoenix")).toBe(false);
+    expect(runSwitches()).toBe(before + 1);
+  });
+
+  it("keeps the run in the page's memory when storage is blocked, so a move from one run to another counts", () => {
+    _resetRoom();
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    const before = runSwitches();
+    expect(enterRun("rehearsal")).toBe(false);
+    expect(currentRun()).toBe("rehearsal");
+    expect(enterRun("rehearsal")).toBe(false);
+    // The room moves on: the page starts the new run afresh (the review of #376), once.
+    expect(enterRun("event")).toBe(true);
+    expect(currentRun()).toBe("event");
+    expect(enterRun("event")).toBe(false);
+    expect(runSwitches()).toBe(before + 1);
+    // A reload forgets it, as it forgets the answers: the page adopts the room's run, no move.
+    _resetRoom();
+    expect(currentRun()).toBeNull();
+    expect(enterRun("event")).toBe(false);
+    expect(runSwitches()).toBe(before + 1);
+    _resetRoom();
+  });
+
+  it("names the device's run, or none", () => {
+    expect(currentRun()).toBeNull();
+    enterRun("phoenix");
+    expect(currentRun()).toBe("phoenix");
+    localStorage.setItem("aspen.run", JSON.stringify(7));
+    expect(currentRun()).toBeNull();
+  });
+
+  it("counts a run switch exactly when it moves the device to another run, so what the old run showed knows it", () => {
+    // Invariants, for any sequence of runs entered and answers saved, with storage or with it blocked: the
+    // count goes up by one when enterRun reports a move and is otherwise unchanged; a move is from one run
+    // to another, whether or not anything was saved, and drops what was; the device's run is the last one
+    // entered; and what is saved on it after a switch was saved after that switch.
+    const getItem = Storage.prototype.getItem;
+    const peek = (key: string) => getItem.call(localStorage, key);
+    fc.assert(
+      fc.property(
+        fc.array(fc.oneof(fc.constantFrom("rehearsal", "phoenix", "tucson").map((run) => ({ run })), fc.constant({ save: true })), {
+          maxLength: 20,
+        }),
+        fc.boolean(),
+        (steps, blocked) => {
+          localStorage.clear();
+          _resetRoom();
+          vi.restoreAllMocks();
+          if (blocked) {
+            vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+              throw new Error("blocked");
+            });
+            vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+              throw new Error("blocked");
+            });
+          }
+          let entered: string | null = null;
+          for (const step of steps) {
+            const before = runSwitches();
+            if ("save" in step) {
+              writeStored(CHAT_KEY, { runId: currentRun() });
+              expect(runSwitches()).toBe(before);
+              continue;
+            }
+            const saved = peek(CHAT_KEY) !== null;
+            const moved = enterRun(step.run);
+            expect(runSwitches()).toBe(before + (moved ? 1 : 0));
+            // A move from one run to another drops what was saved; adopting a first run, or staying, is no move.
+            expect(moved).toBe(entered !== null && entered !== step.run);
+            if (moved) expect(peek(CHAT_KEY)).toBeNull();
+            else expect(peek(CHAT_KEY) !== null).toBe(saved);
+            entered = step.run;
+            expect(currentRun()).toBe(entered);
+            const chat = readStored<{ runId: string | null }>(CHAT_KEY);
+            if (chat) expect([null, entered]).toContain(chat.runId);
+          }
+        },
+      ),
+    );
   });
 });
 
@@ -182,6 +290,79 @@ describe("postJson", () => {
       vi.fn().mockResolvedValue({ ok: false, status: 502, json: () => Promise.reject(new Error("html")) }),
     );
     expect(await postJson("/api/x", {})).toEqual({ ok: false, status: 502, data: {} });
+  });
+
+  it("with a timeout, aborts a request that stalls and rejects, as a dropped connection does", async () => {
+    vi.useFakeTimers();
+    try {
+      let signal: AbortSignal | undefined;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((_url: string, init: RequestInit) => {
+          signal = init.signal ?? undefined;
+          // Like fetch, it only ends when it is aborted.
+          return new Promise<Response>((_, reject) => init.signal?.addEventListener("abort", () => reject(new Error("aborted"))));
+        }),
+      );
+      const result = postJson("/x", {}, 5000);
+      const settled = vi.fn();
+      result.then(settled, settled);
+      await vi.advanceTimersByTimeAsync(4999);
+      expect(signal?.aborted).toBe(false);
+      expect(settled).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(signal?.aborted).toBe(true);
+      await expect(result).rejects.toThrow("aborted");
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("with a timeout, rejects when the timeout cuts off the answer's body, rather than reading it as empty", async () => {
+    vi.useFakeTimers();
+    try {
+      // The headers come back at once; the body stalls until the request is aborted.
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (_url: string, init: RequestInit) => ({
+          ok: true,
+          status: 200,
+          json: () =>
+            new Promise((resolve, reject) => {
+              setTimeout(() => resolve({ stage: "try" }), 10_000);
+              init.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+            }),
+        })),
+      );
+      const result = postJson("/x", {}, 5000);
+      result.catch(() => undefined);
+      await vi.advanceTimersByTimeAsync(5000);
+      await expect(result).rejects.toThrow("aborted");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("with a timeout, answers in time as without one, and never aborts the request afterwards", async () => {
+    vi.useFakeTimers();
+    try {
+      let signal: AbortSignal | undefined;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (_url: string, init: RequestInit) => {
+          signal = init.signal ?? undefined;
+          return jsonResponse({ stage: "try" });
+        }),
+      );
+      expect(await postJson("/x", { a: 1 }, 5000)).toEqual({ ok: true, status: 200, data: { stage: "try" } });
+      // Its timer is gone: a full timeout later the request was never aborted.
+      expect(vi.getTimerCount()).toBe(0);
+      await vi.advanceTimersByTimeAsync(5001);
+      expect(signal?.aborted).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -340,11 +521,92 @@ describe("usePoll", () => {
       expect(fetchMock).toHaveBeenCalledTimes(2);
       expect(screen.getByTestId("data")).toHaveTextContent("4");
       expect(screen.getByTestId("failed")).toHaveTextContent("ok");
-      // A poll that answers in time is never aborted later.
+      // A poll that answers in time is never aborted later: a whole timeout past it, its timer is gone.
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(900);
+        await vi.advanceTimersByTimeAsync(5000 + 1);
       });
+      expect(fetchMock.mock.calls.length).toBeGreaterThan(2);
       expect(signals[1]?.aborted).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("aborts the request in flight, and clears its timer, when the page leaves", async () => {
+    vi.useFakeTimers();
+    const signals: AbortSignal[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_url: string, init: RequestInit) => {
+        signals.push(init.signal!);
+        return new Promise<Response>((_, reject) => init.signal?.addEventListener("abort", () => reject(new Error("aborted"))));
+      }),
+    );
+    try {
+      const { unmount } = render(<PollProbe url="/api/poll" interval={1000} timeout={5000} />);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+      expect(signals).toHaveLength(1);
+      expect(signals[0].aborted).toBe(false);
+      unmount();
+      expect(signals[0].aborted).toBe(true);
+      expect(vi.getTimerCount()).toBe(0);
+      // Nothing runs after it: no new request, and no state update on the unmounted probe.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10_000);
+      });
+      expect(signals).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("hands each good value to onData as it arrives, before the next render, and none from a url it left", async () => {
+    const answers: Record<string, (r: Response) => void> = {};
+    vi.stubGlobal("fetch", vi.fn((url: string) => new Promise<Response>((resolve) => (answers[url] = resolve))));
+    const seen: { n: number; rendered: string | null }[] = [];
+    function Probe({ url }: { url: string }) {
+      const { data } = usePoll<{ n: number }>(url, 1000, undefined, (value) =>
+        seen.push({ n: value.n, rendered: screen.getByTestId("data").textContent }),
+      );
+      return <span data-testid="data">{data ? String(data.n) : "none"}</span>;
+    }
+    const { rerender } = render(<Probe url="/api/a" />);
+    rerender(<Probe url="/api/b" />);
+    // Without a timeout nothing aborts the old url's request; its answer still comes, and is dropped.
+    await act(async () => {
+      answers["/api/a"](jsonResponse({ n: 1 }));
+      answers["/api/b"](jsonResponse({ n: 2 }));
+    });
+    expect(seen).toEqual([{ n: 2, rendered: "none" }]);
+    expect(screen.getByTestId("data")).toHaveTextContent("2");
+  });
+
+  it("aborts the request for the old url when the url changes", async () => {
+    vi.useFakeTimers();
+    const requests: { url: string; signal: AbortSignal }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string, init: RequestInit) => {
+        requests.push({ url, signal: init.signal! });
+        return new Promise<Response>((_, reject) => init.signal?.addEventListener("abort", () => reject(new Error("aborted"))));
+      }),
+    );
+    try {
+      const { rerender, unmount } = render(<PollProbe url="/api/a" interval={1000} timeout={5000} />);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+      rerender(<PollProbe url="/api/b" interval={1000} timeout={5000} />);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+      expect(requests.map((r) => [r.url, r.signal.aborted])).toEqual([
+        ["/api/a", true],
+        ["/api/b", false],
+      ]);
+      unmount();
     } finally {
       vi.useRealTimers();
     }
@@ -389,9 +651,11 @@ describe("useControl / useResults", () => {
     render(<ControlProbe />);
     await waitFor(() => expect(screen.getByTestId("stage")).toHaveTextContent("try"));
     expect(fetchMock.mock.calls[0][0]).toBe("/api/aspen/state");
-    // The room's poll gives up on a stalled request; the results poll never does (a whole run can load slowly).
+    // The room's poll gives up on a stalled request; the results poll does too, but only after a minute
+    // (a whole run can load slowly).
     expect(fetchMock.mock.calls[0][1]).toEqual({ cache: "no-store", signal: expect.any(AbortSignal) });
     expect(CONTROL_TIMEOUT_MS).toBeGreaterThan(4000);
+    expect(RESULTS_TIMEOUT_MS).toBeGreaterThanOrEqual(60_000);
   });
 
   it("polls results only when enabled, with an encoded run id", async () => {
@@ -410,7 +674,235 @@ describe("useControl / useResults", () => {
     render(<ResultsProbe enabled />);
     await waitFor(() => expect(screen.getByTestId("run")).toHaveTextContent("default"));
     expect(fetchMock.mock.calls[0][0]).toBe("/api/aspen/results");
-    expect(fetchMock.mock.calls[0][1]).toEqual({ cache: "no-store" });
+    expect(fetchMock.mock.calls[0][1]).toEqual({ cache: "no-store", signal: expect.any(AbortSignal) });
+  });
+});
+
+describe("roomFrom", () => {
+  const T0 = Date.parse("2026-10-27T01:00:00.000Z");
+  const row = (runId: string, stage: string, second: number | null, live = true): Control => ({
+    runId,
+    stage,
+    live,
+    updatedAt: second === null ? null : `2026-10-27T01:00:${String(second).padStart(2, "0")}.000Z`,
+  });
+  beforeEach(() => _resetRoom());
+  /** Storage as a phone may have it: working, blocked, or too full to take the room's row (reads still work). */
+  type StorageMode = "ok" | "blocked" | "full";
+  const storageIs = (mode: StorageMode) => {
+    vi.restoreAllMocks();
+    if (mode === "blocked") {
+      vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+        throw new Error("blocked");
+      });
+    }
+    if (mode !== "ok") {
+      const setItem = Storage.prototype.setItem;
+      vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (this: Storage, key: string, value: string) {
+        if (mode === "blocked" || key === "aspen.room") throw new DOMException("No room", "QuotaExceededError");
+        return setItem.call(this, key, value);
+      });
+    }
+  };
+
+  it("follows the newest live row it read in the last minute over an older one, across a reload", () => {
+    const event = row("event", "groups", 2);
+    expect(roomFrom(row("rehearsal", "welcome", 1), T0)).toEqual(row("rehearsal", "welcome", 1));
+    expect(roomFrom(event, T0 + 100)).toEqual(event);
+    // Another server instance still holds the rehearsal's row for its two seconds.
+    expect(roomFrom(row("rehearsal", "welcome", 1), T0 + 500)).toEqual(event);
+    // A reload reads the row back from storage.
+    _resetRoom();
+    expect(roomFrom(row("rehearsal", "welcome", 1), T0 + 600)).toEqual(event);
+    // A failed store read, not live, passes through, and leaves the held row as it was.
+    expect(roomFrom(row("rehearsal", "welcome", null, false), T0 + 700)).toEqual(row("rehearsal", "welcome", null, false));
+    expect(roomFrom(row("rehearsal", "welcome", 1), T0 + 800)).toEqual(event);
+    // Held a minute from when it was last read, then an older row is the room's again.
+    expect(roomFrom(row("rehearsal", "welcome", 1), T0 + 100 + ROOM_HOLD_MS - 1)).toEqual(event);
+    expect(roomFrom(row("rehearsal", "welcome", 1), T0 + 100 + ROOM_HOLD_MS)).toEqual(row("rehearsal", "welcome", 1));
+  });
+
+  it("holds the row through a clock corrected by under a minute either way, and nothing when what it saved is unreadable", () => {
+    const event = row("event", "groups", 2);
+    roomFrom(event, T0);
+    // A phone whose clock ran a second fast, corrected on a reload, still holds the row (the review of #376).
+    expect(roomFrom(row("rehearsal", "welcome", 1), T0 - 1_000)).toEqual(event);
+    expect(roomFrom(row("rehearsal", "welcome", 1), T0 - ROOM_HOLD_MS + 1)).toEqual(event);
+    // A minute back is a minute: the older row is the room's again.
+    expect(roomFrom(row("rehearsal", "welcome", 1), T0 - ROOM_HOLD_MS)).toEqual(row("rehearsal", "welcome", 1));
+    roomFrom(event, T0);
+    // A reload finds what it saved unreadable.
+    _resetRoom();
+    localStorage.setItem("aspen.room", "{not json");
+    expect(roomFrom(row("rehearsal", "welcome", 1), T0 + 1)).toEqual(row("rehearsal", "welcome", 1));
+    localStorage.setItem("aspen.room", JSON.stringify({ row: { runId: "event" }, at: T0 }));
+    expect(roomFrom(row("rehearsal", "welcome", 1), T0 + 2)).toEqual(row("rehearsal", "welcome", 1));
+  });
+
+  it("keeps the newest live row in memory when storage is blocked", () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    const event = row("event", "groups", 2);
+    expect(roomFrom(event, T0)).toEqual(event);
+    expect(roomFrom(row("rehearsal", "welcome", 1), T0 + 500)).toEqual(event);
+  });
+
+  it("holds a row for as long either way on the device's clock, in storage or in memory", () => {
+    // Invariant: whether a newer live row the phone followed outranks an older one read later depends only
+    // on how far the clock is from when it followed it, under ROOM_HOLD_MS, not on which way it moved.
+    fc.assert(
+      fc.property(fc.integer({ min: -2 * ROOM_HOLD_MS, max: 2 * ROOM_HOLD_MS }), fc.constantFrom<StorageMode>("ok", "blocked", "full"), (shift, mode) => {
+        localStorage.clear();
+        _resetRoom();
+        storageIs(mode);
+        const event = row("event", "groups", 2);
+        const rehearsal = row("rehearsal", "welcome", 1);
+        roomFrom(event, T0);
+        expect(roomFrom(rehearsal, T0 + shift)).toEqual(Math.abs(shift) < ROOM_HOLD_MS ? event : rehearsal);
+      }),
+      { numRuns: 300 },
+    );
+  });
+
+  it("holds a newer row another tab of the phone followed over the older one this page did", () => {
+    const rehearsal = row("rehearsal", "welcome", 1);
+    const event = row("event", "groups", 2);
+    roomFrom(rehearsal, T0);
+    localStorage.setItem("aspen.room", JSON.stringify({ row: event, at: T0 + 50 }));
+    expect(roomFrom(rehearsal, T0 + 100)).toEqual(event);
+  });
+
+  it("holds its newer row over an older one storage still has when storage can't take the newer", () => {
+    const rehearsal = row("rehearsal", "welcome", 1);
+    const event = row("event", "groups", 2);
+    roomFrom(rehearsal, T0);
+    enterRun("rehearsal");
+    storageIs("full");
+    // Even if the older row stays in storage, as when it can't be taken out either. (Only the room's row:
+    // `enterRun` must still be able to drop a vote, or the check on it below couldn't fail.)
+    const { removeItem } = Storage.prototype;
+    vi.spyOn(Storage.prototype, "removeItem").mockImplementation(function (this: Storage, key: string) {
+      if (key === "aspen.room") throw new Error("no");
+      return removeItem.call(this, key);
+    });
+    expect(roomFrom(event, T0 + 100)).toEqual(event);
+    expect(enterRun("event")).toBe(true);
+    localStorage.setItem(VOTE_KEY, JSON.stringify("see-edit"));
+    // Another server instance still serves the rehearsal's row (the review of #376).
+    expect(roomFrom(rehearsal, T0 + 500)).toEqual(event);
+    enterRun(roomFrom(rehearsal, T0 + 600).runId);
+    expect(currentRun()).toBe("event");
+    expect(localStorage.getItem(VOTE_KEY)).toBe(JSON.stringify("see-edit"));
+  });
+
+  it("gives up the older row when storage is too full for the newer, and stores the newer once enterRun makes room", () => {
+    const rehearsal = row("rehearsal", "welcome", 1);
+    const event = row("event", "groups", 2);
+    roomFrom(rehearsal, T0);
+    enterRun("rehearsal");
+    localStorage.setItem(CHAT_KEY, JSON.stringify({ draft: "x".repeat(1000) }));
+    // Full until enterRun drops the rehearsal's chat.
+    let full = true;
+    const { setItem, removeItem } = Storage.prototype;
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (this: Storage, key: string, value: string) {
+      if (full && key === "aspen.room") throw new DOMException("No room", "QuotaExceededError");
+      return setItem.call(this, key, value);
+    });
+    vi.spyOn(Storage.prototype, "removeItem").mockImplementation(function (this: Storage, key: string) {
+      if (key === CHAT_KEY) full = false;
+      return removeItem.call(this, key);
+    });
+    expect(roomFrom(event, T0 + 100)).toEqual(event);
+    // The rehearsal's row would outlast a reload and hold the room the phone left: it goes.
+    expect(localStorage.getItem("aspen.room")).toBeNull();
+    expect(enterRun("event")).toBe(true);
+    expect(JSON.parse(localStorage.getItem("aspen.room")!)).toEqual({ row: event, at: T0 + 100 });
+    // So a reload, its memory gone, still holds the event's row over the rehearsal's.
+    _resetRoom();
+    expect(roomFrom(rehearsal, T0 + 500)).toEqual(event);
+  });
+
+  it("stores the newer row in the older one's space when storage is too full for both", () => {
+    const rehearsal = row("rehearsal", "welcome", 1);
+    const event = row("event", "groups", 2);
+    roomFrom(rehearsal, T0);
+    // Room for one row: the newer fits once the older is out.
+    const { getItem, setItem } = Storage.prototype;
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (this: Storage, key: string, value: string) {
+      if (key === "aspen.room" && getItem.call(this, key) !== null) throw new DOMException("No room", "QuotaExceededError");
+      return setItem.call(this, key, value);
+    });
+    expect(roomFrom(event, T0 + 100)).toEqual(event);
+    expect(JSON.parse(localStorage.getItem("aspen.room")!)).toEqual({ row: event, at: T0 + 100 });
+    _resetRoom();
+    expect(roomFrom(rehearsal, T0 + 500)).toEqual(event);
+  });
+
+  it("stores the room again only where storage holds none, never over another tab's", () => {
+    const rehearsal = row("rehearsal", "welcome", 1);
+    const event = row("event", "groups", 2);
+    roomFrom(rehearsal, T0);
+    enterRun("rehearsal");
+    localStorage.setItem(CHAT_KEY, "{}");
+    storageIs("full");
+    expect(roomFrom(event, T0 + 100)).toEqual(event);
+    // Another tab, with room, keeps a newer row before this one moves.
+    vi.restoreAllMocks();
+    const later = row("event", "try", 3);
+    localStorage.setItem("aspen.room", JSON.stringify({ row: later, at: T0 + 200 }));
+    expect(enterRun("event")).toBe(true);
+    expect(JSON.parse(localStorage.getItem("aspen.room")!)).toEqual({ row: later, at: T0 + 200 });
+  });
+
+  it("never goes back to a row older than a live one it read in the last minute, and otherwise follows each read", () => {
+    const read = fc.record({
+      runId: fc.constantFrom("rehearsal", "event"),
+      stage: fc.constantFrom("welcome", "try", "groups"),
+      live: fc.boolean(),
+      second: fc.option(fc.integer({ min: 0, max: 59 }), { nil: null }),
+      // Time since the last read: mostly within the hold, sometimes past it.
+      after: fc.oneof({ weight: 4, arbitrary: fc.integer({ min: 0, max: 5_000 }) }, { weight: 1, arbitrary: fc.integer({ min: 0, max: 2 * ROOM_HOLD_MS }) }),
+      // A reload between this read and the last: the page's memory goes, its storage stays.
+      reload: fc.boolean(),
+    });
+    fc.assert(
+      fc.property(fc.array(read, { minLength: 1, maxLength: 30 }), fc.constantFrom<StorageMode>("ok", "blocked", "full"), (reads, mode) => {
+        localStorage.clear();
+        _resetRoom();
+        storageIs(mode);
+        const stamp = (c: Control) => c.updatedAt ?? "";
+        // Each live row the phone followed as read (not held), and when.
+        const followed: { row: Control; at: number }[] = [];
+        let now = T0;
+        for (const r of reads) {
+          now += r.after;
+          // A reload empties the page's memory: storage that can't take the row keeps nothing past it.
+          if (r.reload) {
+            _resetRoom();
+            if (mode !== "ok") followed.length = 0;
+          }
+          const incoming = row(r.runId, r.stage, r.second, r.live);
+          const out = roomFrom(incoming, now);
+          const recent = followed.filter((f) => now - f.at < ROOM_HOLD_MS);
+          const newer = recent.filter((f) => stamp(f.row) > stamp(incoming));
+          if (!incoming.live || newer.length === 0) {
+            // A row not live, or one no older than every live row followed in the last minute, is followed.
+            expect(out).toEqual(incoming);
+          } else {
+            // Otherwise the phone stays on a newer row it followed in the last minute: never an older one.
+            expect(out.live).toBe(true);
+            expect(recent.map((f) => f.row)).toContainEqual(out);
+            for (const f of recent) expect(stamp(out) >= stamp(f.row)).toBe(true);
+          }
+          if (incoming.live && out === incoming) followed.push({ row: incoming, at: now });
+        }
+      }),
+      { numRuns: 300 },
+    );
   });
 });
 

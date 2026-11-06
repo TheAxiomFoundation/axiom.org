@@ -540,6 +540,29 @@ describe("the journey slide, with WebGL 2", () => {
     expect(director.made.jump.mock.calls.at(-1)![0]).toBeCloseTo(TOTAL, 9);
   });
 
+  it("opens where the presenter brings it back to, with that caption's still, and keeps the still as the presenter re-renders", async () => {
+    director.create.mockResolvedValue(director.made);
+    const slide = (from?: number) => (
+      <>
+        <div style={{ position: "relative" }}>
+          <JourneySlide from={from} />
+        </div>
+        <div data-aspen-overlay />
+      </>
+    );
+    const { rerender, unmount } = render(slide(scrollAt(STOPS[2])));
+    expect(document.querySelector(".jl-poster-bg")).toHaveAttribute("src", "/journey/posters/beat-3.jpg");
+    await waitFor(() => expect(director.made.jump).toHaveBeenCalled());
+    expect(director.made.jump.mock.calls.at(-1)![0]).toBeCloseTo(STOPS[2], 9);
+    // The presenter clears `from` once the journey has opened: the still stays (the review of #376).
+    rerender(slide(undefined));
+    expect(document.querySelector(".jl-poster-bg")).toHaveAttribute("src", "/journey/posters/beat-3.jpg");
+    unmount();
+    // Brought back at the very start, the first still.
+    render(slide(0));
+    expect(document.querySelector(".jl-poster-bg")).toHaveAttribute("src", "/journey/start.webp");
+  });
+
   it("falls back to the stills when a later scene can't be built", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     let opts!: { onFirstFrame: () => void; onError: (e: unknown) => void };
