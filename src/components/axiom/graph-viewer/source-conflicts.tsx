@@ -1,11 +1,11 @@
 "use client";
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { ArrowUpRight, Scale } from "lucide-react";
+import { ArrowUpRight, Check, ChevronDown, Scale } from "lucide-react";
 import "./source-conflicts.css";
 // Type-only: the normalize module parses YAML, which stays out of the
 // browser bundle.
-import type { SourceConflict } from "@/lib/axiom/source-conflicts-normalize";
+import type { SourceConflict, SourceConflictText } from "@/lib/axiom/source-conflicts-normalize";
 import { axiomAppUrl, axiomAppUrlForCitation } from "./citations";
 import type { ProgramGraph } from "./types";
 
@@ -121,35 +121,105 @@ export function ConflictBadge({ conflicts, onClick }: { conflicts: SourceConflic
     : <span className={`source-conflict-badge${open ? " is-open" : ""}`} aria-label={label} title={label}>{content}</span>;
 }
 
-/** The conflicts behind a rule: question, adopted reading, the other
- *  readings and the ruling, each linked to the public register. */
+/** The conflicts behind a rule. Each entry opens to the two sides of the
+ *  question, short: the reading Axiom uses and the other readings. The
+ *  basis, the ruling and the sources wait behind one more click. */
 export function SourceConflictList({ conflicts, citationPath, id }: { conflicts: SourceConflict[]; citationPath?: string | null; id?: string }) {
   if (!conflicts.length) return null;
   const ordered = [...conflicts].sort((a, b) => Number(b.status === "open") - Number(a.status === "open") || a.globalId.localeCompare(b.globalId));
   return <section className="source-conflicts" id={id} aria-label="Known source conflicts">
-    <h3><Scale size={14} aria-hidden="true" />Known source conflicts <span>{conflicts.length}</span></h3>
-    <p className="source-conflicts-note">The sources for this provision disagree. Axiom encodes the adopted reading.</p>
-    {ordered.map((conflict) => {
-      const exact = citationPath ? conflict.citationPaths.filter((path) => citationPathsOverlap(path, citationPath)) : [];
-      return <details key={conflict.globalId} className="source-conflict" data-status={conflict.status}>
-        <summary>
-          <span className="source-conflict-status">{conflictStatusLabel(conflict.status)}</span>
-          <span className="source-conflict-question">{conflict.question}</span>
-        </summary>
-        <dl>
-          <div><dt>Adopted reading</dt><dd>{conflict.reading}</dd></div>
-          {conflict.alternatives.map((alternative) => <div key={alternative.id}><dt>Other reading</dt><dd>{alternative.reading}{alternative.effect && <small>{alternative.effect}</small>}</dd></div>)}
-          {conflict.basis && <div><dt>Basis</dt><dd>{conflict.basis}</dd></div>}
-          {conflict.ruling?.by && <div><dt>Ruling</dt><dd>{conflict.ruling.by}{conflict.ruling.date ? `, ${conflict.ruling.date}` : ""}{conflict.ruling.record && <> · <a href={conflict.ruling.record} target="_blank" rel="noreferrer">record <ArrowUpRight size={11} aria-hidden="true" /></a></>}</dd></div>}
-          {(exact.length > 0 || conflict.pendingCitations.length > 0) && <div><dt>Sources</dt><dd className="source-conflict-sources">
-            {exact.map((path) => <a key={path} href={`/${path}`}>{path}</a>)}
-            {conflict.pendingCitations.map((pending) => pending.url
-              ? <a key={pending.citation} href={pending.url} target="_blank" rel="noreferrer">{pending.citation} <ArrowUpRight size={11} aria-hidden="true" /></a>
-              : <span key={pending.citation}>{pending.citation}</span>)}
-          </dd></div>}
-        </dl>
-        <a className="source-conflict-register" href={conflict.sourceUrl} target="_blank" rel="noreferrer">{conflict.globalId} in {conflict.repo} <ArrowUpRight size={11} aria-hidden="true" /></a>
-      </details>;
-    })}
+    <h3 title="The sources for this provision disagree. Axiom encodes one reading."><Scale size={14} aria-hidden="true" />Known source conflicts <span>{conflicts.length}</span></h3>
+    {ordered.map((conflict) => <SourceConflictEntry key={conflict.globalId} conflict={conflict} citationPath={citationPath ?? null} />)}
   </section>;
+}
+
+/** Texts shown before "Full text": enough to see the disagreement. */
+const TEXTS_SHOWN = 3;
+
+const KIND_LABEL: Record<string, string> = {
+  statute: "Statute",
+  regulation: "Regulation",
+  instructions: "Form instructions",
+  manual: "Agency manual",
+  guidance: "Guidance",
+  policy: "Policy",
+};
+
+function textKindLabel(kind: string | null): string {
+  if (!kind) return "Source";
+  return KIND_LABEL[kind] ?? kind.charAt(0).toUpperCase() + kind.slice(1).replace(/[-_]/g, " ");
+}
+
+/** The provision on screen first, then the first text of each other kind
+ *  (a statute against form instructions shows both sides in the short
+ *  view), then the rest in the register's order. */
+function orderTexts(texts: SourceConflictText[], isHere: (path: string | null) => boolean): SourceConflictText[] {
+  const here = texts.filter((item) => isHere(item.path));
+  const rest = texts.filter((item) => !isHere(item.path));
+  const kinds = new Set(here.map((item) => item.kind));
+  const firstOfKind: SourceConflictText[] = [];
+  const others: SourceConflictText[] = [];
+  for (const item of rest) {
+    if (kinds.has(item.kind)) others.push(item);
+    else { kinds.add(item.kind); firstOfKind.push(item); }
+  }
+  return [...here, ...firstOfKind, ...others];
+}
+
+function SourceConflictEntry({ conflict, citationPath }: { conflict: SourceConflict; citationPath: string | null }) {
+  const [full, setFull] = useState(false);
+  const isHere = (path: string | null) => Boolean(path && citationPath && citationPathsOverlap(path, citationPath));
+  const texts = orderTexts(conflict.texts ?? [], isHere);
+  const shown = full ? texts : texts.slice(0, TEXTS_SHOWN);
+  const hidden = texts.length - shown.length;
+  const alsoFollow = (reading: string) => (conflict.implementations ?? []).filter((item) => item.follows === reading).map((item) => item.by);
+  const more = [hidden > 0 ? `${hidden} more ${hidden === 1 ? "source" : "sources"}` : null, conflict.basis ? "why" : null].filter(Boolean);
+  return <details className={`source-conflict${full ? " is-full" : ""}`} data-status={conflict.status}>
+    <summary>
+      <span className="source-conflict-status">{conflictStatusLabel(conflict.status)}</span>
+      <span className="source-conflict-question">{conflict.question}</span>
+    </summary>
+    {shown.length > 0 && <>
+      <h4 className="source-conflict-heading">What the sources say</h4>
+      <ul className="source-conflict-texts">
+        {shown.map((item) => {
+          const href = item.path ? `/${item.path}` : item.url;
+          const external = !item.path;
+          return <li key={`${item.path ?? item.citation}`} className={`source-conflict-text${isHere(item.path) ? " is-here" : ""}`}>
+            <div className="source-conflict-text-head">
+              <span className="source-conflict-kind">{textKindLabel(item.kind)}</span>
+              {href
+                ? <a href={href} {...(external ? { target: "_blank", rel: "noreferrer" } : {})}>{item.citation}{external && <ArrowUpRight size={11} aria-hidden="true" />}</a>
+                : <span>{item.citation}</span>}
+              {isHere(item.path) && <span className="source-conflict-here">This provision</span>}
+            </div>
+            {item.excerpt && <blockquote>{item.excerpt}</blockquote>}
+          </li>;
+        })}
+      </ul>
+    </>}
+    <h4 className="source-conflict-heading">How they can be read</h4>
+    <div className="source-conflict-readings">
+      <div className="source-conflict-reading is-adopted">
+        <span className="source-conflict-reading-label"><Check size={11} aria-hidden="true" />Axiom uses{alsoFollow("reading").length > 0 && <em>also {alsoFollow("reading").join(", ")}</em>}</span>
+        <p>{conflict.reading}</p>
+      </div>
+      {conflict.alternatives.map((alternative) => <div key={alternative.id} className="source-conflict-reading">
+        <span className="source-conflict-reading-label">Other reading{alsoFollow(alternative.id).length > 0 && <em>{alsoFollow(alternative.id).join(", ")}</em>}</span>
+        <p>{alternative.reading}</p>
+        {alternative.effect && <p className="source-conflict-effect">{alternative.effect}</p>}
+      </div>)}
+    </div>
+    {full && (conflict.basis || conflict.ruling?.by) && <dl className="source-conflict-more">
+      {conflict.basis && <div><dt>Why Axiom uses this reading</dt><dd>{conflict.basis}</dd></div>}
+      {conflict.ruling?.by && <div><dt>Ruling</dt><dd>{conflict.ruling.by}{conflict.ruling.date ? `, ${conflict.ruling.date}` : ""}{conflict.ruling.record && <> · <a href={conflict.ruling.record} target="_blank" rel="noreferrer">record <ArrowUpRight size={11} aria-hidden="true" /></a></>}</dd></div>}
+    </dl>}
+    <div className="source-conflict-footer">
+      <button type="button" onClick={() => setFull((value) => !value)} aria-expanded={full}>
+        {full ? "Show less" : `Full text${more.length ? `, ${more.join(" and ")}` : ""}`}
+        <ChevronDown size={12} aria-hidden="true" />
+      </button>
+      <a className="source-conflict-register" href={conflict.sourceUrl} target="_blank" rel="noreferrer" title={`${conflict.globalId} in ${conflict.repo}`}>Register entry <ArrowUpRight size={11} aria-hidden="true" /></a>
+    </div>
+  </details>;
 }

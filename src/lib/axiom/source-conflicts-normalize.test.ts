@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import {
+  citationPathLabel,
   citationPathsOverlap,
   matchConflictsToModules,
   matchConflictsToPaths,
@@ -125,6 +126,23 @@ describe("parseSourceConflictRegister", () => {
     const base = { id: "x", jurisdiction: "us", status: "open", question: "q", reading: "r" };
     const row = normalizeSourceConflictEntry({ ...base, adopted_by: [["us/statutes/26/32", "eitc-loss"]] }, "rulespec-us", AT);
     expect(row.adopted_by).toEqual([{ module: "us/statutes/26/32", interpretation: "eitc-loss" }]);
+  });
+});
+
+describe("the quoted texts", () => {
+  it("names each text, keeps its quoted words, and lists the other implementations", () => {
+    const [row] = parseSourceConflictRegister(REGISTER, "rulespec-us", AT);
+    const conflict = sourceConflictFromRow({ ...row!, entry: { ...row!.entry, implementations: [{ repo: "PolicyEngine/policyengine-us", follows: "act-age-alone" }] } });
+    expect(conflict.texts).toEqual([
+      { citation: "42 USC 403(f)(1)", kind: "statute", path: "us/statute/42/403/f/1", url: null, excerpt: "but subject to section 402(s)" },
+      { citation: "42 USC 403(f)(1)", kind: "statute", path: "us/statute/42/403/f/1", url: null, excerpt: "in which such individual has attained the age of 18" },
+      { citation: "20 CFR 404.415", kind: "regulation", path: null, url: "https://www.ecfr.gov/x", excerpt: "some text" },
+    ]);
+    expect(conflict.implementations).toEqual([{ by: "PolicyEngine", follows: "act-age-alone" }]);
+    expect(citationPathLabel("us/regulation/7/273/9/d/1")).toBe("7 CFR 273.9(d)(1)");
+    expect(citationPathLabel("us-co/regulation/9-ccr-2503-5/3.520.785")).toBe("us-co/regulation/9-ccr-2503-5/3.520.785");
+    // A row without its entry (an old cache) still reads, with no texts.
+    expect(sourceConflictFromRow({ ...row!, entry: undefined }).texts).toEqual([]);
   });
 });
 

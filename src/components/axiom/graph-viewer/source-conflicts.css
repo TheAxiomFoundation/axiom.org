@@ -10,20 +10,52 @@ button.source-conflict-badge:hover { border-color: var(--color-ink-muted); color
 .source-conflicts { margin: 16px 0; padding: 14px 16px; border: 1px solid var(--color-rule); border-left: 3px solid var(--color-warning); border-radius: 6px; background: var(--color-paper-elevated); scroll-margin-top: 80px; }
 .source-conflicts > h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 13px; font-weight: 600; color: var(--color-ink); }
 .source-conflicts > h3 > span { margin-left: auto; padding: 0 7px; border-radius: 999px; background: var(--color-rule-subtle); color: var(--color-ink-secondary); font-size: 11px; font-weight: 500; }
-.source-conflicts-note { margin: 6px 0 10px; font-size: 12px; line-height: 1.5; color: var(--color-ink-secondary); }
 .source-conflict { border-top: 1px solid var(--color-rule); }
+.source-conflicts > h3 + .source-conflict { margin-top: 10px; }
 .source-conflict > summary { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; align-items: baseline; padding: 10px 0; cursor: pointer; list-style: none; font-size: 13px; line-height: 1.45; }
 .source-conflict > summary::-webkit-details-marker { display: none; }
 .source-conflict > summary:hover .source-conflict-question { color: var(--color-accent); }
 .source-conflict-status { padding: 1px 6px; border-radius: 4px; background: var(--color-rule-subtle); color: var(--color-ink-secondary); font: 600 10px/1.5 var(--f-body); letter-spacing: .04em; text-transform: uppercase; }
 .source-conflict[data-status="open"] .source-conflict-status { background: color-mix(in srgb, var(--color-warning) 12%, var(--color-paper)); color: var(--color-warning); }
-.source-conflict dl { margin: 0 0 10px; display: grid; gap: 8px; }
-.source-conflict dl > div { display: grid; gap: 2px; }
-.source-conflict dt { font-size: 10px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--color-ink-muted); }
-.source-conflict dd { margin: 0; font-size: 13px; line-height: 1.55; color: var(--color-ink); overflow-wrap: anywhere; }
-.source-conflict dd small { display: block; margin-top: 2px; font-size: 12px; color: var(--color-ink-secondary); }
-.source-conflict dd a, .source-conflict-register { color: var(--color-accent); text-decoration: none; }
-.source-conflict dd a:hover, .source-conflict-register:hover { text-decoration: underline; }
-.source-conflict-sources { display: flex; flex-wrap: wrap; gap: 4px 12px; font-family: var(--f-mono); font-size: 12px !important; }
-.source-conflict-register { display: inline-flex; align-items: center; gap: 3px; margin-bottom: 12px; font-family: var(--f-mono); font-size: 11px; }
+/* Short by default: the question in two lines, each reading in three.
+   "Full text" lifts every clamp. */
+.source-conflict-question, .source-conflict-reading p { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
+.source-conflict-question { -webkit-line-clamp: 2; }
+.source-conflict-reading p { -webkit-line-clamp: 3; }
+.source-conflict-reading p.source-conflict-effect { -webkit-line-clamp: 2; }
+.source-conflict.is-full .source-conflict-question, .source-conflict.is-full .source-conflict-reading p { -webkit-line-clamp: unset; display: block; }
+.source-conflict-readings { display: grid; gap: 6px; }
+.source-conflict-reading { padding: 7px 10px; border: 1px solid var(--color-rule); border-radius: 5px; background: var(--color-paper); }
+.source-conflict-reading.is-adopted { border-color: color-mix(in srgb, var(--color-accent) 35%, var(--color-rule)); background: color-mix(in srgb, var(--color-accent) 4%, var(--color-paper)); }
+.source-conflict-reading-label { display: inline-flex; align-items: center; gap: 4px; margin-bottom: 2px; font: 600 10px/1.5 var(--f-body); letter-spacing: .05em; text-transform: uppercase; color: var(--color-ink-muted); }
+.source-conflict-reading.is-adopted .source-conflict-reading-label { color: var(--color-accent); }
+.source-conflict-reading p { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--color-ink); overflow-wrap: anywhere; }
+.source-conflict-reading p.source-conflict-effect { margin-top: 4px; font-size: 12px; color: var(--color-ink-secondary); font-style: italic; }
+.source-conflict-more { margin: 10px 0 0; display: grid; gap: 8px; }
+.source-conflict-more > div { display: grid; gap: 2px; }
+.source-conflict-more dt { font-size: 10px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--color-ink-muted); }
+.source-conflict-more dd { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--color-ink); overflow-wrap: anywhere; }
+.source-conflict-more a, .source-conflict-register { color: var(--color-accent); text-decoration: none; }
+.source-conflict-more a:hover, .source-conflict-register:hover { text-decoration: underline; }
+.source-conflict-heading { margin: 4px 0 6px; font: 600 10px/1.5 var(--f-body); letter-spacing: .05em; text-transform: uppercase; color: var(--color-ink-muted); }
+.source-conflict-texts + .source-conflict-heading { margin-top: 12px; }
+/* The quoted sources: what each text actually says. */
+.source-conflict-texts { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.source-conflict-text { padding: 6px 0 6px 10px; border-left: 2px solid var(--color-rule); }
+.source-conflict-text.is-here { border-left-color: var(--color-accent); }
+.source-conflict-text-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; font-size: 12px; line-height: 1.45; }
+.source-conflict-text-head a { display: inline-flex; align-items: center; gap: 2px; color: var(--color-ink); font-weight: 500; text-decoration: none; }
+.source-conflict-text-head a:hover { color: var(--color-accent); text-decoration: underline; }
+.source-conflict-kind { font: 600 10px/1.5 var(--f-body); letter-spacing: .04em; text-transform: uppercase; color: var(--color-ink-muted); }
+.source-conflict-here { padding: 0 6px; border-radius: 999px; background: color-mix(in srgb, var(--color-accent) 10%, var(--color-paper)); color: var(--color-accent); font-size: 11px; }
+.source-conflict-text blockquote { margin: 3px 0 0; font-family: var(--f-serif, Georgia, serif); font-size: 12.5px; line-height: 1.5; color: var(--color-ink-secondary); white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+.source-conflict-text blockquote::before { content: "“"; }
+.source-conflict-text blockquote::after { content: "”"; }
+.source-conflict.is-full .source-conflict-text blockquote { -webkit-line-clamp: unset; display: block; white-space: pre-line; }
+.source-conflict-reading-label em { margin-left: 6px; padding: 0 5px; border-radius: 3px; background: var(--color-rule-subtle); color: var(--color-ink-secondary); font-style: normal; font-weight: 500; letter-spacing: 0; text-transform: none; }
+.source-conflict-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0 12px; }
+.source-conflicts .source-conflict-footer button { display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: none; color: var(--color-ink-secondary); font: 500 12px/1.4 var(--f-body); cursor: pointer; }
+.source-conflicts .source-conflict-footer button:hover { color: var(--color-ink); }
+.source-conflict-footer button[aria-expanded="true"] svg { transform: rotate(180deg); }
+.source-conflict-register { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; white-space: nowrap; }
 .node-inspector .source-conflicts { margin: 12px 0; padding: 12px; }

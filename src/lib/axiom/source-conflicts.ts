@@ -42,6 +42,7 @@ const COLUMNS = [
   "citation_paths",
   "pending_citations",
   "adopted_by",
+  "entry",
   "source_url",
 ].join(",");
 

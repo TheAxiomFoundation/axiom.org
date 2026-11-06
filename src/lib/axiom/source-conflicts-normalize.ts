@@ -27,7 +27,24 @@ export interface SourceConflict {
   citationPaths: string[];
   pendingCitations: { citation: string; kind?: string; url?: string }[];
   adoptedBy: { module: string; interpretation: string }[];
+  /** The texts that disagree, each with the words the register quotes. */
+  texts: SourceConflictText[];
+  /** Other implementations and the reading each follows ("reading" is the
+   *  adopted one, otherwise an alternative's id). */
+  implementations: { by: string; follows: string }[];
   sourceUrl: string;
+}
+
+export interface SourceConflictText {
+  /** "26 USC 21(d)(1)", or the register's citation for a pending text. */
+  citation: string;
+  /** statute | regulation | instructions | manual | ... */
+  kind: string | null;
+  /** The corpus path, for a text the corpus serves. */
+  path: string | null;
+  /** The publisher's page, for a text the corpus does not serve yet. */
+  url: string | null;
+  excerpt: string | null;
 }
 
 /** One encodings.source_conflicts row, as the collector writes it. */
@@ -205,6 +222,48 @@ function adoptionPair(value: unknown): { module: string; interpretation: string 
   return module && interpretation ? { module, interpretation } : null;
 }
 
+/** "us/statute/26/21/d/1" as "26 USC 21(d)(1)"; "us/regulation/7/273/9"
+ *  as "7 CFR 273.9"; any other path as itself. */
+export function citationPathLabel(path: string): string {
+  const [jurisdiction, kind, title, section, ...rest] = path.replace(/\/+$/, "").split("/");
+  if (jurisdiction === "us" && kind === "statute" && title && section) {
+    return `${title} USC ${section}${rest.map((part) => `(${part})`).join("")}`;
+  }
+  if (jurisdiction === "us" && kind === "regulation" && title && section) {
+    const [sub, ...more] = rest;
+    return `${title} CFR ${section}${sub ? `.${sub}` : ""}${more.map((part) => `(${part})`).join("")}`;
+  }
+  return path;
+}
+
+/** The texts an entry quotes: corpus texts first, then pending ones. */
+function conflictTexts(entry: Raw | undefined): SourceConflictText[] {
+  if (!entry) return [];
+  const items = (field: string): Raw[] => (Array.isArray(entry[field]) ? (entry[field] as unknown[]).filter(isObject) : []);
+  const corpus = items("texts").flatMap((t): SourceConflictText[] => {
+    const path = text(t.corpus_citation_path)?.replace(/\/+$/, "");
+    if (!path) return [];
+    return [{ citation: citationPathLabel(path), kind: path.split("/")[1] ?? null, path, url: null, excerpt: text(t.excerpt) }];
+  });
+  const pending = items("pending_texts").flatMap((t): SourceConflictText[] => {
+    const citation = text(t.citation);
+    if (!citation) return [];
+    return [{ citation, kind: text(t.kind), path: null, url: text(t.url), excerpt: text(t.excerpt) }];
+  });
+  return [...corpus, ...pending];
+}
+
+/** Each implementation the entry records, by owner, and the reading it follows. */
+function conflictImplementations(entry: Raw | undefined): SourceConflict["implementations"] {
+  if (!entry || !Array.isArray(entry.implementations)) return [];
+  return (entry.implementations as unknown[]).filter(isObject).flatMap((item) => {
+    const repo = text(item.repo);
+    const follows = text(item.follows) ?? text(item.adopts);
+    if (!repo || !follows) return [];
+    return [{ by: repo.split("/")[0] || repo, follows }];
+  });
+}
+
 /** A stored row as the app's SourceConflict. */
 export function sourceConflictFromRow(row: SourceConflictRow): SourceConflict {
   return {
@@ -222,6 +281,8 @@ export function sourceConflictFromRow(row: SourceConflictRow): SourceConflict {
     citationPaths: row.citation_paths ?? [],
     pendingCitations: row.pending_citations ?? [],
     adoptedBy: row.adopted_by ?? [],
+    texts: conflictTexts(row.entry),
+    implementations: conflictImplementations(row.entry),
     sourceUrl: row.source_url,
   };
 }

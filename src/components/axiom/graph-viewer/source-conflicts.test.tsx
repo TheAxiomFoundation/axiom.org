@@ -19,6 +19,13 @@ const conflict = (overrides: Partial<SourceConflict> = {}): SourceConflict => ({
   citationPaths: ["us/statute/26/21/e/4"],
   pendingCitations: [{ citation: "26 CFR 1.21-2", kind: "regulation", url: "https://www.ecfr.gov/example" }],
   adoptedBy: [],
+  texts: [
+    { citation: "26 USC 21(d)(1)", kind: "statute", path: "us/statute/26/21/d/1", url: null, excerpt: "the lesser of such individual's earned income or the earned income of his spouse" },
+    { citation: "26 USC 21(e)(4)", kind: "statute", path: "us/statute/26/21/e/4", url: null, excerpt: "such individual shall not be considered as married." },
+    { citation: "2025 Instructions for Form 2441, line 19", kind: "instructions", path: null, url: "https://www.irs.gov/example", excerpt: "Enter your earned income on line 19." },
+    { citation: "26 CFR 1.21-2", kind: "regulation", path: null, url: "https://www.ecfr.gov/example", excerpt: "A regulation excerpt." },
+  ],
+  implementations: [{ by: "PolicyEngine", follows: "reading" }],
   sourceUrl: "https://github.com/TheAxiomFoundation/rulespec-us/blob/main/known-source-conflicts.yaml",
   ...overrides,
 });
@@ -46,16 +53,34 @@ describe("source conflicts in the app", () => {
     expect(container.innerHTML).toBe("");
   });
 
-  it("lists the question, the adopted and other readings, the sources and the register entry, open first", () => {
+  it("quotes the conflicting texts, this provision first, then the readings; the rest waits for one more click", () => {
     render(<SourceConflictList citationPath="us/statute/26/21/e" conflicts={[conflict({ globalId: "us:ruled-one", status: "ruled", question: "A ruled question?" }), conflict()]} />);
     const summaries = [...document.querySelectorAll("summary")].map((node) => node.textContent);
     expect(summaries[0]).toContain("Open");
     expect(summaries[1]).toContain("A ruled question?");
+    const open = document.querySelectorAll("details.source-conflict")[0]!;
+    // The provision on screen leads, with its quoted words.
+    const first = open.querySelector(".source-conflict-text")!;
+    expect(first.textContent).toContain("26 USC 21(e)(4)");
+    expect(first.textContent).toContain("This provision");
+    expect(first.querySelector("blockquote")!.textContent).toBe("such individual shall not be considered as married.");
+    expect(first.querySelector("a")!.getAttribute("href")).toBe("/us/statute/26/21/e/4");
+    expect(open.querySelector('a[href="https://www.irs.gov/example"]')!.getAttribute("target")).toBe("_blank");
     expect(screen.getAllByText("Use the taxpayer's own earned income.")).toHaveLength(2);
     expect(screen.getAllByText("Excludes $500 less.")).toHaveLength(2);
-    expect(screen.getAllByRole("link", { name: "us/statute/26/21/e/4" })[0]!.getAttribute("href")).toBe("/us/statute/26/21/e/4");
-    expect(screen.getAllByRole("link", { name: /26 CFR 1\.21-2/ })[0]!.getAttribute("href")).toBe("https://www.ecfr.gov/example");
-    expect(screen.getByRole("link", { name: /us:dependent-care-exclusion-separate-filer-income in rulespec-us/ })).toBeTruthy();
+    expect(screen.getAllByText("also PolicyEngine")).toHaveLength(2);
+    // One text of each kind shows; the second statute and the basis wait
+    // behind the toggle.
+    expect([...open.querySelectorAll(".source-conflict-text-head a")].map((a) => a.textContent)).toEqual(["26 USC 21(e)(4)", "2025 Instructions for Form 2441, line 19", "26 CFR 1.21-2"]);
+    expect(screen.queryByText(/the lesser of such individual/)).toBeNull();
+    expect(screen.queryByText("Section 21(e)(4) treats the taxpayer as not married.")).toBeNull();
+    const [toggle] = screen.getAllByRole("button", { name: "Full text, 1 more source and why" });
+    fireEvent.click(toggle!);
+    expect(toggle!.getAttribute("aria-expanded")).toBe("true");
+    expect(open.querySelectorAll(".source-conflict-text")).toHaveLength(4);
+    expect(screen.getByText(/the lesser of such individual/)).toBeTruthy();
+    expect(screen.getByText("Section 21(e)(4) treats the taxpayer as not married.")).toBeTruthy();
+    expect(screen.getAllByRole("link", { name: /Register entry/ })[0]!.getAttribute("title")).toBe("us:dependent-care-exclusion-separate-filer-income in rulespec-us");
   });
 
   it("indexes each rule's conflicts by the path it cites, and keeps the graph usable when the request fails", async () => {
