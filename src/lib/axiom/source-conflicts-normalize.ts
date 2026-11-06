@@ -32,6 +32,9 @@ export interface SourceConflict {
   /** Other implementations and the reading each follows ("reading" is the
    *  adopted one, otherwise an alternative's id). */
   implementations: { by: string; follows: string }[];
+  /** The register's `money_case`: an invented case and the size of the
+   *  difference, which the named pinned test computes. */
+  moneyCase: { description: string; amount: string; currency: string; period: string; computedBy: string | null } | null;
   sourceUrl: string;
 }
 
@@ -254,6 +257,19 @@ function conflictTexts(entry: Raw | undefined): SourceConflictText[] {
 }
 
 /** Each implementation the entry records, by owner, and the reading it follows. */
+/** The money case, when it is complete: the register's check requires a
+ *  pinned test (`computed_by`) to compute every amount it states. */
+function conflictMoneyCase(entry: Raw | undefined): SourceConflict["moneyCase"] {
+  const value = entry?.money_case;
+  if (!isObject(value)) return null;
+  const description = text(value.description);
+  const amount = text(value.amount);
+  const currency = text(value.currency);
+  const period = text(value.period);
+  if (!description || !amount || !currency || !period) return null;
+  return { description, amount, currency, period, computedBy: text(value.computed_by) };
+}
+
 function conflictImplementations(entry: Raw | undefined): SourceConflict["implementations"] {
   if (!entry || !Array.isArray(entry.implementations)) return [];
   return (entry.implementations as unknown[]).filter(isObject).flatMap((item) => {
@@ -283,6 +299,7 @@ export function sourceConflictFromRow(row: SourceConflictRow): SourceConflict {
     adoptedBy: row.adopted_by ?? [],
     texts: conflictTexts(row.entry),
     implementations: conflictImplementations(row.entry),
+    moneyCase: conflictMoneyCase(row.entry),
     sourceUrl: row.source_url,
   };
 }

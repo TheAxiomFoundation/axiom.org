@@ -139,6 +139,11 @@ describe("the quoted texts", () => {
       { citation: "20 CFR 404.415", kind: "regulation", path: null, url: "https://www.ecfr.gov/x", excerpt: "some text" },
     ]);
     expect(conflict.implementations).toEqual([{ by: "PolicyEngine", follows: "act-age-alone" }]);
+    expect(conflict.moneyCase).toBeNull();
+    const money = { description: "A widow at 64.", amount: "20.40", currency: "USD", period: "month", computed_by: "test_widow" };
+    expect(sourceConflictFromRow({ ...row!, entry: { ...row!.entry, money_case: money } }).moneyCase).toEqual({ description: "A widow at 64.", amount: "20.40", currency: "USD", period: "month", computedBy: "test_widow" });
+    // An incomplete money case shows nothing rather than half a figure.
+    expect(sourceConflictFromRow({ ...row!, entry: { ...row!.entry, money_case: { ...money, amount: undefined } } }).moneyCase).toBeNull();
     expect(citationPathLabel("us/regulation/7/273/9/d/1")).toBe("7 CFR 273.9(d)(1)");
     expect(citationPathLabel("us-co/regulation/9-ccr-2503-5/3.520.785")).toBe("us-co/regulation/9-ccr-2503-5/3.520.785");
     // A row without its entry (an old cache) still reads, with no texts.

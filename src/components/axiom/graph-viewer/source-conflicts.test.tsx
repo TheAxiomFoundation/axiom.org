@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { SourceConflict } from "@/lib/axiom/source-conflicts-normalize";
-import { ConflictBadge, ruleCitationPath, SourceConflictList, useConflictIndex } from "./source-conflicts";
+import { ConflictBadge, formatMoney, keyPassage, ruleCitationPath, SourceConflictList, useConflictIndex } from "./source-conflicts";
 import type { ProgramGraph } from "./types";
 
 const conflict = (overrides: Partial<SourceConflict> = {}): SourceConflict => ({
@@ -20,11 +20,12 @@ const conflict = (overrides: Partial<SourceConflict> = {}): SourceConflict => ({
   pendingCitations: [{ citation: "26 CFR 1.21-2", kind: "regulation", url: "https://www.ecfr.gov/example" }],
   adoptedBy: [],
   texts: [
-    { citation: "26 USC 21(d)(1)", kind: "statute", path: "us/statute/26/21/d/1", url: null, excerpt: "the lesser of such individual's earned income or the earned income of his spouse" },
+    { citation: "26 USC 21(d)(1)", kind: "statute", path: "us/statute/26/21/d/1", url: null, excerpt: "Except as otherwise provided in this subsection, the amount of the employment-related expenses incurred during any taxable year which may be taken into account under subsection (a) shall not exceed—\n\n(A) in the case of an individual who is not married at the close of such year, such individual's earned income for such year, or\n\n(B) in the case of an individual who is married at the close of such year, the lesser of such individual's earned income or the earned income of his spouse for such year." },
     { citation: "26 USC 21(e)(4)", kind: "statute", path: "us/statute/26/21/e/4", url: null, excerpt: "such individual shall not be considered as married." },
     { citation: "2025 Instructions for Form 2441, line 19", kind: "instructions", path: null, url: "https://www.irs.gov/example", excerpt: "Enter your earned income on line 19." },
     { citation: "26 CFR 1.21-2", kind: "regulation", path: null, url: "https://www.ecfr.gov/example", excerpt: "A regulation excerpt." },
   ],
+  moneyCase: null,
   implementations: [{ by: "PolicyEngine", follows: "reading" }],
   sourceUrl: "https://github.com/TheAxiomFoundation/rulespec-us/blob/main/known-source-conflicts.yaml",
   ...overrides,
@@ -55,7 +56,7 @@ describe("source conflicts in the app", () => {
 
   it("quotes the conflicting texts, this provision first, then the readings; the rest waits for one more click", () => {
     render(<SourceConflictList citationPath="us/statute/26/21/e" conflicts={[conflict({ globalId: "us:ruled-one", status: "ruled", question: "A ruled question?" }), conflict()]} />);
-    const summaries = [...document.querySelectorAll("summary")].map((node) => node.textContent);
+    const summaries = [...document.querySelectorAll("details.source-conflict > summary")].map((node) => node.textContent);
     expect(summaries[0]).toContain("Open");
     expect(summaries[1]).toContain("A ruled question?");
     const open = document.querySelectorAll("details.source-conflict")[0]!;
@@ -69,18 +70,44 @@ describe("source conflicts in the app", () => {
     expect(screen.getAllByText("Use the taxpayer's own earned income.")).toHaveLength(2);
     expect(screen.getAllByText("Excludes $500 less.")).toHaveLength(2);
     expect(screen.getAllByText("also PolicyEngine")).toHaveLength(2);
-    // One text of each kind shows; the second statute and the basis wait
-    // behind the toggle.
-    expect([...open.querySelectorAll(".source-conflict-text-head a")].map((a) => a.textContent)).toEqual(["26 USC 21(e)(4)", "2025 Instructions for Form 2441, line 19", "26 CFR 1.21-2"]);
-    expect(screen.queryByText(/the lesser of such individual/)).toBeNull();
-    expect(screen.queryByText("Section 21(e)(4) treats the taxpayer as not married.")).toBeNull();
-    const [toggle] = screen.getAllByRole("button", { name: "Full text, 1 more source and why" });
-    fireEvent.click(toggle!);
-    expect(toggle!.getAttribute("aria-expanded")).toBe("true");
-    expect(open.querySelectorAll(".source-conflict-text")).toHaveLength(4);
-    expect(screen.getByText(/the lesser of such individual/)).toBeTruthy();
-    expect(screen.getByText("Section 21(e)(4) treats the taxpayer as not married.")).toBeTruthy();
+    // Every source shows: one of each kind first, then the second statute.
+    expect([...open.querySelectorAll(".source-conflict-text-head a")].map((a) => a.textContent)).toEqual(["26 USC 21(e)(4)", "2025 Instructions for Form 2441, line 19", "26 CFR 1.21-2", "26 USC 21(d)(1)"]);
+    // A short quote shows whole, with no toggle.
+    expect(first.querySelector("button")).toBeNull();
+    // A long quote shows its key passage, whole, and its own Full text toggle.
+    const long = open.querySelectorAll(".source-conflict-text")[3]!;
+    expect(long.querySelector("blockquote")!.textContent).toBe("… (B) in the case of an individual who is married at the close of such year, the lesser of such individual's earned income or the earned income of his spouse for such year.");
+    const toggle = within(long as HTMLElement).getByRole("button", { name: "Full text" });
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(long.querySelector("blockquote")!.textContent).toContain("Except as otherwise provided in this subsection");
+    // The basis waits in its own disclosure.
+    expect(open.querySelector(".source-conflict-why")!.textContent).toContain("Section 21(e)(4) treats the taxpayer as not married.");
+    expect((open.querySelector(".source-conflict-why") as HTMLDetailsElement).open).toBe(false);
     expect(screen.getAllByRole("link", { name: /Register entry/ })[0]!.getAttribute("title")).toBe("us:dependent-care-exclusion-separate-filer-income in rulespec-us");
+  });
+
+  it("shows the size of the difference that a pinned test computes", () => {
+    render(<SourceConflictList conflicts={[conflict({ moneyCase: { description: "A separate filer with lower-earning spouse.", amount: "4200.00", currency: "USD", period: "year", computedBy: "test_separate_filer" } })]} />);
+    expect(screen.getByText("Size of the difference")).toBeTruthy();
+    expect(document.querySelector(".source-conflict-money-amount")!.textContent).toBe("$4,200 a year");
+    expect(screen.getByText("test_separate_filer")).toBeTruthy();
+    expect(formatMoney("20.40", "USD")).toBe("$20.40");
+    expect(formatMoney("x", "USD")).toBe("x USD");
+  });
+
+  it("shows no size without a money case", () => {
+    render(<SourceConflictList conflicts={[conflict()]} />);
+    expect(screen.queryByText("Size of the difference")).toBeNull();
+  });
+
+  it("picks the key passage of a long quote, never cutting a sentence", () => {
+    expect(keyPassage("Short text.", "anything")).toEqual({ text: "Short text.", before: false, after: false });
+    const long = `Except as provided here, the amount shall not exceed—\n\n(A) for an individual who is not married, the individual's earned income, or\n\n(B) for an individual who is married, the lesser of the individual's earned income or the earned income of the spouse. ${"Filler words. ".repeat(10)}`;
+    const passage = keyPassage(long, "Is the exclusion limited to the lesser spouse's earned income when married?");
+    expect(passage.text.startsWith("(B) for an individual who is married")).toBe(true);
+    expect(passage.before).toBe(true);
+    expect(passage.after).toBe(false);
   });
 
   it("indexes each rule's conflicts by the path it cites, and keeps the graph usable when the request fails", async () => {

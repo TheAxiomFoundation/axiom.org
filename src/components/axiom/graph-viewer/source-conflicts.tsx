@@ -133,8 +133,38 @@ export function SourceConflictList({ conflicts, citationPath, id }: { conflicts:
   </section>;
 }
 
-/** Texts shown before "Full text": enough to see the disagreement. */
-const TEXTS_SHOWN = 3;
+/** A quote this long or shorter shows whole. */
+const WHOLE_QUOTE_CHARS = 300;
+
+const STOPWORDS = new Set(("such that this with from which shall have been into under over than then there their them they what when where whether does upon only also other each more most must made make same both either does doesn't would could should about after before being between during under any all and are for not the use uses used its his her who whose our your".split(" ")));
+
+function words(text: string): Set<string> {
+  return new Set((text.toLowerCase().match(/[a-z][a-z'-]{3,}/g) ?? []).filter((word) => !STOPWORDS.has(word)));
+}
+
+/**
+ * The part of a quote that bears on the question: the whole quote when it
+ * is short; otherwise the paragraph (or, in one long paragraph, the
+ * sentence) that shares the most words with the question and the
+ * readings. Never a cut inside a sentence. `before` and `after` say
+ * whether text of the quote lies outside the passage.
+ */
+export function keyPassage(excerpt: string, context: string): { text: string; before: boolean; after: boolean } {
+  const whole = excerpt.trim();
+  if (whole.length <= WHOLE_QUOTE_CHARS) return { text: whole, before: false, after: false };
+  let parts = whole.split(/\n\s*\n/).map((part) => part.trim()).filter(Boolean);
+  if (parts.length < 2) parts = whole.split(/(?<=[.;:])\s+(?=[A-Z(])/).map((part) => part.trim()).filter(Boolean);
+  if (parts.length < 2) return { text: whole, before: false, after: false };
+  const wanted = words(context);
+  let best = 0;
+  let bestScore = -1;
+  parts.forEach((part, index) => {
+    // Shared words count; a passage too short to say anything counts less.
+    const score = [...words(part)].filter((word) => wanted.has(word)).length - (part.length < 40 ? 2 : 0);
+    if (score > bestScore) { best = index; bestScore = score; }
+  });
+  return { text: parts[best]!, before: best > 0, after: best < parts.length - 1 };
+}
 
 const KIND_LABEL: Record<string, string> = {
   statute: "Statute",
@@ -166,59 +196,91 @@ function orderTexts(texts: SourceConflictText[], isHere: (path: string | null) =
   return [...here, ...firstOfKind, ...others];
 }
 
-function SourceConflictEntry({ conflict, citationPath }: { conflict: SourceConflict; citationPath: string | null }) {
+const PERIOD_LABEL: Record<string, string> = { once: "once", week: "a week", month: "a month", year: "a year" };
+
+/** "4200.00" USD as "$4,200"; cents only when there are any. */
+export function formatMoney(amount: string, currency: string): string {
+  const value = Number(amount);
+  if (!Number.isFinite(value)) return `${amount} ${currency}`;
+  try {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: Number.isInteger(value) ? 0 : 2, maximumFractionDigits: 2 }).format(value);
+  } catch {
+    return `${amount} ${currency}`;
+  }
+}
+
+/** One quoted source: its key passage, and the whole quote on request. */
+function SourceConflictQuote({ item, here, context }: { item: SourceConflictText; here: boolean; context: string }) {
   const [full, setFull] = useState(false);
+  const href = item.path ? `/${item.path}` : item.url;
+  const external = !item.path;
+  const passage = item.excerpt ? keyPassage(item.excerpt, context) : null;
+  const partial = Boolean(passage && (passage.before || passage.after));
+  return <li className={`source-conflict-text${here ? " is-here" : ""}`}>
+    <div className="source-conflict-text-head">
+      <span className="source-conflict-kind">{textKindLabel(item.kind)}</span>
+      {href
+        ? <a href={href} {...(external ? { target: "_blank", rel: "noreferrer" } : {})}>{item.citation}{external && <ArrowUpRight size={11} aria-hidden="true" />}</a>
+        : <span>{item.citation}</span>}
+      {here && <span className="source-conflict-here">This provision</span>}
+    </div>
+    {passage && <blockquote className={full ? "is-full" : undefined}>
+      {full ? item.excerpt : <>{passage.before && "… "}{passage.text}{passage.after && " …"}</>}
+    </blockquote>}
+    {partial && <button type="button" className="source-conflict-quote-toggle" onClick={() => setFull((value) => !value)} aria-expanded={full}>
+      {full ? "Key passage only" : "Full text"}<ChevronDown size={12} aria-hidden="true" />
+    </button>}
+  </li>;
+}
+
+function SourceConflictEntry({ conflict, citationPath }: { conflict: SourceConflict; citationPath: string | null }) {
   const isHere = (path: string | null) => Boolean(path && citationPath && citationPathsOverlap(path, citationPath));
   const texts = orderTexts(conflict.texts ?? [], isHere);
-  const shown = full ? texts : texts.slice(0, TEXTS_SHOWN);
-  const hidden = texts.length - shown.length;
   const alsoFollow = (reading: string) => (conflict.implementations ?? []).filter((item) => item.follows === reading).map((item) => item.by);
-  const more = [hidden > 0 ? `${hidden} more ${hidden === 1 ? "source" : "sources"}` : null, conflict.basis ? "why" : null].filter(Boolean);
-  return <details className={`source-conflict${full ? " is-full" : ""}`} data-status={conflict.status}>
+  // The words that say what the question is about, to find each quote's key passage.
+  const context = [conflict.question, conflict.reading, ...conflict.alternatives.map((alternative) => alternative.reading)].join(" ");
+  const money = conflict.moneyCase;
+  const readings = [
+    { id: "reading", text: conflict.reading, effect: null as string | null | undefined, adopted: true },
+    ...conflict.alternatives.map((alternative) => ({ id: alternative.id, text: alternative.reading, effect: alternative.effect, adopted: false })),
+  ];
+  return <details className="source-conflict" data-status={conflict.status}>
     <summary>
       <span className="source-conflict-status">{conflictStatusLabel(conflict.status)}</span>
       <span className="source-conflict-question">{conflict.question}</span>
     </summary>
-    {shown.length > 0 && <>
+    {texts.length > 0 && <>
       <h4 className="source-conflict-heading">What the sources say</h4>
       <ul className="source-conflict-texts">
-        {shown.map((item) => {
-          const href = item.path ? `/${item.path}` : item.url;
-          const external = !item.path;
-          return <li key={`${item.path ?? item.citation}`} className={`source-conflict-text${isHere(item.path) ? " is-here" : ""}`}>
-            <div className="source-conflict-text-head">
-              <span className="source-conflict-kind">{textKindLabel(item.kind)}</span>
-              {href
-                ? <a href={href} {...(external ? { target: "_blank", rel: "noreferrer" } : {})}>{item.citation}{external && <ArrowUpRight size={11} aria-hidden="true" />}</a>
-                : <span>{item.citation}</span>}
-              {isHere(item.path) && <span className="source-conflict-here">This provision</span>}
-            </div>
-            {item.excerpt && <blockquote>{item.excerpt}</blockquote>}
-          </li>;
-        })}
+        {texts.map((item, index) => <SourceConflictQuote key={`${index}:${item.path ?? item.citation}`} item={item} here={isHere(item.path)} context={context} />)}
       </ul>
     </>}
     <h4 className="source-conflict-heading">How they can be read</h4>
     <div className="source-conflict-readings">
-      <div className="source-conflict-reading is-adopted">
-        <span className="source-conflict-reading-label"><Check size={11} aria-hidden="true" />Axiom uses{alsoFollow("reading").length > 0 && <em>also {alsoFollow("reading").join(", ")}</em>}</span>
-        <p>{conflict.reading}</p>
-      </div>
-      {conflict.alternatives.map((alternative) => <div key={alternative.id} className="source-conflict-reading">
-        <span className="source-conflict-reading-label">Other reading{alsoFollow(alternative.id).length > 0 && <em>{alsoFollow(alternative.id).join(", ")}</em>}</span>
-        <p>{alternative.reading}</p>
-        {alternative.effect && <p className="source-conflict-effect">{alternative.effect}</p>}
-      </div>)}
+      {readings.map((reading) => {
+        const follow = alsoFollow(reading.id);
+        return <div key={reading.id} className={`source-conflict-reading${reading.adopted ? " is-adopted" : ""}`}>
+          <span className="source-conflict-reading-label">
+            {reading.adopted ? <><Check size={11} aria-hidden="true" />Axiom uses</> : "Other reading"}
+            {follow.length > 0 && <em>{reading.adopted ? "also " : ""}{follow.join(", ")}</em>}
+          </span>
+          <p>{reading.text}</p>
+          {reading.effect && <p className="source-conflict-effect">{reading.effect}</p>}
+        </div>;
+      })}
     </div>
-    {full && (conflict.basis || conflict.ruling?.by) && <dl className="source-conflict-more">
-      {conflict.basis && <div><dt>Why Axiom uses this reading</dt><dd>{conflict.basis}</dd></div>}
-      {conflict.ruling?.by && <div><dt>Ruling</dt><dd>{conflict.ruling.by}{conflict.ruling.date ? `, ${conflict.ruling.date}` : ""}{conflict.ruling.record && <> · <a href={conflict.ruling.record} target="_blank" rel="noreferrer">record <ArrowUpRight size={11} aria-hidden="true" /></a></>}</dd></div>}
-    </dl>}
+    {money && <div className="source-conflict-money">
+      <h4 className="source-conflict-heading">Size of the difference</h4>
+      <p className="source-conflict-money-amount">{formatMoney(money.amount, money.currency)} <span>{PERIOD_LABEL[money.period] ?? `per ${money.period}`}</span></p>
+      <p>{money.description}</p>
+      {money.computedBy && <p className="source-conflict-money-test">Computed by the pinned test <code>{money.computedBy}</code></p>}
+    </div>}
+    {(conflict.basis || conflict.ruling?.by) && <details className="source-conflict-why">
+      <summary><ChevronDown size={12} aria-hidden="true" />Why Axiom uses this reading</summary>
+      {conflict.basis && <p>{conflict.basis}</p>}
+      {conflict.ruling?.by && <p className="source-conflict-ruling">Ruled by {conflict.ruling.by}{conflict.ruling.date ? `, ${conflict.ruling.date}` : ""}{conflict.ruling.record && <> · <a href={conflict.ruling.record} target="_blank" rel="noreferrer">record <ArrowUpRight size={11} aria-hidden="true" /></a></>}</p>}
+    </details>}
     <div className="source-conflict-footer">
-      <button type="button" onClick={() => setFull((value) => !value)} aria-expanded={full}>
-        {full ? "Show less" : `Full text${more.length ? `, ${more.join(" and ")}` : ""}`}
-        <ChevronDown size={12} aria-hidden="true" />
-      </button>
       <a className="source-conflict-register" href={conflict.sourceUrl} target="_blank" rel="noreferrer" title={`${conflict.globalId} in ${conflict.repo}`}>Register entry <ArrowUpRight size={11} aria-hidden="true" /></a>
     </div>
   </details>;
