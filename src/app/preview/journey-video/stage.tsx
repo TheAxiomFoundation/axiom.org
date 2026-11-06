@@ -10,7 +10,7 @@ declare global {
   interface Window {
     /** Resolves once every scene is built and the first frame is drawn. */
     __journeyReady?: Promise<void>;
-    /** Draws the frame `ms` into the story at the presenter's pace, captions included. */
+    /** Draws the frame `ms` into the story at the presenter's pace, captions included (the recorder scales `ms` for a faster cut). */
     __journeyFrame?: (ms: number) => void;
     /** How long the story plays at the presenter's pace, in ms. */
     __journeyMs?: number;
@@ -39,6 +39,7 @@ export function JourneyVideoStage() {
         width: el.clientWidth,
         height: el.clientHeight,
         paper: true,
+        glint: false,
       });
       dispose = director.dispose;
       await director.prepareAll();

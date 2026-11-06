@@ -8,7 +8,9 @@
 //   node scripts/record-journey-video.mjs --out journey.mp4
 //
 // Options: --base (default http://localhost:3000), --fps (30), --width
-// (1920), --height (1080), --hold-start and --hold-end in seconds (1.5, 6).
+// (1920), --height (1080), --hold-start and --hold-end in seconds (1.5, 6),
+// --speed (1: the presenter's pace; 1.3 plays the story 30% faster).
+// The clickable parts never glint in the recording.
 // Needs ffmpeg on the PATH.
 
 import { spawn } from "node:child_process";
@@ -25,6 +27,7 @@ const width = Number(arg("width", 1920));
 const height = Number(arg("height", 1080));
 const holdStart = Number(arg("hold-start", 1.5));
 const holdEnd = Number(arg("hold-end", 6));
+const speed = Number(arg("speed", 1));
 
 const browser = await chromium.launch({
   channel: "chrome", // the installed Chrome, with the GPU; Playwright's own browser is not needed
@@ -37,8 +40,8 @@ await page.waitForFunction(() => !!window.__journeyReady, null, { timeout: 60_00
 await page.evaluate(() => window.__journeyReady);
 
 const storyMs = await page.evaluate(() => window.__journeyMs);
-const frames = Math.ceil(((holdStart + holdEnd) * 1000 + storyMs) / (1000 / fps));
-console.log(`story ${(storyMs / 1000).toFixed(1)} s, ${frames} frames at ${fps} fps -> ${out}`);
+const frames = Math.ceil(((holdStart + holdEnd) * 1000 + storyMs / speed) / (1000 / fps));
+console.log(`story ${(storyMs / speed / 1000).toFixed(1)} s, ${frames} frames at ${fps} fps -> ${out}`);
 
 const ffmpeg = spawn(
   "ffmpeg",
@@ -49,7 +52,7 @@ const ffmpeg = spawn(
 const done = new Promise((res, rej) => ffmpeg.on("close", (c) => (c === 0 ? res() : rej(new Error(`ffmpeg exited ${c}`)))));
 
 for (let f = 0; f < frames; f++) {
-  const ms = f * (1000 / fps) - holdStart * 1000;
+  const ms = (f * (1000 / fps) - holdStart * 1000) * speed;
   await page.evaluate((ms) => window.__journeyFrame(ms), ms);
   const png = await page.screenshot({ type: "png" });
   if (!ffmpeg.stdin.write(png)) await new Promise((r) => ffmpeg.stdin.once("drain", r));
