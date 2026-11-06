@@ -25,6 +25,7 @@ import {
   readableLawTarget,
 } from "./citations";
 import { InspectorMiniGraph } from "./inspector-mini-graph";
+import { ConflictBadge, ConflictIndexContext, ruleCitationPath, SourceConflictList, useConflictIndex } from "./source-conflicts";
 import "./styles.css";
 import "./graph-styles.css";
 import "./plane.css";
@@ -92,6 +93,8 @@ export function GraphViewerApp({
   const [country, setCountry] = useState<Country>(() => initialCountry());
   const [program, setProgram] = useState<ProgramRef | null>(null);
   const [graph, setGraph] = useState<ProgramGraph | null>(null);
+  // Known source conflicts for every rule in the loaded graph.
+  const conflictIndex = useConflictIndex(graph);
   const [selectedOutputs, setSelectedOutputs] = useState<LegalId[]>([]);
   const surveyRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
@@ -623,6 +626,8 @@ export function GraphViewerApp({
   const [graphControlsSlot, setGraphControlsSlot] = useState<HTMLElement | null>(
     null,
   );
+  // The header row's slot for the workspace's view tabs.
+  const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(null);
   const [composeFocus, setComposeFocus] = useState<string | null>(() =>
     initialParam("compose"),
   );
@@ -2440,11 +2445,14 @@ export function GraphViewerApp({
   })();
 
   const graphKey = composeFocus ?? (program ? programKey(program) : "workspace");
+  const selectedLegalId = graph ? ((inspected && "legalId" in inspected && inspected.legalId) || summitOutput || graph.terminalOutputs[0] || graph.rules[0]?.legalId || null) : null;
+  const selectedConflicts = (selectedLegalId && conflictIndex.get(selectedLegalId)) || [];
   const openingWorkspace = launcher !== "open" && !error && (
     (!graph && (programsLoading || Boolean(composeFocus))) || loading || (workspaceView === "map" && spec && Object.keys(structureTraces).length > 0 && readyGraphKey !== graphKey)
   );
 
   return (
+    <ConflictIndexContext.Provider value={conflictIndex}>
     <div className="graph-viewer-root has-workspace" data-workspace-view={workspaceView} data-run-stage={runResult && !editingRunInputs ? "result" : "inputs"} data-graph-mounted={graphMounted}>
     <CorpusLibrary
       modules={corpusModules}
@@ -2469,18 +2477,21 @@ export function GraphViewerApp({
               row ABOVE the plane, flush with the plane's left edge —
               compose AND program views, every host (/axiom overlay,
               standalone /axiom/graph, /app). */}
-          {launcher === "closed" && (!graph || loading || graph.rules.length === 0) && (
-            <button
-              type="button"
-              className="back-to-overview"
-              data-testid="back-to-overview"
-              onClick={backToOverview}
-              title="Back to the corpus overview"
-            >
-              ← Overview
-            </button>
+          {launcher === "closed" && (
+            <nav className="workspace-breadcrumb" aria-label="Location">
+              <button
+                type="button"
+                className="back-to-overview"
+                data-testid="back-to-overview"
+                onClick={backToOverview}
+                title="Back to the law library"
+              >
+                Library
+              </button>
+              {graph && <><span aria-hidden="true">/</span><span className="workspace-breadcrumb-scope">{composeFocus ? humanizeCitation(fileLegalIdOf(composeFocus)) : effectiveProgram?.displayName ?? "Program"}</span></>}
+            </nav>
           )}
-          {graph && launcher === "closed" && <span className="workspace-breadcrumb-scope">{composeFocus ? humanizeCitation(fileLegalIdOf(composeFocus)) : effectiveProgram?.displayName ?? "Program"}</span>}
+          <div className="workspace-header-slot" ref={setHeaderSlot} />
           {/* Composed views carry no header line at all — the graph
               is its own label. Program views keep their coordinates. */}
           {!composeFocus && countries.length > 1 && (
@@ -2625,6 +2636,12 @@ export function GraphViewerApp({
             }}
             scenario={scenarioFlowUI}
             graphControls={<div className="graph-controls-slot" ref={setGraphControlsSlot} />}
+            headerSlot={headerSlot}
+            subjectExtras={<ConflictBadge conflicts={selectedConflicts} onClick={() => {
+              if (workspaceView !== "map") setWorkspaceView("structure");
+              requestAnimationFrame(() => document.getElementById("selected-source-conflicts")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+            }} />}
+            conflictsPanel={<SourceConflictList id="selected-source-conflicts" conflicts={selectedConflicts} citationPath={(() => { const rule = graph.rules.find((item) => item.legalId === selectedLegalId); return rule ? ruleCitationPath(rule.fileLegalId, rule.source) : null; })()} />}
             valueOf={(id) => graph ? inputAwareEvidence(graph, runResult, id, inputMeta.defaults) : undefined}
             hasRun={Boolean(runResult)}
             stale={resultsStale}
@@ -3326,6 +3343,7 @@ export function GraphViewerApp({
                 stale={resultsStale}
               />
             )}
+            {legalId && rule && <SourceConflictList id="selected-source-conflicts" conflicts={conflictIndex.get(legalId) ?? []} citationPath={ruleCitationPath(rule.fileLegalId, rule.source)} />}
             {legalId && <NodeMetadata key={legalId} id={legalId} entry={rule ?? input ?? graph?.relations.find(item => item.legalId === legalId) ?? {}} />}
             {/* The formula reads best beside the rules it combines, which
                 is what Relationships lays out — link there, don't repeat it. */}
@@ -3380,6 +3398,7 @@ export function GraphViewerApp({
       </div>
     )}
     </div>
+    </ConflictIndexContext.Provider>
   );
 }
 

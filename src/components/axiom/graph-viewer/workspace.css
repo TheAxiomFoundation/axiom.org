@@ -343,7 +343,7 @@ body:has(.has-workspace) .nav-bar { display: none; }
   .graph-viewer-root.has-workspace[data-workspace-view="run"] .viewer-panel,
   .graph-viewer-root.has-workspace[data-workspace-view="map"] .viewer-panel {
     display: grid; height: 100dvh; min-height: 0; overflow: hidden;
-    grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
     padding-bottom: 16px; gap: 8px 20px;
   }
   .graph-viewer-root.has-workspace[data-workspace-view="map"] .viewer-panel { grid-template-rows: auto auto minmax(0, 1fr); }
@@ -695,6 +695,65 @@ body:has(.has-workspace) .nav-bar { display: none; }
 .household-empty { margin: 0 0 4px; padding: 0 10px; font-size: 12px; color: var(--color-ink-secondary); }
 
 /* A scope that cannot run says why, where the Run tab would be. */
-.workspace-run-unavailable { display: flex; gap: 8px; align-items: flex-start; margin: 8px 0 0; padding: 8px 12px; border: 1px solid var(--color-rule); border-radius: 6px; color: var(--color-ink-muted); font-size: 13px; line-height: 1.5; }
-.workspace-run-unavailable svg { flex-shrink: 0; margin-top: 3px; }
-.workspace-run-unavailable strong { color: var(--color-ink); font-weight: 600; }
+
+/* ── One header row, one subject row (2026-11 cleanup) ──────────────
+   The app header carries the location (Library / scope), the view
+   tabs (portaled in from RuleWorkspace) and the Run action, so a rule
+   page spends one row on chrome before its subject. Every tab has the
+   same weight; only the current one is marked. */
+.graph-viewer-root.has-workspace .top-controls { gap: 16px; min-height: 52px; }
+.workspace-breadcrumb { display: flex; align-items: center; gap: 8px; min-width: 0; padding-left: 14px; border-left: 1px solid var(--color-rule); font-size: 13px; color: var(--color-ink-muted); }
+.graph-viewer-root.has-workspace .workspace-breadcrumb .back-to-overview { min-height: 0; padding: 4px 6px; margin-left: -6px; border: 0; background: none; color: var(--color-ink-secondary); font-size: 13px; }
+.graph-viewer-root.has-workspace .workspace-breadcrumb .back-to-overview:hover { color: var(--color-accent); background: none; }
+.workspace-breadcrumb .workspace-breadcrumb-scope { padding: 0; border: 0; color: var(--color-ink); font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 32ch; }
+.workspace-header-slot { flex: 1; min-width: 0; display: flex; align-self: stretch; }
+.workspace-header-slot:empty { display: none; }
+.workspace-header-slot .workspace-views { flex: 1; align-items: stretch; gap: 4px; border-bottom: 0; }
+.workspace-views .workspace-view-tab { display: inline-flex; align-items: center; gap: 7px; margin: 0; padding: 0 12px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; color: var(--color-ink-secondary); font-size: 13px; font-weight: 500; }
+.workspace-views .workspace-view-tab:hover { color: var(--color-ink); }
+.workspace-views .workspace-view-tab[aria-current] { color: var(--color-ink); border-bottom-color: var(--color-accent); }
+.workspace-views .workspace-view-tab[aria-current] svg { color: var(--color-accent); }
+.workspace-views .workspace-view-tab:last-of-type { margin-left: 0; }
+.workspace-header-slot .workspace-nav-finder { margin-left: auto; }
+.workspace-views .workspace-nav-search { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid var(--color-rule); border-radius: 6px; background: var(--color-paper-elevated); }
+
+.graph-viewer-root.has-workspace .workspace-subject,
+.graph-viewer-root.has-workspace:not([data-workspace-view="map"]) .workspace-subject { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--color-rule); }
+.workspace-subject-text { flex: 1; min-width: 0; }
+.graph-viewer-root.has-workspace .workspace-subject h1,
+.graph-viewer-root.has-workspace:not([data-workspace-view="map"]) .workspace-subject h1,
+.graph-viewer-root.has-workspace[data-workspace-view="map"] .workspace-subject h1 { margin: 0; font-size: 20px; line-height: 1.3; font-weight: 600; letter-spacing: -.01em; }
+.workspace-citation { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-top: 2px; font-size: 13px; }
+.rule-workspace .workspace-back { display: grid; place-items: center; flex: none; width: 32px; height: 32px; padding: 0; border: 1px solid var(--color-rule); border-radius: 6px; background: var(--color-paper-elevated); color: var(--color-ink-secondary); }
+.rule-workspace .workspace-back:not(:disabled):hover { color: var(--color-ink); border-color: var(--color-ink-muted); }
+.workspace-partial { font-size: 11px; color: var(--color-ink-muted); }
+
+/* A refusal to run is a status, not a page headline: one quiet chip,
+   with the runtime's own words a click away. */
+.rule-workspace .workspace-run-unavailable { position: relative; display: inline-block; margin: 0; padding: 0; border: 0; background: none; font-size: 12px; }
+.workspace-run-unavailable > summary { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border: 1px solid var(--color-rule); border-radius: 999px; color: var(--color-ink-secondary); cursor: pointer; list-style: none; }
+.workspace-run-unavailable > summary::-webkit-details-marker { display: none; }
+.workspace-run-unavailable[open] > summary { border-color: var(--color-ink-muted); color: var(--color-ink); }
+.workspace-run-unavailable > .workspace-run-unavailable-reason { position: absolute; z-index: 40; top: calc(100% + 6px); left: 0; width: min(520px, 80vw); margin: 0; padding: 12px 14px; border: 1px solid var(--color-rule); border-radius: 8px; background: var(--color-paper-elevated); box-shadow: 0 8px 24px #0000001a; color: var(--color-ink-secondary); font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
+
+/* Graph toolbar: what to show first, then the camera. */
+.graph-viewer-root.has-workspace .irg-toolbar { gap: 6px; }
+.graph-viewer-root.has-workspace .irg-toolbar .irg-toolbar-btn { min-height: 30px; padding: 5px 10px; }
+.graph-viewer-root.has-workspace .irg-toolbar .irg-toolbar-btn[aria-pressed="true"] { color: var(--color-ink); border-color: var(--color-ink-muted); background: var(--color-paper-elevated); }
+.graph-viewer-root.has-workspace .irg-depth-control { padding-left: 0; padding-right: 6px; margin-right: 2px; border-right: 1px solid var(--color-rule); }
+.graph-viewer-root.has-workspace .irg-depth-control select { padding: 5px 26px 5px 8px; }
+@media (max-width: 1100px) {
+  .workspace-views .workspace-view-tab svg { display: none; }
+  .workspace-breadcrumb .workspace-breadcrumb-scope { max-width: 18ch; }
+}
+@media (max-width: 760px) {
+  .graph-viewer-root.has-workspace .top-controls { flex-wrap: wrap; }
+  .workspace-header-slot { flex-basis: 100%; order: 10; }
+}
+
+/* "+N inputs": a card's undrawn inputs, on its input (left) side. */
+.graph-viewer-root .irg-node { position: relative; }
+.graph-viewer-root .irg-hidden-inputs { position: absolute; top: 50%; left: -10px; transform: translate(-100%, -50%); padding: 2px 8px; border: 1px dashed color-mix(in srgb, var(--color-accent) 45%, var(--color-rule)); border-radius: 999px; background: var(--color-paper); color: var(--color-accent); font: 500 11px/1.4 var(--f-body); white-space: nowrap; pointer-events: none; }
+.graph-viewer-root .irg-wrap[data-lod="far"] .irg-hidden-inputs { display: none; }
+
+.graph-viewer-root .irg-conflict-mark { display: inline-flex; vertical-align: -1px; margin-left: 6px; color: var(--color-warning); }

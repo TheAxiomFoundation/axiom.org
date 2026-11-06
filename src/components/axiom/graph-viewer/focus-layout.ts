@@ -125,3 +125,38 @@ export function scopeRootFor(nodes: Node[], edges: Edge[], outputIds: string[], 
   }
   return requested;
 }
+
+/** The cards a depth-limited canvas draws: the root's inputs to `depth`
+ *  levels, every card on a path from the focused card up to the root,
+ *  and the focused card's own inputs to `depth` levels. Each drawn card
+ *  carries how many of its direct inputs stay hidden, so the canvas can
+ *  say "+N inputs" instead of drawing the whole tree at an unreadable
+ *  zoom. An unlimited depth draws the whole tree. */
+export function visibleSubgraph(nodes: Node[], edges: Edge[], rootLegalId: string | null, focusLegalId: string | null, depth: number): { nodes: Node[]; edges: Edge[]; hiddenInputs: Map<string, number> } {
+  const tree = dependencySubgraph(nodes, edges, rootLegalId, Infinity);
+  if (!Number.isFinite(depth)) return { ...tree, hiddenInputs: new Map() };
+  const visible = upstreamIds(tree.nodes, tree.edges, rootLegalId, depth);
+  const focus = tree.nodes.find((node) => node.data.legalId === focusLegalId);
+  if (focus && !visible.has(focus.id)) {
+    // Every card between the focus and the root: downstream of the
+    // focus, inside the root's tree.
+    const outgoing = new Map<string, string[]>();
+    for (const edge of tree.edges) outgoing.set(edge.source, [...(outgoing.get(edge.source) ?? []), edge.target]);
+    const queue = [focus.id];
+    const seen = new Set(queue);
+    for (let i = 0; i < queue.length; i++) for (const next of outgoing.get(queue[i]!) ?? []) {
+      if (!seen.has(next)) { seen.add(next); queue.push(next); }
+    }
+    for (const id of seen) visible.add(id);
+  }
+  if (focus) for (const id of upstreamNodeIds(tree.nodes, tree.edges, focus.id, depth)) visible.add(id);
+  const hiddenInputs = new Map<string, number>();
+  for (const edge of tree.edges) {
+    if (visible.has(edge.target) && !visible.has(edge.source)) hiddenInputs.set(edge.target, (hiddenInputs.get(edge.target) ?? 0) + 1);
+  }
+  return {
+    nodes: tree.nodes.filter((node) => visible.has(node.id)),
+    edges: tree.edges.filter((edge) => visible.has(edge.source) && visible.has(edge.target)),
+    hiddenInputs,
+  };
+}

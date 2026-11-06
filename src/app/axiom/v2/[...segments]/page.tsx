@@ -15,6 +15,7 @@ import {
   type SectionResolution,
 } from "@/lib/axiom/section-page";
 import { SectionReader } from "@/components/axiom/section/section-reader";
+import { conflictsForCitationPaths } from "@/lib/axiom/source-conflicts";
 import { SectionSkeleton } from "@/components/axiom/section/section-skeleton";
 import {
   browseTitle,
@@ -120,13 +121,17 @@ async function SectionBody({
 }) {
   const data = await getSectionPageDataFromResolution(resolution);
   if (!data) notFound();
+  // Known source conflicts in this section (an empty list when the
+  // table is unavailable; the page renders the same).
+  const sectionPath = data.root.citation_path;
+  const sourceConflicts = sectionPath ? (await conflictsForCitationPaths([sectionPath]))[sectionPath] ?? [] : [];
 
   const jsonLd = buildLegislationJsonLd(readerMetadata(resolution));
 
   return (
     <>
       {jsonLd && <JsonLd data={jsonLd} />}
-      <SectionReader data={data} highlightRule={highlightRule} />
+      <SectionReader data={data} highlightRule={highlightRule} sourceConflicts={sourceConflicts} />
     </>
   );
 }
