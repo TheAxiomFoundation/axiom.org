@@ -98,6 +98,19 @@ generate `/axiom/v2/...` hrefs. The app root and marketing pages stay on v1.
   page, `?tab=bundles&bundle=<jurisdiction>/<program>`) reads only the tables,
   and the ledger and journey name each encoding's bundle and tier from them
   and link into that tab. The old `/ops/bundles/<id>` address only redirects.
+- **Source conflicts** (`encodings.source_conflicts`): one row per entry of
+  each rulespec-* repo's source-conflict register
+  (`known-source-conflicts.yaml` on main), keyed by the global id
+  `<jurisdiction>:<id>`. An entry records where sources disagree, the
+  readings and the adopted reading. `citation_paths` holds its corpus texts'
+  paths, and `adopted_by` holds the modules that adopt it.
+  `scripts/collect-source-conflicts.mjs` replaces the rows on every pass of
+  the pipeline collector's workflow. A repo without the file adds nothing,
+  and a malformed file fails the step. `src/lib/axiom/source-conflicts.ts`
+  matches conflicts to a citation path (the path, a path under it or above
+  it) or to a module. `/api/axiom/source-conflicts?paths=` serves them to
+  the client. When the table is missing, lookups return nothing and pages
+  render the same.
 - **Everything executable** (packages, graphs, calculate): the hosted
   axiom-api via `src/lib/axiom/runtime/api.ts`, server-side only.
 
@@ -120,6 +133,9 @@ Dev needs `.env.local` (gitignored) with:
   (`bun scripts/collect-program-bundles.mjs --out <file>`, `--bundle <yaml>`
   for a bundle file not yet on axiom-corpus main) that the bundles tab reads
   instead of the tables.
+- `AXIOM_SOURCE_CONFLICTS_FILE` — optional, dev only: a source-conflict
+  collector dry run (`bun scripts/collect-source-conflicts.mjs --out <file>`)
+  that the app reads instead of `encodings.source_conflicts`.
 - `AXIOM_GITHUB_TOKEN` — set in Production; optional in dev. The `/ops`
   Pipeline tab's ingest stations read axiom-corpus's PRs and every rulespec
   repo's pin history through GitHub's GraphQL API with it (cached 15
