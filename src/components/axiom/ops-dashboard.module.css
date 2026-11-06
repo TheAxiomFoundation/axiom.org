@@ -303,28 +303,33 @@
   font-size: 13px;
 }
 
+/* One label column (as .ledgerNow), so every phase's facts, finding and marks start where "Now" does. */
 .phase {
+  --phase-label: 120px;
   display: grid;
-  gap: 4px;
+  grid-template-columns: var(--phase-label) minmax(0, 1fr);
+  align-items: baseline;
+  gap: 4px 12px;
 }
 
 .phase[data-kind="reencode"] {
+  /* The rule and its indent (4 + 2 + 14) come out of the label column. */
+  --phase-label: 100px;
   margin-left: 4px;
   padding-left: 14px;
   border-left: 2px solid var(--color-accent);
 }
 
 .phaseHead {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 2px 12px;
-  margin: 0;
+  display: contents;
 }
 
 .phaseHead > .ledgerLabel {
-  min-width: 108px;
   margin: 0;
+}
+
+.phase > :not(.phaseHead) {
+  grid-column: 2;
 }
 
 .phaseFacts {
