@@ -1,4 +1,5 @@
 import { fileLegalIdOf } from "./citations";
+import type { ScenarioValue } from "./input-meta";
 import type { LegalId, ProgramGraph } from "./types";
 
 /**
@@ -24,11 +25,11 @@ import type { LegalId, ProgramGraph } from "./types";
 export function buildRunRequestBody(
   composeFocus: string | null,
   program: { jurisdiction: string; programId: string } | null,
-  scenario: Record<string, number | boolean>,
+  scenario: Record<string, ScenarioValue>,
   variables: string[],
-  people?: Record<string, Record<string, number | boolean>>,
+  people?: Record<string, Record<string, ScenarioValue>>,
   relations?: Record<string, string[]>,
-  instances?: Record<string, Record<string, Record<string, number | boolean>>>,
+  instances?: Record<string, Record<string, Record<string, ScenarioValue>>>,
 ): Record<string, unknown> {
   if (composeFocus) {
     return {
@@ -56,7 +57,7 @@ export function buildRunRequestBody(
  * scenario marks the results sheet stale — it never fires a run.
  */
 export function scenarioKey(
-  scenario: Record<string, number | boolean>,
+  scenario: Record<string, ScenarioValue>,
 ): string {
   return JSON.stringify(
     Object.entries(scenario).sort(([a], [b]) => a.localeCompare(b)),
