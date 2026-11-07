@@ -321,21 +321,3 @@ export function useResults(enabled: boolean, intervalMs = 5000, runId?: string) 
   const url = enabled ? `/api/aspen/results${runId ? `?run=${encodeURIComponent(runId)}` : ""}` : null;
   return usePoll<ResultsPayload>(url, intervalMs);
 }
-
-/** "$1,234" for numbers, the raw value otherwise. */
-export function formatValue(value: unknown, unit?: string | null): string {
-  if (typeof value === "number") {
-    if (unit === "USD") {
-      return value.toLocaleString("en-US", {
-        style: "currency",
-        currency: "USD",
-        maximumFractionDigits: Number.isInteger(value) ? 0 : 2,
-      });
-    }
-    return value.toLocaleString("en-US");
-  }
-  if (value === "holds") return "Yes";
-  if (value === "not_holds") return "No";
-  if (value === null || value === undefined) return "—";
-  return String(value);
-}

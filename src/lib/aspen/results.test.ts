@@ -110,7 +110,7 @@ describe('aspen results', () => {
 
   it('summarizes a run for the reveal', () => {
     const s = summarizeRun(DATA)
-    expect(s).toMatchObject({ participants: 3, prompts: 3, rated: 2, checked: 1 })
+    expect(s).toMatchObject({ participants: 3, prompts: 3, rated: 2 })
     // What people asked as comes from their first questions, not the optional welcome pick.
     expect(s.perspectives.map((c) => [c.id, c.count])).toEqual([
       ['resident', 1],
@@ -122,7 +122,6 @@ describe('aspen results', () => {
     expect(s.states).toEqual([{ id: 'Arizona', label: 'Arizona', count: 2 }])
     expect(s.verdicts.map((c) => c.count)).toEqual([0, 1, 1])
     expect(s.wentWrong[0].count).toBe(1)
-    expect(s.postCheck.find((c) => c.id === 'wrong')?.count).toBe(1)
   })
 
   it('builds an anonymous feed, newest first', () => {
@@ -133,7 +132,7 @@ describe('aspen results', () => {
     expect(first.prompt).toBe('Can I get SNAP? with savings')
     expect(first.answer?.endsWith('…')).toBe(true)
     expect(first.answer!.length).toBeLessThanOrEqual(360)
-    expect(first).toMatchObject({ perspective: 'A resident', household: 'Couple, with savings', rulesAmount: 24 })
+    expect(first).toMatchObject({ perspective: 'A resident', household: 'Couple, with savings' })
     const unknown = feed.find((f) => f.id === 'd')!
     expect(unknown).toMatchObject({ perspective: 'stranger', household: null, createdAt: null })
   })
@@ -223,7 +222,7 @@ describe('aspen results', () => {
     }
   })
 
-  it('reads a saved check the way the panel showed it', () => {
+  it('reads a saved check the way the panel showed it when the check ran', () => {
     // The verdict saved with the check wins over today's list.
     expect(rulesIfEligible({ rules_eligibility_tested: false, rules_program_id: 'us-ny-snap' })).toBe(true)
     expect(rulesIfEligible({ rules_eligibility_tested: true, rules_program_id: 'us-az-snap' })).toBe(false)
@@ -251,13 +250,7 @@ describe('aspen results', () => {
     })
     const v = viabilityOf([p('az', 'us-az-snap', 24), p('ny', 'us-ny-snap', 300), p('old', null, 50), p('az0', 'us-az-snap', 0)])
     expect(v).toMatchObject({ wouldNotApply: 4, wouldNotApplyEligible: 2, wouldNotApplyIfEligible: 1 })
-    const feed = summarizeRun({ ...DATA, prompts: [{ ...p('az', 'us-az-snap', 24), answer: 'No.' }, { ...p('ny', 'us-ny-snap', 300), answer: 'No.' }] }).feed
-    expect(feed.map((f) => [f.id, f.rulesAmount, f.rulesIfEligible])).toEqual(
-      expect.arrayContaining([
-        ['az', 24, true],
-        ['ny', 300, false],
-      ]),
-    )
+    expect([p('az', 'us-az-snap', 24), p('ny', 'us-ny-snap', 300)].map(rulesIfEligible)).toEqual([true, false])
   })
 
   it('splits every not-apply answer with a rules amount into qualifies or if-eligible, never both', () => {
@@ -605,9 +598,8 @@ describe('questionsAsked and answersGiven', () => {
     }
     const later = { ...row('later', 'x', 0, '2026-10-26T18:00:30Z'), answer: 'B', verdict: 'right' }
     expect(questionsAsked([checked, later]).map((p) => p.id)).toEqual(['checked'])
-    const summary = summarizeRun({ ...DATA, prompts: [checked, later] })
-    expect(summary.checked).toBe(1)
-    expect(summary.postCheck.find((c) => c.id === 'wrong')?.count).toBe(1)
+    // The room sees the attempt counted: its verdict after the check puts it in the spotlight.
+    expect(summarizeRun({ ...DATA, prompts: [checked, later] }).spotlight.map((x) => [x.id, x.reason])).toEqual([['checked', 'checked-wrong']])
   })
 
   it('keeps different questions at the same turn apart', () => {
@@ -698,7 +690,7 @@ describe('questionsAsked and answersGiven', () => {
     const postChecked = { ...row('post', 'x', 0, '2026-10-26T18:00:00Z'), ...shared, post_check_verdict: 'wrong' }
     const later = { ...row('later', 'x', 0, '2026-10-26T18:00:30Z'), ...shared }
     expect(questionsAsked([postChecked, later]).map((p) => p.id)).toEqual(['post'])
-    expect(summarizeRun({ ...DATA, prompts: [postChecked, later] }).postCheck.find((c) => c.id === 'wrong')?.count).toBe(1)
+    expect(summarizeRun({ ...DATA, prompts: [postChecked, later] }).spotlight.map((x) => [x.id, x.reason])).toEqual([['post', 'checked-wrong']])
   })
 
   it('keeps a rated attempt over one that shows everything but a rating', () => {

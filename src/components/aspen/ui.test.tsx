@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { BarRow, Bars, Card, Chip, Eyebrow, StageHeading, Stat } from "./ui";
+import { BarRow, Bars, Card, Chip, StageHeading, Stat } from "./ui";
 
 const widthOf = (label: string) =>
   (screen.getByTitle(label).nextElementSibling?.firstElementChild as HTMLElement).style.width;
@@ -35,14 +35,13 @@ describe("Chip", () => {
 });
 
 describe("text pieces", () => {
-  it("renders an eyebrow, a card and a stat", () => {
+  it("renders a card and a stat", () => {
     render(
       <Card className="custom-card">
-        <Eyebrow className="custom-eyebrow">Label</Eyebrow>
+        <span>Label</span>
         <Stat value={42} label="people" />
       </Card>,
     );
-    expect(screen.getByText("Label")).toHaveClass("custom-eyebrow");
     expect(screen.getByText("Label").parentElement).toHaveClass("custom-card");
     expect(screen.getByText("42")).toBeInTheDocument();
     expect(screen.getByText("people")).toBeInTheDocument();
