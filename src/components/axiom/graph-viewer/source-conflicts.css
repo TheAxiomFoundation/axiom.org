@@ -61,3 +61,10 @@ button.source-conflict-badge:hover { border-color: var(--color-ink-muted); color
 .source-conflict-footer { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 8px 0 12px; }
 .source-conflict-register { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; white-space: nowrap; }
 .node-inspector .source-conflicts { margin: 12px 0; padding: 12px; }
+/* The short form beside the graph: questions only, and a way to the Read
+   view, where the quoted texts have room. */
+.source-conflicts-summary ul { margin: 10px 0 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.source-conflicts-summary li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; align-items: baseline; font-size: 12.5px; line-height: 1.45; color: var(--color-ink); overflow-wrap: anywhere; }
+.source-conflicts-summary li[data-status="open"] .source-conflict-status { background: color-mix(in srgb, var(--color-warning) 12%, var(--color-paper)); color: var(--color-warning); }
+.source-conflicts .source-conflict-open { display: inline-flex; align-items: center; gap: 4px; margin-top: 10px; padding: 0; border: 0; background: none; color: var(--color-accent); font: 500 12px/1.4 var(--f-body); cursor: pointer; }
+.source-conflicts .source-conflict-open:hover { text-decoration: underline; }

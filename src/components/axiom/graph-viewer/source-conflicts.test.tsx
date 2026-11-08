@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { SourceConflict } from "@/lib/axiom/source-conflicts-normalize";
-import { ConflictBadge, formatMoney, keyPassage, ruleCitationPath, SourceConflictList, useConflictIndex } from "./source-conflicts";
+import { ConflictBadge, formatMoney, keyPassage, ruleCitationPath, SourceConflictList, SourceConflictSummary, useConflictIndex } from "./source-conflicts";
 import type { ProgramGraph } from "./types";
 
 const conflict = (overrides: Partial<SourceConflict> = {}): SourceConflict => ({
@@ -94,6 +94,23 @@ describe("source conflicts in the app", () => {
     expect(screen.getByText("test_separate_filer")).toBeTruthy();
     expect(formatMoney("20.40", "USD")).toBe("$20.40");
     expect(formatMoney("x", "USD")).toBe("x USD");
+  });
+
+  it("shows only the questions beside the graph, and opens the Read view for the rest", () => {
+    const onOpen = vi.fn();
+    render(<SourceConflictSummary conflicts={[conflict({ globalId: "us:ruled-one", status: "ruled", question: "A ruled question?" }), conflict()]} onOpen={onOpen} />);
+    expect([...document.querySelectorAll(".source-conflicts-summary li")].map((item) => item.textContent)).toEqual([
+      "OpenDoes section 129 limit the exclusion to the lesser spouse's earned income?",
+      "RuledA ruled question?",
+    ]);
+    expect(document.querySelector("blockquote")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Read the sources and readings/ }));
+    expect(onOpen).toHaveBeenCalled();
+  });
+
+  it("opens every entry when the Read view asks for it", () => {
+    render(<SourceConflictList conflicts={[conflict()]} defaultOpen />);
+    expect((document.querySelector("details.source-conflict") as HTMLDetailsElement).open).toBe(true);
   });
 
   it("shows no size without a money case", () => {

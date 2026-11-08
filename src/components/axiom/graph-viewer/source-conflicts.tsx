@@ -121,15 +121,33 @@ export function ConflictBadge({ conflicts, onClick }: { conflicts: SourceConflic
     : <span className={`source-conflict-badge${open ? " is-open" : ""}`} aria-label={label} title={label}>{content}</span>;
 }
 
+/** The conflicts behind a rule, short, for the narrow inspector beside the
+ *  graph: each question and its status, and one button that opens the
+ *  Read view, where the quoted texts and the readings have room. */
+export function SourceConflictSummary({ conflicts, onOpen }: { conflicts: SourceConflict[]; onOpen: () => void }) {
+  if (!conflicts.length) return null;
+  const ordered = [...conflicts].sort((a, b) => Number(b.status === "open") - Number(a.status === "open") || a.globalId.localeCompare(b.globalId));
+  return <section className="source-conflicts source-conflicts-summary" aria-label="Known source conflicts">
+    <h3 title="The sources for this provision disagree. Axiom encodes one reading."><Scale size={14} aria-hidden="true" />Known source conflicts <span>{conflicts.length}</span></h3>
+    <ul>
+      {ordered.map((conflict) => <li key={conflict.globalId} data-status={conflict.status}>
+        <span className="source-conflict-status">{conflictStatusLabel(conflict.status)}</span>
+        <span className="source-conflict-question">{conflict.question}</span>
+      </li>)}
+    </ul>
+    <button type="button" className="source-conflict-open" onClick={onOpen}>Read the sources and readings <ArrowUpRight size={13} aria-hidden="true" /></button>
+  </section>;
+}
+
 /** The conflicts behind a rule. Each entry opens to the two sides of the
  *  question, short: the reading Axiom uses and the other readings. The
  *  basis, the ruling and the sources wait behind one more click. */
-export function SourceConflictList({ conflicts, citationPath, id }: { conflicts: SourceConflict[]; citationPath?: string | null; id?: string }) {
+export function SourceConflictList({ conflicts, citationPath, id, defaultOpen = false }: { conflicts: SourceConflict[]; citationPath?: string | null; id?: string; defaultOpen?: boolean }) {
   if (!conflicts.length) return null;
   const ordered = [...conflicts].sort((a, b) => Number(b.status === "open") - Number(a.status === "open") || a.globalId.localeCompare(b.globalId));
   return <section className="source-conflicts" id={id} aria-label="Known source conflicts">
     <h3 title="The sources for this provision disagree. Axiom encodes one reading."><Scale size={14} aria-hidden="true" />Known source conflicts <span>{conflicts.length}</span></h3>
-    {ordered.map((conflict) => <SourceConflictEntry key={conflict.globalId} conflict={conflict} citationPath={citationPath ?? null} />)}
+    {ordered.map((conflict) => <SourceConflictEntry key={conflict.globalId} conflict={conflict} citationPath={citationPath ?? null} defaultOpen={defaultOpen} />)}
   </section>;
 }
 
@@ -233,7 +251,7 @@ function SourceConflictQuote({ item, here, context }: { item: SourceConflictText
   </li>;
 }
 
-function SourceConflictEntry({ conflict, citationPath }: { conflict: SourceConflict; citationPath: string | null }) {
+function SourceConflictEntry({ conflict, citationPath, defaultOpen }: { conflict: SourceConflict; citationPath: string | null; defaultOpen: boolean }) {
   const isHere = (path: string | null) => Boolean(path && citationPath && citationPathsOverlap(path, citationPath));
   const texts = orderTexts(conflict.texts ?? [], isHere);
   const alsoFollow = (reading: string) => (conflict.implementations ?? []).filter((item) => item.follows === reading).map((item) => item.by);
@@ -244,7 +262,7 @@ function SourceConflictEntry({ conflict, citationPath }: { conflict: SourceConfl
     { id: "reading", text: conflict.reading, effect: null as string | null | undefined, adopted: true },
     ...conflict.alternatives.map((alternative) => ({ id: alternative.id, text: alternative.reading, effect: alternative.effect, adopted: false })),
   ];
-  return <details className="source-conflict" data-status={conflict.status}>
+  return <details className="source-conflict" data-status={conflict.status} open={defaultOpen || undefined}>
     <summary>
       <span className="source-conflict-status">{conflictStatusLabel(conflict.status)}</span>
       <span className="source-conflict-question">{conflict.question}</span>

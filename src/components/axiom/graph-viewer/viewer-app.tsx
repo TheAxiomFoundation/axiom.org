@@ -25,7 +25,7 @@ import {
   readableLawTarget,
 } from "./citations";
 import { InspectorMiniGraph } from "./inspector-mini-graph";
-import { ConflictBadge, ConflictIndexContext, ruleCitationPath, SourceConflictList, useConflictIndex } from "./source-conflicts";
+import { ConflictBadge, ConflictIndexContext, ruleCitationPath, SourceConflictList, SourceConflictSummary, useConflictIndex } from "./source-conflicts";
 import "./styles.css";
 import "./graph-styles.css";
 import "./plane.css";
@@ -2447,6 +2447,12 @@ export function GraphViewerApp({
   const graphKey = composeFocus ?? (program ? programKey(program) : "workspace");
   const selectedLegalId = graph ? ((inspected && "legalId" in inspected && inspected.legalId) || summitOutput || graph.terminalOutputs[0] || graph.rules[0]?.legalId || null) : null;
   const selectedConflicts = (selectedLegalId && conflictIndex.get(selectedLegalId)) || [];
+  // The quoted texts need room: a conflict opens in the Read view, above
+  // the rule's own law text, not in the narrow inspector.
+  const openConflictsInReader = () => {
+    setWorkspaceView("read");
+    requestAnimationFrame(() => requestAnimationFrame(() => document.getElementById("reader-source-conflicts")?.scrollIntoView({ behavior: "smooth", block: "start" })));
+  };
   const openingWorkspace = launcher !== "open" && !error && (
     (!graph && (programsLoading || Boolean(composeFocus))) || loading || (workspaceView === "map" && spec && Object.keys(structureTraces).length > 0 && readyGraphKey !== graphKey)
   );
@@ -2637,11 +2643,8 @@ export function GraphViewerApp({
             scenario={scenarioFlowUI}
             graphControls={<div className="graph-controls-slot" ref={setGraphControlsSlot} />}
             headerSlot={headerSlot}
-            subjectExtras={<ConflictBadge conflicts={selectedConflicts} onClick={() => {
-              if (workspaceView !== "map") setWorkspaceView("structure");
-              requestAnimationFrame(() => document.getElementById("selected-source-conflicts")?.scrollIntoView({ behavior: "smooth", block: "start" }));
-            }} />}
-            conflictsPanel={<SourceConflictList id="selected-source-conflicts" conflicts={selectedConflicts} citationPath={(() => { const rule = graph.rules.find((item) => item.legalId === selectedLegalId); return rule ? ruleCitationPath(rule.fileLegalId, rule.source) : null; })()} />}
+            subjectExtras={<ConflictBadge conflicts={selectedConflicts} onClick={openConflictsInReader} />}
+            conflictsPanel={<SourceConflictList id="reader-source-conflicts" defaultOpen conflicts={selectedConflicts} citationPath={(() => { const rule = graph.rules.find((item) => item.legalId === selectedLegalId); return rule ? ruleCitationPath(rule.fileLegalId, rule.source) : null; })()} />}
             valueOf={(id) => graph ? inputAwareEvidence(graph, runResult, id, inputMeta.defaults) : undefined}
             hasRun={Boolean(runResult)}
             stale={resultsStale}
@@ -3343,7 +3346,7 @@ export function GraphViewerApp({
                 stale={resultsStale}
               />
             )}
-            {legalId && rule && <SourceConflictList id="selected-source-conflicts" conflicts={conflictIndex.get(legalId) ?? []} citationPath={ruleCitationPath(rule.fileLegalId, rule.source)} />}
+            {legalId && rule && <SourceConflictSummary conflicts={conflictIndex.get(legalId) ?? []} onOpen={() => { if (legalId !== selectedLegalId) inspectRule(legalId); openConflictsInReader(); }} />}
             {legalId && <NodeMetadata key={legalId} id={legalId} entry={rule ?? input ?? graph?.relations.find(item => item.legalId === legalId) ?? {}} />}
             {/* The formula reads best beside the rules it combines, which
                 is what Relationships lays out — link there, don't repeat it. */}
