@@ -23,6 +23,7 @@ export default async function OpsFlowRedirect({ searchParams }: { searchParams?:
     ...DEFAULT_FLOW_PARAMS,
     window: parseWindow(raw.window),
     j: one(raw.j),
+    only: one(raw.only) === "1",
     pop: ((pop) => (pop === "modules" ? "all" : pop))(parsePopulation(one(raw.pop))),
     view: view === "programs" ? view : "pipeline",
     station: one(raw.station),

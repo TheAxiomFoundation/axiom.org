@@ -90,6 +90,57 @@
   color: var(--color-ink-muted);
 }
 
+.scopeRows {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+}
+
+.scopeSelectWrap {
+  position: relative;
+  display: inline-flex;
+}
+
+/* The arrow: a chevron drawn in the text color, so it follows the theme. */
+.scopeSelectWrap::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid var(--color-ink-secondary);
+  border-bottom: 1.5px solid var(--color-ink-secondary);
+  transform: translateY(-70%) rotate(45deg);
+  pointer-events: none;
+}
+
+.scopeSelect {
+  appearance: none;
+  min-width: 96px;
+  margin: 0;
+  padding: 6px 32px 6px 12px;
+  font: inherit;
+  font-size: 12px;
+  line-height: 19.2px;
+  color: var(--color-ink);
+  background: var(--color-paper);
+  border: 1px solid var(--color-rule);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.scopeSelect:hover {
+  background: var(--color-paper-elevated);
+}
+
+.scopeSelect:focus-visible {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 1px;
+}
+
 .control .seg {
   flex-wrap: wrap;
   max-width: 100%;

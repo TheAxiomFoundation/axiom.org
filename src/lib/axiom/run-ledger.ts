@@ -243,7 +243,7 @@ export interface SectionBrief {
    * and nothing is open. For an encoded section, a later run is a re-encode.
    */
   now: { text: string; link: { label: string; url: string } | null } | null;
-  /** Failures more than one run hit, most first. */
+  /** Failures more than one run hit since the last run that passed, most first. */
   repeated: Array<{ label: string; cause: string | null; detail: string | null; count: number; url: string }>;
   marks: RunMark[];
 }
@@ -287,12 +287,15 @@ export function sectionBrief(section: LedgerSection): SectionBrief {
     ? ["Encoded", done.pr ? `merged ${done.pr.label}` : null, "tests pass"].filter(Boolean).join(" · ")
     : `Not encoded yet · ${runs.length} ${runs.length === 1 ? "run" : "runs"}${runs.length > 1 ? ` since ${day(oldest.at ?? oldest.dispatchedAt)}` : ""}, ${merged ? `${merged} merged` : "none merged"}`;
 
-  // A failure that came back: the same stop and cause in two runs or more,
-  // with the newest run that hit it to open.
-  const repeated = sectionOverview(section)
-    .stops.filter((stop) => stop.tone === "failed" && stop.count >= 2)
+  // A failure that came back while the section is stuck: the same stop and
+  // cause in two runs or more since its last run that passed, with the newest
+  // run that hit it to open. Once a run passes, what failed before is history.
+  const passed = runs.findIndex((run) => run.outcome === "encoded");
+  const stuck = passed < 0 ? runs : runs.slice(0, passed);
+  const repeated = (stuck.length < 2 ? [] : sectionOverview({ ...section, runs: stuck }).stops)
+    .filter((stop) => stop.tone === "failed" && stop.count >= 2)
     .map((stop) => {
-      const hit = runs.find((run) => {
+      const hit = stuck.find((run) => {
         const group = run.causeGroup ?? run.cause;
         return `${sectionStatus(run).status}|${group ? causeHeadline(group) : ""}` === stop.key;
       });

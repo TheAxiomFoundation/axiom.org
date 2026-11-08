@@ -116,6 +116,9 @@ export async function createDirector(opts: {
   // createDirector instead. Without it, the story holds on the last scene drawn.
   onError?: (error: unknown) => void;
   paper?: boolean; // draw the scenes for the light page (see THEME)
+  // the glint that shows what is clickable (default on); a video has
+  // nothing to click, so its recording turns it off
+  glint?: boolean;
 }): Promise<Director> {
   THEME.paper = !!opts.paper;
   await loadFonts();
@@ -486,7 +489,7 @@ export async function createDirector(opts: {
   canvas.addEventListener("click", onClick);
   // a glint every few seconds, while the reader is here
   const glintTimer = window.setInterval(() => {
-    if (document.hidden || !front) return;
+    if (opts.glint === false || document.hidden || !front) return;
     const r = canvas.getBoundingClientRect();
     if (r.bottom < 0 || r.top > window.innerHeight) return;
     if (!front.beat.links.some((l) => linkOn(l, front!.t))) return;

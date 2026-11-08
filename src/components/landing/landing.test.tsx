@@ -93,9 +93,8 @@ describe('Landing sections', () => {
   // deterministic checks, independent oracle cross-checks, and AI judges.
   // Claiming a human approver is comfort language for a step that does not
   // exist, and it has reached copy twice now — so it fails the build.
-  // The journey's words: the encode beat is labelled an illustration,
-  // registry numbers carry their snapshot, and nothing is called
-  // certified, signed or sealed (the statute's own "certified as
+  // The journey's words: the encode beat names its checks, and nothing
+  // is called certified, signed or sealed (the statute's own "certified as
   // eligible" is drawn on the canvas, never in the page text).
   it('keeps the journey captions inside the copy rules', () => {
     const { container } = render(<EncoderSection />)
@@ -103,10 +102,8 @@ describe('Landing sections', () => {
     // apply manifest; the story's captions claim no signature)
     const journey = container.querySelector('.jl-posters, .jl-track')
     const text = journey?.textContent ?? ''
-    // the two disclosures ride in the step titles: the encode step is an
-    // illustration, and the registry's numbers carry their snapshot month
-    expect(text).toMatch(/an illustration: ai drafts a rule/i)
-    expect(text).toMatch(/at scale \(\w+ \d{4} snapshot\)/i)
+    // the encode step names its deterministic checks
+    expect(text).toMatch(/automated encoding, deterministic checks, transparent validation/i)
     expect(text).not.toMatch(/\b(certified|signed|sealed)\b/i)
   })
 

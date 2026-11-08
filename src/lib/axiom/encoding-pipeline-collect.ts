@@ -2176,14 +2176,39 @@ const ERROR_LINE_RE = /^(?:error=(.+)|apply=blocked_[a-z_]+:(.+)|(error: .+))$/;
 /** A result block that applied in the end: the errors before it were repaired. */
 const APPLIED_RE = /^outcome=\S+ final_success=True\b/;
 
-/** A cause read from a log before its signer and encoder bookkeeping lines were skipped. */
+/**
+ * A cause read from a log before its signer and encoder bookkeeping lines
+ * were skipped, or before a closing JSON result was read for its issues
+ * (the cause was that block's last brackets, `] }`).
+ */
 export function bookkeepingCause(error: string | null | undefined): boolean {
-  return !!error && BOOKKEEPING_RE.test(error);
+  return !!error && (BOOKKEEPING_RE.test(error) || !/[A-Za-z]/.test(error));
 }
 
 function clipLine(text: string): string {
   const flat = text.replace(/\s+/g, " ").trim();
   return flat.length > CHECK_ERROR_MAX_CHARS ? `${flat.slice(0, CHECK_ERROR_MAX_CHARS - 1)}…` : flat;
+}
+
+/**
+ * The issues a step printed as a closing JSON object (`{"passed": false,
+ * "issues": [...]}`), joined; null when its output does not end in one.
+ */
+function jsonIssues(printed: string[]): string | null {
+  if (printed.at(-1) !== "}") return null;
+  const start = printed.lastIndexOf("{");
+  if (start < 0) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(printed.slice(start).join("\n"));
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object") return null;
+  const record = parsed as Record<string, unknown>;
+  const listed = [record.issues, record.errors].find(Array.isArray) as unknown[] | undefined;
+  const said = (listed ?? [record.error, record.message]).filter((item): item is string => typeof item === "string" && item.trim() !== "");
+  return said.length ? said.join("; ") : null;
 }
 
 /**
@@ -2211,6 +2236,9 @@ export function checkErrorFromLog(log: string): string | null {
   for (let i = generic - 1; i >= 0 && !/^##\[(?:group|endgroup)\]/.test(lines[i]); i--) {
     if (lines[i].trim()) printed.unshift(lines[i].trim());
   }
+  // A guard that prints its result as JSON names its issues there.
+  const reported = jsonIssues(printed);
+  if (reported) return clipLine(reported);
   // The last error named wins: a Python traceback ends in its exception, an
   // encoder result in its error or blocked apply; later lines are shutdown noise.
   let cause: string | null = null;
