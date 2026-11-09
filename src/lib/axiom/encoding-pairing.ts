@@ -639,6 +639,11 @@ function failedStepOf(e: PairingEvent): string | null {
   return step === "unknown" || step === "no-pr" ? null : step;
 }
 
+/** A step name kebab-cased the way infraRuleId writes it. */
+function slug(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
 const ENCODE_STEP_SPACED = /^encode,? review,? validate/i;
 
 /** The encode step, or a step whose failure only follows an earlier one. */
@@ -662,8 +667,13 @@ function runGate(outcome: PairingRun["outcome"], terminal: PairingEvent | undefi
   const encodeFailed = !terminal || terminal.station === "validate" || step == null || encodeOrCascade(step);
   if (!encodeFailed && step) return [classifyStep(step), `workflow step: ${step}`, terminal?.message ?? step];
   if (lastRefusal) return [lastRefusal.gate, "encoder refusal (final try)", lastRefusal.message];
-  // The step's own infra rule names the step, not the finding: read the message.
-  if (terminal) return [tryGate([{ ...terminal, rule_id: step != null ? null : terminal.rule_id }]), "encode step failed with no refusal line", terminal.message];
+  // The step's own infra rule names the step, not the finding: read the
+  // message, unless the message is only the step's name (no encoder error).
+  if (terminal) {
+    const stepOnly = step != null && terminal.message != null && slug(stepName(terminal.message)) === step;
+    const gate = stepOnly ? "other" : tryGate([{ ...terminal, rule_id: step != null ? null : terminal.rule_id }]);
+    return [gate, "encode step failed with no refusal line", terminal.message];
+  }
   return ["other", "no finding recorded", null];
 }
 

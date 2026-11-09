@@ -474,6 +474,14 @@ describe("pairTargets from events", () => {
     expect(run).toMatchObject({ outcome: "failure", gate: "compile", gate_basis: "encode step failed with no refusal line" });
   });
 
+  it("never reads a step's own name as the finding when the encoder recorded no error", () => {
+    const now = Date.parse("2026-09-21T00:00:00Z");
+    const encode = attemptEvents(pipelineAttempt({ failed_step: "Encode / Encode, review, validate RuleSpec" }));
+    expect(target(encode, now).runs[0]).toMatchObject({ outcome: "failure", gate: "other" });
+    const cascade = attemptEvents(pipelineAttempt({ failed_step: "Encode / Apply prepared signature" }));
+    expect(target(cascade, now).runs[0]).toMatchObject({ outcome: "failure", gate: "other", gate_basis: "encode step failed with no refusal line" });
+  });
+
   it("reads a run with no known step from the encoder's last refusal", () => {
     const events = [
       ...runEvents("101", 0, 1, ["x.yaml: ci: [complete-source-unit:tests] t", null]),
