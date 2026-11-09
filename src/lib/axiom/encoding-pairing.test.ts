@@ -156,7 +156,7 @@ describe("gateForCheck", () => {
     expect(gateForCheck("infra:verify-immutable-checkout-identities")).toBe("admission-pin");
     expect(gateForCheck("infra:validate-atomic-source-inputs")).toBe("source-evidence");
     expect(gateForCheck("infra:fetch-pinned-corpus-provision-objects")).toBe("infra");
-    expect(gateForCheck("infra:something-new")).toBe("infra");
+    expect(gateForCheck("infra:something-new")).toBeNull();
     expect(gateForCheck("brand-new:check")).toBeNull();
     expect(gateForCheck(null)).toBeNull();
   });
@@ -412,6 +412,74 @@ describe("pairTargets from events", () => {
     const t = target(events, h(2));
     expect(t.runs[0]).toMatchObject({ outcome: "success", gate: null });
     expect(t.state).toBe("signed-waiting-rulespec-PR");
+  });
+
+  it("keeps a PR merged into a side branch open until the side branch reaches main", () => {
+    const events = attemptEvents(mergedAttempt({ pr_targets_default: false, pr_via_state: "merged", pr_via_merged_at: "2026-09-21T12:00:00Z" }));
+    const t = target(events, Date.parse("2026-09-22T00:00:00Z"));
+    expect(t.rulespec_prs[0]).toMatchObject({ merged: "2026-09-21T09:00:00.000Z", landed: "2026-09-21T12:00:00.000Z", side_branch: true });
+    expect(t.timeline.map((s) => s.state)).toEqual(["generating", "rulespec-PR-open", "landed"]);
+    expect(t.timeline[1].end).toBe("2026-09-21T12:00:00.000Z");
+  });
+
+  it("reads a side branch whose own PR closed as closed, never landed", () => {
+    const events = attemptEvents(mergedAttempt({ pr_targets_default: false, pr_via_state: "closed" }));
+    const t = target(events, Date.parse("2026-09-22T00:00:00Z"));
+    expect(t.rulespec_prs[0]).toMatchObject({ landed: null, closed: "2026-09-21T09:00:00.000Z", why_not_merged: [] });
+    expect(t.state).toBe("signed-waiting-rulespec-PR");
+  });
+
+  it("reads a check that failed but did not hold the merge as not failing", () => {
+    const pins = { "rulespec-us": [{ at: "2026-09-01T00:00:00Z", version: "0.2.0" }] };
+    const events = attemptEvents(mergedAttempt({ pr_targets_default: false, pr_via_state: "open", pr_checks: "failure", encoder_version: "0.2.1" }));
+    const t = target(events, Date.parse("2026-09-22T00:00:00Z"), pins);
+    expect(t.rulespec_prs[0]).toMatchObject({ checks: "green", side_branch: true, pin_mismatch: false });
+    expect(t.state).toBe("rulespec-PR-open");
+  });
+
+  it("names a PR with pending checks from its publish event", () => {
+    const events = attemptEvents(mergedAttempt({ pr_state: "open", pr_merged_at: null, pr_checks: "pending" }));
+    const t = target(events, Date.parse("2026-09-22T00:00:00Z"));
+    expect(t.rulespec_prs[0]).toMatchObject({ id: "rulespec-us#42", repo: "rulespec-us", checks: "pending" });
+    expect(t.rulespec_prs[0].why_not_merged).toContain("checks pending");
+  });
+
+  it("reads an encode-step failure with no refusal from its message, never as infra, and keeps a passing try a pass", () => {
+    const events = attemptEvents(
+      pipelineAttempt({
+        encode_started_at: "2026-09-20T10:05:00Z",
+        setup_seconds: 60,
+        failed_step: "encode / Encode, review, validate, and apply",
+        encoder_status: "apply_blocked_validation",
+        encoder_error: "No RuleSpec content returned",
+        generation_attempts: 1,
+        tries: [{ attempt: 1, model: "m1", ms: 1000, cost: 0.1, ok: true, error: null }],
+      })
+    );
+    const run = target(events, Date.parse("2026-09-21T00:00:00Z")).runs[0];
+    expect(run.tries.map((x) => [x.try, x.ok, x.gate])).toEqual([[1, true, null]]);
+    expect(run).toMatchObject({ outcome: "failure", gate: "generation", gate_basis: "encode step failed with no refusal line" });
+    const untyped = attemptEvents(
+      pipelineAttempt({ failed_step: "encode / Encode, review, validate, and apply", encoder_error: "something the table has never seen", generation_attempts: 2 })
+    );
+    const r2 = target(untyped, Date.parse("2026-09-21T00:00:00Z")).runs[0];
+    expect(r2).toMatchObject({ outcome: "failure", gate: "other" });
+    expect(r2.tries.every((x) => x.gate == null)).toBe(true);
+    expect(gateForCheck("infra:encode-review-validate-and-apply")).toBeNull();
+  });
+
+  it("never takes a cascade step from a real row as the cause", () => {
+    const events = attemptEvents(pipelineAttempt({ failed_step: "Encode / Apply prepared signature 1", encoder_error: "x.yaml: compile: Axiom rules engine compile failed" }));
+    const run = target(events, Date.parse("2026-09-21T00:00:00Z")).runs[0];
+    expect(run).toMatchObject({ outcome: "failure", gate: "compile", gate_basis: "encode step failed with no refusal line" });
+  });
+
+  it("reads a run with no known step from the encoder's last refusal", () => {
+    const events = [
+      ...runEvents("101", 0, 1, ["x.yaml: ci: [complete-source-unit:tests] t", null]),
+      ev({ case_id: "101", station: "publish", kind: "fail", at: at(1.5), outcome: "fail", rule_id: "infra:unknown" }),
+    ];
+    expect(target(events, h(2)).runs[0]).toMatchObject({ outcome: "failure", gate: "companion-tests", gate_basis: "encoder refusal (final try)" });
   });
 
   it("reads a closed rulespec PR as closed, and the run waits for a new PR", () => {

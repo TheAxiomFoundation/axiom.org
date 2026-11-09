@@ -16,8 +16,10 @@
  *
  * What the events carry, per case (a case is one run):
  *   run       dispatch / approval / setup / target_gate / generate / validate /
- *             publish events (pipeline-events.ts attemptEvents; a local run is
- *             a case `local:<ledger id>` with generate / validate events only)
+ *             publish events (pipeline-events.ts attemptEvents). A local run
+ *             is a case `local:<ledger id>` with generate / validate events
+ *             only; no producer writes those yet (the collector will, after
+ *             axiom-encode #1750), so today every run is a dispatch
  *   tries     a generate `enter` per try (try_no, actor = model) and a validate
  *             `leave` or `fail`; `issue` events add archived findings per try
  *   rulespec  pr_checks / review / merge events of the run's signed manifest PR
@@ -26,6 +28,10 @@
  *             `target:<citation>` for `Fixes-Run: none`
  *
  * Unknown stays null, never a guess.
+ *
+ * Known limit of the producer: attemptEvents stops at a failing or pending
+ * check on an unmerged PR and emits no close for it, so a PR closed in that
+ * condition still reads as open here until the collector records the close.
  */
 
 import type { PipelineEvent } from "./pipeline-events";
@@ -153,8 +159,10 @@ export function gateForCheck(check: string | null | undefined): string | null {
   if (!check) return null;
   const id = check.trim().toLowerCase();
   if (id.startsWith("infra:")) {
+    // A step the step table does not know (`infra:encode-review-validate-...`,
+    // `infra:apply-blocked-validation`) names no gate: read the message.
     const gate = classifyStep(id.slice("infra:".length));
-    return gate === "other" ? "infra" : gate;
+    return gate === "other" ? null : gate;
   }
   for (const [rx, gate] of CHECK_FAMILIES) if (rx.test(id)) return gate;
   return null;
@@ -318,6 +326,8 @@ export interface RulespecPr {
   /** The repo's pin: what the collector recorded on the failing check ("check"), else the pin history today ("history"). */
   pin_version: string | null;
   pin_source: "check" | "history" | null;
+  /** The collector marked the failing check as a pin mismatch (rule `pin:mismatch`). */
+  pin_reported: boolean;
   pin_mismatch: boolean;
   /** Reasons an open PR has not merged, each read from an event. Empty unless open. */
   why_not_merged: string[];
@@ -466,8 +476,9 @@ export function stateAt(a: Attempt, t: number, pins?: Record<string, Pin[]>): [P
 function waitingState(a: Attempt, t: number, pins?: Record<string, Pin[]>): [PairingState, string] {
   const openRs = a.rulespecPrs.filter((p) => {
     if (p.created > t || (p.closed != null && p.closed <= t)) return false;
-    // Merged into a side branch: still waits for the side branch's own PR.
-    return !(p.merged != null && p.merged <= t && !p.side_branch);
+    // Merged but not on main yet (a side branch): still waits for that branch's own PR.
+    const landed = landedAt(p);
+    return !(landed != null && landed <= t);
   });
   const fixesOpen = a.fixPrs.filter((p) => p.created <= t && !(p.merged != null && p.merged <= t) && !(p.closed != null && p.closed <= t));
   if (openRs.length) {
@@ -558,9 +569,12 @@ function buildRun(caseId: string, events: PairingEvent[]): PairingRun | null {
   const lastAt = Math.max(...flow.map((e) => ms(e.at)));
 
   // Tries: a generate enter per try, a validate leave or fail.
-  const tryNos = Array.from(new Set(runEvents.filter((e) => (e.station === "generate" || e.station === "validate") && e.try_no != null).map((e) => e.try_no as number))).sort((x, y) => x - y);
+  // A run-level fail (the encode step failed with no try verdict) carries the
+  // try count, not a try: it is the run's finding, never a try's.
+  const perTry = runEvents.filter((e) => e.attrs?.run_level !== true);
+  const tryNos = Array.from(new Set(perTry.filter((e) => (e.station === "generate" || e.station === "validate") && e.try_no != null).map((e) => e.try_no as number))).sort((x, y) => x - y);
   const tries: PairingTry[] = tryNos.map((n) => {
-    const own = runEvents.filter((e) => e.try_no === n);
+    const own = perTry.filter((e) => e.try_no === n);
     const gen = own.find((e) => e.station === "generate" && e.kind === "enter");
     const fail = own.find((e) => e.station === "validate" && e.kind === "fail");
     const pass = own.find((e) => e.station === "validate" && e.kind === "leave");
@@ -602,7 +616,7 @@ function buildRun(caseId: string, events: PairingEvent[]): PairingRun | null {
   } else if (publishDone) {
     outcome = "success";
     terminal = publishDone;
-  } else if (!publishOpen && lastTry && !lastTry.ok) {
+  } else if (!publishOpen && lastTry?.gate) {
     // The last try refused and nothing was published: the run ended there.
     outcome = "failure";
   } else if (!publishOpen && kind === "local" && lastTry?.ok) {
@@ -619,8 +633,18 @@ function buildRun(caseId: string, events: PairingEvent[]): PairingRun | null {
 
 /** Infra rule ids carry the failing step kebab-cased: `infra:verify-immutable-checkout-identities`. */
 function failedStepOf(e: PairingEvent): string | null {
-  if (e.rule_id?.startsWith("infra:")) return e.rule_id.slice("infra:".length);
-  return null;
+  if (!e.rule_id?.startsWith("infra:")) return null;
+  const step = e.rule_id.slice("infra:".length);
+  // Placeholders, not steps: the collector knew no step.
+  return step === "unknown" || step === "no-pr" ? null : step;
+}
+
+const ENCODE_STEP_SPACED = /^encode,? review,? validate/i;
+
+/** The encode step, or a step whose failure only follows an earlier one. */
+function encodeOrCascade(step: string): boolean {
+  const spaced = stepName(step).replace(/[-_]+/g, " ");
+  return ENCODE_STEP.test(spaced) || ENCODE_STEP_SPACED.test(spaced) || CASCADE_STEPS.test(spaced);
 }
 
 /**
@@ -633,17 +657,13 @@ function runGate(outcome: PairingRun["outcome"], terminal: PairingEvent | undefi
   const refused = tries.filter((t) => t.gate);
   const lastRefusal = refused.at(-1);
   const step = terminal ? failedStepOf(terminal) : null;
-  const stepText = step ?? terminal?.message ?? null;
-  const encodeFailed = !terminal || terminal.station === "validate" || (stepText != null && (ENCODE_STEP.test(stepText) || CASCADE_STEPS.test(stepText) || CASCADE_STEPS.test(step?.replace(/-/g, " ") ?? "")));
-  if (encodeFailed && lastRefusal) return [lastRefusal.gate, "encoder refusal (final try)", lastRefusal.message];
-  if (terminal && terminal.station === "validate") {
-    return [tryGate([terminal]), "encode step failed with no refusal line", terminal.message];
-  }
-  if (terminal && step) return [classifyStep(step), `workflow step: ${step}`, terminal.message ?? step];
-  if (terminal) {
-    const g = tryGate([terminal]);
-    return [g, `${terminal.station} failed`, terminal.message];
-  }
+  // As in the prototype: no known step, the encode step, or a cascade step
+  // means the encoder failed; a cascade step is never the cause.
+  const encodeFailed = !terminal || terminal.station === "validate" || step == null || encodeOrCascade(step);
+  if (!encodeFailed && step) return [classifyStep(step), `workflow step: ${step}`, terminal?.message ?? step];
+  if (lastRefusal) return [lastRefusal.gate, "encoder refusal (final try)", lastRefusal.message];
+  // The step's own infra rule names the step, not the finding: read the message.
+  if (terminal) return [tryGate([{ ...terminal, rule_id: step != null ? null : terminal.rule_id }]), "encode step failed with no refusal line", terminal.message];
   return ["other", "no finding recorded", null];
 }
 
@@ -660,13 +680,16 @@ function buildRulespecPr(caseId: string, events: PairingEvent[], now: number, pi
   const pr = events.filter((e) => PR_STATIONS.has(e.station));
   const opened = pr.find((e) => e.station === "pr_checks" && e.kind === "enter");
   if (!opened) return null;
-  const urlEvent = pr.find((e) => e.ref_url && /\/pull\/\d+/.test(e.ref_url));
+  // A PR with pending checks has no PR event with a url yet: the publish leave carries it.
+  const urlEvent = [...pr, ...events.filter((e) => e.station === "publish" && e.kind === "leave")].find((e) => e.ref_url && /\/pull\/\d+/.test(e.ref_url));
   const [urlRepo, number] = prRepoNumber(urlEvent?.ref_url);
   const mergeLeave = pr.find((e) => e.station === "merge" && e.kind === "leave");
   const repo = urlRepo ?? str(mergeLeave?.attrs?.repo);
   const reviewLeave = pr.find((e) => e.station === "review" && e.kind === "leave");
   const closedEv = pr.find((e) => (e.station === "review" && e.kind === "fail" && e.outcome === "closed") || (e.station === "pr_checks" && e.kind === "cancel"));
   const sideWait = pr.find((e) => e.station === "merge" && (e.kind === "wait" || e.kind === "fail") && e.rule_id === "merge:side-branch");
+  // A side branch whose own PR closed: the change never reaches main.
+  const offMain = sideWait?.kind === "fail" ? sideWait : undefined;
   const checkFail = pr.find((e) => e.station === "pr_checks" && (e.kind === "fail" || e.kind === "wait") && e.outcome === "fail");
   const checkLeave = pr.find((e) => e.station === "pr_checks" && e.kind === "leave");
   const changes = pr.find((e) => e.station === "review" && e.kind === "wait" && e.outcome === "changes_requested");
@@ -675,17 +698,17 @@ function buildRulespecPr(caseId: string, events: PairingEvent[], now: number, pi
   const evidencePin = str(checkFail?.attrs?.pin_version);
   const merged = reviewLeave ? ms(reviewLeave.at) : null;
   const landed = mergeLeave ? ms(mergeLeave.at) : merged != null && !sideWait ? merged : null;
-  const closed = !merged && closedEv ? ms(closedEv.at) : null;
+  const closed = offMain ? ms(offMain.at) : !merged && closedEv ? ms(closedEv.at) : null;
   const failingNow = Boolean(checkFail && checkFail.kind === "fail");
   const failedChecks = Array.isArray(checkFail?.attrs?.failed_checks)
     ? (checkFail?.attrs?.failed_checks as unknown[]).filter((c): c is string => typeof c === "string")
     : checkFail?.rule_id?.startsWith("check:")
       ? [checkFail.rule_id.slice("check:".length)]
       : [];
-  const reported = checkFail?.rule_id === "pin:mismatch" || evidencePin != null;
+  const reported = failingNow && checkFail?.rule_id === "pin:mismatch";
   const historyPin = pinAt(repo ? pins[repo] : undefined, now);
   const pinNow = evidencePin ?? historyPin;
-  const pinMismatch = checkFail?.rule_id === "pin:mismatch" || Boolean(failingNow && candidate && pinNow && candidate !== pinNow);
+  const pinMismatch = reported || Boolean(failingNow && candidate && pinNow && candidate !== pinNow);
   const out: RulespecPr = {
     id: repo && number != null ? `${repo}#${number}` : `${caseId}/pr`,
     case_id: caseId,
@@ -696,15 +719,17 @@ function buildRulespecPr(caseId: string, events: PairingEvent[], now: number, pi
     merged: merged == null ? null : iso(merged),
     landed: landed == null ? null : iso(landed),
     closed: closed == null ? null : iso(closed),
-    side_branch: Boolean(sideWait),
+    side_branch: Boolean(sideWait) || Boolean(mergeLeave && merged != null && ms(mergeLeave.at) > merged),
     candidate_version: candidate,
-    checks: checkFail ? "failing" : checkLeave ? "green" : "pending",
+    // A check that failed but did not hold the merge (a `wait`) is not failing now.
+    checks: failingNow ? "failing" : checkLeave ? "green" : "pending",
     failed_checks: failedChecks,
     check_error: checkFail?.message ?? null,
     review: changes ? "changes_requested" : awaiting ? "awaiting_review" : null,
     reviewers: awaiting?.actor ?? null,
     pin_version: pinNow,
-    pin_source: reported ? "check" : historyPin ? "history" : null,
+    pin_source: evidencePin ? "check" : historyPin ? "history" : null,
+    pin_reported: reported,
     pin_mismatch: pinMismatch,
     why_not_merged: [],
   };
@@ -717,10 +742,11 @@ export function whyNotMerged(pr: RulespecPr, now: number): string[] {
   const days = Math.floor((now - ms(pr.created)) / (24 * HOUR_MS));
   const out = [`open since ${nyLabel(ms(pr.created))} (${days} days)`];
   if (pr.merged) out.push("merged into a side branch; waits for that branch's own PR");
+  if (pr.pin_reported && !(pr.candidate_version && pr.pin_version && pr.candidate_version !== pr.pin_version)) {
+    out.push("pin mismatch reported on the failing check");
+  }
   if (pr.candidate_version && pr.pin_version && pr.candidate_version !== pr.pin_version) {
     out.push(`pin mismatch: candidate signed by encoder ${pr.candidate_version}, ${pr.repo ?? "the repo"} pins ${pr.pin_version}`);
-  } else if (pr.pin_mismatch) {
-    out.push("pin mismatch reported on the failing check");
   } else if (!pr.candidate_version) {
     out.push("candidate encoder version unknown");
   }
@@ -813,7 +839,8 @@ export function pairTargets(events: PairingEvent[], options: PairingOptions): Ta
   const pins = normalizePins(options.pins);
   const byCitation = new Map<string, PairingEvent[]>();
   for (const e of events) {
-    if (ms(e.at) > now) continue;
+    const t = ms(e.at);
+    if (!Number.isFinite(t) || t > now) continue;
     byCitation.set(e.citation, [...(byCitation.get(e.citation) ?? []), e]);
   }
   const out: TargetPairing[] = [];
@@ -858,13 +885,14 @@ export function pairTargets(events: PairingEvent[], options: PairingOptions): Ta
         // The collector's own pin evidence holds at every time; otherwise the
         // state machine reads the pin history at each time, not today's pin.
         pin_version: p.pin_source === "check" ? p.pin_version : null,
-        pin_mismatch: p.pin_source === "check" && p.pin_mismatch,
+        pin_mismatch: p.pin_reported || (p.pin_source === "check" && p.pin_mismatch),
       })),
     };
     const tl = timeline(attempt, now, pins);
     const acts = activityTimes(attempt, now);
     const hours: Partial<Record<PairingState, number>> = {};
-    for (const s of tl) hours[s.state] = round((hours[s.state] ?? 0) + s.hours, 2);
+    for (const s of tl) hours[s.state] = (hours[s.state] ?? 0) + s.hours;
+    for (const s of Object.keys(hours) as PairingState[]) hours[s] = round(hours[s] as number, 1);
     const current = tl.at(-1) ?? null;
     out.push({
       citation,
