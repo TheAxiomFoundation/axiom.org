@@ -1196,14 +1196,14 @@ export function lamplightBeat6(ctx: BeatCtx): BeatSpec {
 // ── beat 8: one set of rules powers every kind of tool ──────────────
 // After the Aspen deck's rules slide (src/components/aspen/presenter-app.tsx,
 // RulesSlide, Oct 26): one open set of rules feeds AI, government and
-// navigation tools, each with one line on what it is. Researchers are the
+// navigation tools, each with one line on what it is. Research tools are the
 // fourth group here (Nov 6).
 
 const GROUPS: Array<{ icon: "person" | "bank" | "spark" | "code" | "book"; who: string; detail: string }> = [
   { icon: "spark", who: "AI tools", detail: "The chatbots and assistants residents and staff already ask" },
   { icon: "bank", who: "Government tools", detail: "Eligibility systems, caseworker guidance and training, and policy changes tested before they land" },
   { icon: "person", who: "Navigation tools", detail: "Community screeners and navigators that say what to apply for" },
-  { icon: "book", who: "Researchers", detail: "Evaluators and analysts who model a policy and reproduce the analysis" },
+  { icon: "book", who: "Research tools", detail: "Evaluators and analysts who model a policy and reproduce the analysis" },
 ];
 
 // what makes the one set of rules checkable, as on the deck's rules box
