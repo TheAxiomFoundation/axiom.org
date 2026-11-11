@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   clockDuration,
   dispatchFlow,
+  encodeRecord,
   encodeParts,
   hostLabel,
   runRow,
@@ -709,5 +710,49 @@ describe("rows beyond dispatches", () => {
       ["index", "done"],
       ["tests", "done"],
     ]);
+  });
+});
+
+describe("encodeRecord", () => {
+  const steps = { jobs_checked_at: "2026-10-12T09:00:00Z", steps_read_at: "2026-10-12T09:00:00Z" };
+
+  it("says why a run has no tries and no cost", () => {
+    const tried = pipelineAttempt({ encode_started_at: "2026-10-12T08:00:00Z", encode_seconds: 300, tries: [{ attempt: 1, model: "m", ms: 1, cost: 0.1, ok: true, error: null }] });
+    expect(encodeRecord(tried)).toEqual({ state: "tries", label: "Tries recorded" });
+    expect(encodeRecord(pipelineAttempt({ run_conclusion: "cancelled", cancel_stage: "approval" }))).toEqual({
+      state: "no_encode",
+      label: "No encode ran: the run was cancelled at the approval",
+    });
+    expect(encodeRecord(pipelineAttempt({ ...steps, encode_started_at: null }))).toEqual({
+      state: "no_encode",
+      label: "No encode ran: the encode job did not start",
+    });
+    expect(
+      encodeRecord(pipelineAttempt({ ...steps, encode_started_at: "2026-10-12T08:00:00Z", setup_seconds: 60, encode_seconds: null, failed_step: "Verify immutable checkout identities" }))
+    ).toEqual({ state: "no_encode", label: 'No encode ran: the run failed at "Verify immutable checkout identities"' });
+    // The encode step ran a few seconds and synced no try: no model call is on record.
+    expect(encodeRecord(pipelineAttempt({ ...steps, encode_started_at: "2026-10-12T08:00:00Z", encode_seconds: 12, failed_step: "encode_apply" }))).toEqual({
+      state: "no_try_record",
+      label: "No try recorded: the encode step ran 12s, and the encoder synced no try or cost for it",
+    });
+    expect(encodeRecord(pipelineAttempt({ run_status: "in_progress", run_conclusion: null, finished_at: null })).state).toBe("not_yet");
+    expect(encodeRecord(outsideAttempt()).state).toBe("outside");
+    // The pre-encode gate blocks before a model call, also when the encode step has a duration.
+    expect(
+      encodeRecord(pipelineAttempt({ ...steps, encode_started_at: "2026-10-12T08:00:00Z", encode_seconds: 12, failed_step: "encode_apply", encoder_status: "pre_encode_blocked" })).state
+    ).toBe("no_encode");
+  });
+
+  it("puts the state on the run row and the note on its timeline", () => {
+    const row = runRow(pipelineAttempt({ run_conclusion: "cancelled", cancel_stage: "approval" }));
+    expect(row.encodeRecord.state).toBe("no_encode");
+    expect(runTimeline(row, Date.parse("2026-10-13T00:00:00Z")).encodeNote).toBe("No encode ran: the run was cancelled at the approval");
+    const checks = [{ id: "compile:rules-engine/failed", gate: "compile", n: 1 }];
+    const tried = runRow(
+      pipelineAttempt({ encode_started_at: "2026-09-20T10:01:00Z", encode_seconds: 300, tries: [{ attempt: 1, model: "m", ms: 1, cost: 0.1, ok: false, error: "x", checks, checksMore: 2 }] })
+    );
+    const timeline = runTimeline(tried, Date.parse("2026-10-13T00:00:00Z"));
+    expect(timeline.encodeNote).toBeNull();
+    expect(timeline.tries[0]).toMatchObject({ checks, checksMore: 2 });
   });
 });

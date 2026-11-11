@@ -176,8 +176,68 @@ describe("JourneyView", () => {
     expect(screen.getByRole("complementary", { name: "Run details" })).toBeTruthy();
   });
 
+  it("says in the run details that no encode ran, the oracle state, and a try's typed checks", () => {
+    const typed = { ...tryOf(1, false), checks: [{ id: "complete-source-unit:structure/branch-unencoded", gate: "ci", n: 2 }], checksMore: 3 };
+    const more = [
+      pipelineAttempt({ id: "5", run_conclusion: "cancelled", cancel_stage: "approval" }),
+      pipelineAttempt({ id: "6", failed_step: "encode_apply", tries: [typed] }),
+      mergedAttempt({ id: "7", tries: [tryOf(1, true)], indexed_at: "2026-09-21T12:00:00Z", index_status: "indexed", tests_status: "waived", oracle_status: "pending" }),
+    ].flatMap(attemptEvents);
+    const panel = (id: string) => {
+      cleanup();
+      const detail = caseDetail(more, id)!;
+      render(<JourneyView citation={detail.citation} stationOrder={stationOrder} lanes={[]} detail={detail} bundles={[]} error={null} />);
+      return screen.getByRole("complementary", { name: "Run details" }).textContent ?? "";
+    };
+    const cancelled = panel("5");
+    expect(cancelled).toContain("no encode ran");
+    expect(cancelled).toContain("No encode ran: cancelled at Signing approval.");
+    const failed = panel("6");
+    expect(failed).toContain("Try 1: typed checks that failed");
+    expect(failed).toContain("complete-source-unit:structure/branch-unencoded");
+    expect(failed).toContain("gate ci · 2");
+    expect(failed).toContain("and 3 more checks");
+    expect(failed).not.toContain("no encode ran");
+    expect(panel("7")).toContain("Oracle · Pending: no oracle compares it yet (listed in oracle-coverage-pending.yaml).");
+  });
+
   it("shows a plain title with no citation", () => {
     render(<JourneyView citation={null} stationOrder={[]} lanes={[]} detail={null} bundles={[]} error={null} />);
     expect(screen.getByRole("heading", { name: "Encoding journey" })).toBeTruthy();
+  });
+});
+
+describe("Waiting now", () => {
+  it("lists where open cases wait, why, since when, and links the oldest to its journey", () => {
+    const open = pipelineAttempt({
+      id: "9",
+      citation: "us/behind",
+      run_conclusion: "success",
+      encode_seconds: 60,
+      pr_repo: "rulespec-us",
+      pr_number: 9,
+      pr_url: "https://github.com/x/pull/9",
+      pr_state: "open",
+      pr_created_at: "2026-09-20T10:29:00Z",
+      pr_checks: "success",
+      pr_review: "none",
+      pr_merge_state: "BEHIND",
+      pr_commit_count: 3,
+    });
+    const waiting = mineFlow(attemptEvents(open), { now: NOW, days: 30 });
+    render(<FlowLine model={waiting} error={null} params={params} jurisdictions={[]} />);
+    const table = screen.getByRole("table", { name: "Waiting now" });
+    const row = within(table).getAllByRole("row")[1];
+    expect(row).toHaveTextContent("Behind the default branch");
+    expect(row).toHaveTextContent("10d");
+    expect(within(row).getByRole("link", { name: "us/behind" })).toHaveAttribute("href", "/ops/journey?citation=us%2Fbehind");
+    cleanup();
+  });
+
+  it("has no panel when nothing is open", () => {
+    const done = mineFlow(attemptEvents(pipelineAttempt({ id: "1", failed_step: "encode_apply", tries: [tryOf(1, false)] })), { now: NOW, days: 30 });
+    render(<FlowLine model={done} error={null} params={params} jurisdictions={[]} />);
+    expect(screen.queryByRole("table", { name: "Waiting now" })).toBeNull();
+    cleanup();
   });
 });

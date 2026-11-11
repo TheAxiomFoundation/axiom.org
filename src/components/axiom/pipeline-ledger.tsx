@@ -476,11 +476,23 @@ function RunTrack({ run, timeline, latest }: { run: RunRow; timeline: RunTimelin
               <span className={styles.trackTryCost}>{t.cost == null ? "" : t.cost < 0.01 ? "<$0.01" : `$${t.cost.toFixed(2)}`}</span>
               <span className={styles.trackTryWhy} title={t.error ?? undefined}>
                 {t.ok ? "passed" : (t.headline ?? "failed")}
+                {t.checks.length > 0 && (
+                  <small data-typed-checks>
+                    {" · typed: "}
+                    {t.checks
+                      .slice(0, 4)
+                      .map((check) => `${check.id}${check.gate ? ` (${check.gate})` : ""}${check.n > 1 ? ` ×${check.n}` : ""}`)
+                      .join(", ")}
+                    {t.checks.length + t.checksMore > 4 ? ` and ${t.checks.length + t.checksMore - 4} more` : ""}
+                  </small>
+                )}
               </span>
             </li>
           ))}
         </ol>
       )}
+
+      {timeline.encodeNote && <p className={styles.trackMeta}>{timeline.encodeNote}.</p>}
 
       {timeline.stopped && <Stopped text={timeline.stopped} runUrl={run.runUrl} />}
 

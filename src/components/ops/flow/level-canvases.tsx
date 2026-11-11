@@ -133,6 +133,13 @@ const VisitNode = memo(function VisitNode({ data }: NodeProps<Node<VisitData>>) 
       {data.issues ? ` · ${data.issues} issues` : ""}
       {v.rule_id ? <code>{v.rule_id}</code> : null}
       {v.reason && !v.rule_id ? <code>{v.reason}</code> : null}
+      {v.checks?.length ? (
+        <code title={v.checks.map((check) => `${check.id}${check.gate ? ` (gate ${check.gate})` : ""}`).join("\n")}>
+          {`typed: ${v.checks[0].id}${v.checks[0].gate ? ` (${v.checks[0].gate})` : ""}${
+            v.checks.length + (v.checks_more ?? 0) > 1 ? ` +${v.checks.length + (v.checks_more ?? 0) - 1}` : ""
+          }`}
+        </code>
+      ) : null}
     </div>
   );
 });

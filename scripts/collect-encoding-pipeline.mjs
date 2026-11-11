@@ -84,7 +84,10 @@ import { createClient } from "@supabase/supabase-js";
 import yaml from "js-yaml";
 import {
   activeWaivers,
+  pendingOracleModules,
   buildAttempts,
+  carrierIndex,
+  carrierPrFor,
   checkErrorFromLog,
   checkErrorLookups,
   containmentQueries,
@@ -102,8 +105,11 @@ import {
   outsideModules,
   parseDiagnostics,
   parseRunJobs,
+  DISPATCH_RECORD_JOB_RE,
+  stepChecks,
   parseVersion,
   prCitation,
+  prGate,
   runDetailLookups,
   sideBranchLookups,
   syncWindowStart,
@@ -251,6 +257,12 @@ const FIRST_TESTS_CARRIED = ["tests_first_started_at", "tests_first_status"];
 // Added by the 2026-10-14 side-branch migration: the merge commit a side
 // branch's own PR reached main at, and the first tests run's page there.
 const SIDE_CARRIED = ["pr_via_merge_commit", "tests_first_run_url"];
+// Added by the 2026-11-11 PR-gate migration: whether a run that passed was
+// asked to open a PR (read once from its jobs).
+const GATE_CARRIED = ["pr_requested"];
+// Added by the 2026-11-11 dispatch-record migration: what a dispatch asked
+// for, read once from the run's "Record dispatch" job.
+const DISPATCH_CARRIED = ["dispatch_record"];
 
 async function columnsExist(columns) {
   const { error } = await supabase.from("pipeline_attempts").select(columns.join(",")).limit(1);
@@ -264,7 +276,7 @@ async function readPrevious() {
     return new Map(rows.map((row) => [row.id, row]));
   }
   const base =
-    "id,citation,synced_at,failure_source,failed_step,encoder_error,encoder_error_rule,pr_repo,pr_number";
+    "id,citation,run_conclusion,synced_at,failure_source,failed_step,encoder_error,encoder_error_rule,pr_repo,pr_number";
   const read = (columns) => readAll("pipeline_attempts", columns, (query) => query.order("id"));
   try {
     // Carried columns arrive by migration; read each group only once it exists.
@@ -275,7 +287,10 @@ async function readPrevious() {
     // With the merge commit, these say which merges are timed already.
     if (await columnsExist(TIME_CARRIED)) columns += `,${TIME_CARRIED.join(",")},pr_merge_commit`;
     if (await columnsExist(FIRST_TESTS_CARRIED)) columns += `,${FIRST_TESTS_CARRIED.join(",")}`;
-    if (await columnsExist(SIDE_CARRIED)) columns += `,${SIDE_CARRIED.join(",")}`;
+    // With the carrier's number and state, a closed PR keeps the merge train an earlier pass linked.
+    if (await columnsExist(SIDE_CARRIED)) columns += `,${SIDE_CARRIED.join(",")},pr_via_number,pr_via_state`;
+    if (await columnsExist(GATE_CARRIED)) columns += `,${GATE_CARRIED.join(",")}`;
+    if (await columnsExist(DISPATCH_CARRIED)) columns += `,${DISPATCH_CARRIED.join(",")}`;
     const rows = await read(columns);
     // Rows of modules merged outside the pipeline carry their PR whole (its
     // files are never read again), and dependent rows their stages: read every column.
@@ -314,13 +329,30 @@ const PR_QUERY = `query($q: String!, $cursor: String) {
     nodes {
       ... on PullRequest {
         number url title body isDraft state createdAt mergedAt closedAt baseRefName
+        headRefOid mergeStateStatus
         repository { name defaultBranchRef { name } }
         reviewDecision
         mergeCommit { oid }
         reviewRequests(first: 10) {
           nodes { requestedReviewer { __typename ... on User { login } ... on Team { slug } ... on Bot { login } } }
         }
+        reviews(last: 20) { nodes { state submittedAt commit { oid } } }
+        timelineItems(itemTypes: [CROSS_REFERENCED_EVENT], last: 10) {
+          nodes {
+            ... on CrossReferencedEvent {
+              source {
+                __typename
+                ... on PullRequest {
+                  number url state isDraft createdAt mergedAt baseRefName
+                  mergeCommit { oid }
+                  repository { name defaultBranchRef { name } }
+                }
+              }
+            }
+          }
+        }
         commits(last: 1) {
+          totalCount
           nodes {
             commit {
               statusCheckRollup {
@@ -328,7 +360,7 @@ const PR_QUERY = `query($q: String!, $cursor: String) {
                 contexts(first: 100) {
                   nodes {
                     __typename
-                    ... on CheckRun { name conclusion databaseId }
+                    ... on CheckRun { name conclusion databaseId status startedAt completedAt }
                     ... on StatusContext { context state }
                   }
                 }
@@ -386,6 +418,7 @@ async function searchPrs(from, to) {
           .map((reviewer) => reviewer.login ?? (reviewer.slug ? `team:${reviewer.slug}` : null))
           .filter(Boolean),
         mergeCommit: node.mergeCommit?.oid ?? null,
+        ...prGate(node),
       });
     }
     if (!search.pageInfo.hasNextPage) return prs;
@@ -514,6 +547,47 @@ async function readWaivers(repos) {
     }
   }
   return waivers;
+}
+
+/**
+ * Per repo, the modules its oracle-coverage-pending.yaml lists as awaiting an
+ * oracle comparison. One read per merged repo per run; the rulespec-us file is
+ * about 2 MB, so it is read raw (the JSON contents API stops at 1 MB).
+ */
+/**
+ * Step name → check id from axiom-encode's check registry on its default
+ * branch: one read per pass. An empty map when it cannot be read, so a failed
+ * step keeps its rule from the error text alone.
+ */
+async function readStepChecks() {
+  try {
+    const res = await github(
+      `repos/${GITHUB_ORG}/${ENCODE_REPO}/contents/src/axiom_encode/data/check_registry.json`,
+      { headers: { Accept: "application/vnd.github.raw" } },
+    );
+    return stepChecks(JSON.parse(await res.text()));
+  } catch (error) {
+    console.warn(`check registry: ${error.message.split("\n")[0]}`);
+    return new Map();
+  }
+}
+
+async function readOraclePending(repos) {
+  const pending = new Map();
+  for (const repo of repos) {
+    try {
+      const res = await github(
+        `repos/${GITHUB_ORG}/${repo}/contents/oracle-coverage-pending.yaml`,
+        { headers: { Accept: "application/vnd.github.raw" } },
+      );
+      pending.set(repo, pendingOracleModules(yaml.load(await res.text())));
+    } catch (error) {
+      // No file means nothing is declared pending; anything else leaves the repo unknown.
+      if (/ 404 /.test(error.message)) pending.set(repo, new Set());
+      else console.warn(`oracle pending ledger for ${repo}: ${error.message}`);
+    }
+  }
+  return pending;
 }
 
 // Axiom-vs-engine comparison reports: axiom-<engine>-<suite>.json (PolicyEngine,
@@ -784,7 +858,7 @@ async function jobsDetail(runId) {
     `repos/${GITHUB_ORG}/${ENCODE_REPO}/actions/runs/${runId}/jobs?per_page=50`,
   );
   for (const job of body.jobs ?? []) {
-    if (job.conclusion !== "failure") continue;
+    if (job.conclusion !== "failure" || DISPATCH_RECORD_JOB_RE.test(job.name)) continue;
     const step = (job.steps ?? []).find((s) => s.conclusion === "failure");
     return {
       source: "jobs",
@@ -808,7 +882,7 @@ async function logError(runId) {
     const body = await githubJson(
       `repos/${GITHUB_ORG}/${ENCODE_REPO}/actions/runs/${runId}/jobs?per_page=50`,
     );
-    const job = (body.jobs ?? []).find((j) => j.conclusion === "failure");
+    const job = (body.jobs ?? []).find((j) => j.conclusion === "failure" && !DISPATCH_RECORD_JOB_RE.test(j.name));
     if (!job) return null;
     const res = await github(`repos/${GITHUB_ORG}/${ENCODE_REPO}/actions/jobs/${job.id}/logs`);
     return checkErrorFromLog(await res.text());
@@ -1035,6 +1109,20 @@ const SIDE_COLUMNS = [
   "tests_first_run_url",
 ];
 
+// Added by the 2026-11-11 PR-gate migration: what stands between a PR and
+// its merge, read from GitHub each pass, and whether the run asked for a PR.
+const GATE_COLUMNS = [
+  "pr_head_sha",
+  "pr_merge_state",
+  "pr_commit_count",
+  "pr_checks_started_at",
+  "pr_checks_finished_at",
+  "pr_approved_at",
+  "pr_approval_on_head",
+  "pr_approvals_dismissed",
+  ...GATE_CARRIED,
+];
+
 async function upsert(rows) {
   // Each migration's columns are written only once that migration is applied.
   for (const [name, group] of [
@@ -1046,6 +1134,8 @@ async function upsert(rows) {
     ["tries", TRIES_COLUMNS],
     ["loop timing", LOOP_COLUMNS],
     ["side branch", SIDE_COLUMNS],
+    ["PR gate", GATE_COLUMNS],
+    ["dispatch record", DISPATCH_CARRIED],
   ]) {
     if (await columnsExist(group)) continue;
     console.log(`${name} columns not written yet (migration not applied)`);
@@ -1213,6 +1303,19 @@ async function main() {
   }
   const fileLookups = outsideFileLookups(mergedPrs, previous, prs);
   const filesRead = await readPrFiles(fileLookups);
+  // A closed PR whose module a merge train carried to main counts as merged
+  // there, through that train: recorded in the side-branch columns.
+  if (sideTracked) {
+    const carriers = carrierIndex(mergedPrs, previous);
+    let trains = 0;
+    for (const pr of prs) {
+      const carrier = carrierPrFor(pr, carriers);
+      if (!carrier) continue;
+      pr.via = carrier;
+      trains += 1;
+    }
+    console.log(`${trains} closed PRs carried to main by another PR (merge trains)`);
+  }
   const outside = outsideModules(mergedPrs, previous, prs, mirror);
   const outsidePrs = outside.map((module) => module.pr);
   const from = (kind) => outside.filter((module) => module.citationFrom === kind).length;
@@ -1232,10 +1335,16 @@ async function main() {
     ]),
   ].sort();
   const defaultBranches = new Map([...prs, ...outsidePrs].filter((pr) => pr.defaultBranch).map((pr) => [pr.repo, pr.defaultBranch]));
-  const [validation, waivers] = await Promise.all([
+  const [validation, waivers, oraclePending, stepCheckIds] = await Promise.all([
     readValidation(mergedRepos, defaultBranches),
     readWaivers(mergedRepos),
+    readOraclePending(mergedRepos),
+    readStepChecks(),
   ]);
+  console.log(`check registry: ${stepCheckIds.size} step checks`);
+  console.log(
+    `oracle pending ledgers: ${[...oraclePending.values()].reduce((sum, set) => sum + set.size, 0)} module paths in ${oraclePending.size} of ${mergedRepos.length} repos`,
+  );
   const oracle = oracleRef
     ? await readOracleVerdicts(oracleRef).catch((error) => {
         console.warn(`oracle reports unavailable: ${error.message}`);
@@ -1252,7 +1361,8 @@ async function main() {
 
   // A dry run times every step it reads; a pass writes them once the migration is in.
   const timesTracked = dryRun || (await columnsExist(TIME_COLUMNS));
-  const detailRuns = runDetailLookups(runs, previous, runDetailLimit, { steps: timesTracked });
+  const prRequestTracked = dryRun || (await columnsExist(GATE_CARRIED));
+  const detailRuns = runDetailLookups(runs, previous, runDetailLimit, { steps: timesTracked, prRequest: prRequestTracked });
   const runDetails = await lookUpRunDetails(detailRuns);
   console.log(`read jobs for ${runDetails.size} of ${detailRuns.length} runs`);
   // After the jobs: whether a run reached its encode step decides which encoder record is its.
@@ -1308,6 +1418,8 @@ async function main() {
     validation,
     waivers,
     oracle,
+    oraclePending,
+    stepChecks: stepCheckIds,
     runDetails,
     encoderVersions,
     checkErrors,

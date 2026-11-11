@@ -578,7 +578,7 @@ describe("tests and oracle stages", () => {
     });
     expect(steps({ oracle_status: "disagree" })[1].state).toBe("failed");
     expect(steps({ oracle_status: "stale", oracle_checked_at: "O" })[1]).toMatchObject({ state: "pending", at: null });
-    expect(steps({})[1].detail).toBe("No oracle report covers it");
+    expect(steps({})[1].detail).toBe("No oracle compares this module");
     expect(journeySteps(pipelineAttempt())[7].detail).toBeNull();
   });
 
@@ -605,7 +605,7 @@ describe("tests and oracle stages", () => {
     expect(view.stages.encode_failed.items.find((i) => i.citation === "c/1")?.gate).toBe("Failed validation");
     const verified = view.stages.verified.items.find((i) => i.citation === "c/4")!;
     expect(verified).toMatchObject({ oracle: "Matches PolicyEngine", reason: "Matches PolicyEngine", testsRunUrl: "R" });
-    expect(view.stages.verified.items.find((i) => i.citation === "c/9")?.reason).toBe("No oracle report covers it");
+    expect(view.stages.verified.items.find((i) => i.citation === "c/9")?.reason).toBe("No oracle compares this module");
     expect(view.stages.runs.items.map((i) => i.reason).sort()).toEqual([
       "Validation waived on main (known gap)",
       "Waiting for its jurisdiction's validation on main",
@@ -817,5 +817,37 @@ describe("citation views with every source", () => {
     expect(journeySteps(outsideAttempt())[0].detail).toBe("Merged outside the pipeline · MaxGhenis");
     expect(journeySteps(dependentAttempt())[0].detail).toBe("Encoded in another citation's run");
     expect(hostCitations([pipelineAttempt(), dependentAttempt()])).toEqual(new Map([["1001", "us/statute/7/2017/a"]]));
+  });
+});
+
+describe("the oracle step of a merged module", () => {
+  it("says pending, with the ledger, or that no oracle compares it", () => {
+    const step = (overrides: Parameters<typeof mergedAttempt>[0]) => journeySteps(mergedAttempt(overrides)).find((s) => s.key === "oracle")!;
+    expect(step({ oracle_status: "pending" })).toMatchObject({
+      state: "pending",
+      detail: "Oracle pending: no report compares it yet (listed in oracle-coverage-pending.yaml)",
+      href: "https://github.com/TheAxiomFoundation/rulespec-us/blob/HEAD/oracle-coverage-pending.yaml",
+    });
+    expect(step({})).toMatchObject({ state: "pending", detail: "No oracle compares this module", href: null });
+    expect(oracleLabel(mergedAttempt({ oracle_status: "pending" }))).toContain("Oracle pending");
+  });
+});
+
+describe("an infra step check as the failure rule", () => {
+  it("is the workflow's, at the step's own gate, not a validator rule", () => {
+    const failed = pipelineAttempt({
+      failure_source: "jobs",
+      failed_step: "Queue protected signed RuleSpec re-encode / Verify immutable checkout identities",
+      encoder_error_rule: "infra:verify-immutable-checkout-identities",
+    });
+    expect(encodeGate(failed)).toBe("setup");
+    expect(failureReason(failed)).toEqual({
+      key: "rule:infra:verify-immutable-checkout-identities",
+      label: "infra:verify-immutable-checkout-identities",
+      kind: "workflow",
+    });
+    const rule = pipelineAttempt({ failure_source: "diagnostics", failed_step: "encode_apply", encoder_error_rule: "complete-source-unit:tests" });
+    expect(encodeGate(rule)).toBe("validate");
+    expect(failureReason(rule).kind).toBe("validator");
   });
 });

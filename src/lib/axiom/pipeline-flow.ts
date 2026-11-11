@@ -101,6 +101,26 @@ export interface OpenItem {
   ref_url: string | null;
 }
 
+/** Cases open at one station for one reason, now. */
+export interface WaitingGroup {
+  station: string;
+  label: string;
+  /** The reason id of the wait event, or `wait:<station>` when no event says why. */
+  cause: string;
+  /** What the wait event says beside its reason id (the oldest case's text). */
+  detail: string | null;
+  /** The cases failed here and their PR is still open (not counted as WIP). */
+  failed?: boolean;
+  cases: number;
+  /** How many of them are dispatched runs (the rest merged without a run, or inside another run). */
+  runs: number;
+  over_sla: number;
+  /** When the oldest of them reached the station. */
+  since: string;
+  /** The oldest three. */
+  oldest: OpenItem[];
+}
+
 export interface StationStats {
   id: string;
   label: string;
@@ -208,6 +228,11 @@ export function causeOrigin(cause: string | null): CauseOrigin {
   return cause.includes(":") ? "validator" : "unknown";
 }
 
+/** A wait's reason id: the wait event's rule (before its text), or `wait:<station>` when no event says why. */
+export function waitCause(reason: string | null, station: string): string {
+  return reason ? reason.split(": ")[0] : `wait:${station}`;
+}
+
 /**
  * A plain sentence for the reasons the derivation names itself (cancels,
  * waits without a reason, a run with no PR). Every other reason is the id
@@ -233,6 +258,23 @@ export function causeText(cause: string): string | null {
   }
   if (cause === "gate:pre-encode-blocked") return "Stopped by the pre-encode gate";
   if (cause === "infra:no-pr") return "The run passed but opened no PR";
+  if (cause === "publish:artifact-only") return "Dispatched without a PR (open_pr false): ends at its signed artifact";
+  if (cause === "check:pending") return "PR checks still run";
+  if (cause === "check:failed-pr-open") return "Checks failed; the PR is still open";
+  if (cause === "review:no-reviewer-requested") return "Checks pass; no reviewer requested and no approval";
+  if (cause === "merge:behind-base") return "Behind the default branch: needs an update, which restarts CI";
+  if (cause === "merge:conflict") return "Conflicts with the default branch";
+  if (cause === "review:approval-not-on-head") return "Approved on an older commit than the head";
+  if (cause === "review:approval-dismissed") return "The approval was dismissed";
+  if (cause === "review:approved-not-merged") return "Approved, not merged yet";
+  if (cause === "review:draft") return "Still a draft: nobody marked it ready or asked for a review";
+  if (cause === "review:changes-requested") return "A reviewer asked for changes";
+  if (cause === "review:closed-unmerged") return "PR closed without a merge";
+  if (cause === "compile:no-verdict") return "The compile sweep has not reported on the module";
+  if (cause === "tests:no-verdict") return "No validation run on main has reported on the module";
+  if (cause === "tests:failed-at-merge") return "Failed the first validation run on main after the merge";
+  if (cause === "tests:broke-after-merge") return "Passed at the merge, fails on main now";
+  if (cause === "tests:fail-on-main") return "Fails validation on main (first run after the merge not read)";
   if (cause === "check:unknown") return "A check failed; the record does not name it";
   if (cause === "publish:in-host-run") return "Published inside another citation's run";
   if (cause === "review:awaiting-reviewer") return "No reviewer has looked at it yet";
@@ -427,12 +469,29 @@ export interface DataTrust {
   partly_timed: Array<{ station: string; share: number }>;
   /** The first day any try record exists. */
   tries_since: string | null;
+  /** ... with a failed try that names its typed checks (rule id and gate per try). */
+  with_typed_checks: number;
+  /** Finished dispatches where no encode ran: the run ended before the encode step (failed, cancelled, or blocked). */
+  no_encode: number;
+  /** Dispatches whose encode step ran with no try record: the encoder synced no try, model, or cost. */
+  no_try_record: number;
+  /** Merged dispatches by oracle state. unknown: the merge event predates the oracle state. */
+  oracle: { merged: number; compared: number; pending: number; none: number; unknown: number };
   /** Corpus releases in the window (the ingest stations' cases). */
   releases: number;
   /** Stations of the line with no event, and why. */
   unmeasured: Array<{ station: string; reason: string }>;
   /** Sources that could not be read this time. */
   source_errors: string[];
+}
+
+/** One typed check across the window's failed tries. */
+export interface TypedCheckRow {
+  id: string;
+  gate: string | null;
+  /** Failed tries that name the check, and the cases they belong to. */
+  tries: number;
+  cases: number;
 }
 
 /** One validator rule over time: does the encoder stop hitting it? */
@@ -464,6 +523,8 @@ export interface FlowModel {
   populations: Record<Population, number>;
   jurisdiction: string | null;
   stations: StationStats[];
+  /** Where cases wait now, over all time: per station and reason, most cases first. */
+  waiting: WaitingGroup[];
   edges: FlowEdge[];
   sinks: Array<{ id: SinkId; label: string; cases: number }>;
   ladder: IssueLadder;
@@ -473,6 +534,8 @@ export interface FlowModel {
   trends: RuleTrend[];
   follows: FollowPair[];
   trust: DataTrust;
+  /** The typed checks that failed the most tries in the window, with the gate that ran each. */
+  typed_checks: TypedCheckRow[];
   looping: LoopingCitation[];
   alerts: FlowAlert[];
   totals: FlowTotals;
@@ -550,6 +613,38 @@ interface Visit {
   readTime: boolean;
   /** The failure class the encoder recorded on the ending event (attrs.failure_class). */
   recordedClass: { class?: unknown; subclass?: unknown } | null;
+  /** Ended in a failure that leaves its PR open (attrs.pr_open): the case still holds a place in the line. */
+  prOpen: boolean;
+  /** A failed try's typed checks (attrs.check_detail, else attrs.checks), and how many more its record left out. */
+  checks: VisitCheck[] | null;
+  checksMore: number;
+  /** A merge's oracle state (attrs.oracle): a verdict, "pending", or "none". Null on events that predate it. */
+  oracle: string | null;
+}
+
+/** One typed check that failed a try: its registry id, the gate that ran it, its number of findings. */
+export interface VisitCheck {
+  id: string;
+  gate: string | null;
+  n: number | null;
+}
+
+/** The typed checks an event carries, bounded; null when it carries none. */
+function eventChecks(attrs: Record<string, unknown> | null | undefined): VisitCheck[] | null {
+  const detail = attrs?.check_detail;
+  const ids = attrs?.checks;
+  const checks: VisitCheck[] = [];
+  if (Array.isArray(detail)) {
+    for (const entry of detail) {
+      if (!entry || typeof entry !== "object") continue;
+      const { id, gate, n } = entry as Record<string, unknown>;
+      if (typeof id !== "string" || !id) continue;
+      checks.push({ id, gate: typeof gate === "string" && gate ? gate : null, n: typeof n === "number" && Number.isFinite(n) ? n : null });
+    }
+  } else if (Array.isArray(ids)) {
+    for (const id of ids) if (typeof id === "string" && id) checks.push({ id, gate: null, n: null });
+  }
+  return checks.length ? checks.slice(0, 20) : null;
 }
 
 interface Case {
@@ -618,7 +713,7 @@ function buildCases(events: PipelineEvent[]): Map<string, Case> {
         }
       }
       if (!visit) {
-        visit = { station: e.station, start: t, end: null, outcome: "open", try_no: e.try_no, rule_id: null, reason: null, ref_url: e.ref_url, duration_ms: null, waived: false, actor: e.actor, cost_usd: null, message: null, readTime: false, recordedClass: null };
+        visit = { station: e.station, start: t, end: null, outcome: "open", try_no: e.try_no, rule_id: null, reason: null, ref_url: e.ref_url, duration_ms: null, waived: false, actor: e.actor, cost_usd: null, message: null, readTime: false, recordedClass: null, prOpen: false, checks: null, checksMore: 0, oracle: null };
         visits.push(visit);
         open.set(e.station, visit);
         if (e.kind !== "enter" && TERMINAL.has(e.kind)) unentered.set(e.station, visit);
@@ -641,6 +736,10 @@ function buildCases(events: PipelineEvent[]): Map<string, Case> {
         visit.readTime = Boolean(e.attrs?.read_time);
         const recorded = e.attrs?.failure_class;
         visit.recordedClass = recorded && typeof recorded === "object" ? (recorded as Visit["recordedClass"]) : null;
+        visit.prOpen = e.attrs?.pr_open === true;
+        visit.checks = eventChecks(e.attrs);
+        visit.checksMore = typeof e.attrs?.checks_more === "number" ? e.attrs.checks_more : 0;
+        visit.oracle = e.station === "merge" && typeof e.attrs?.oracle === "string" ? e.attrs.oracle : null;
         visit.duration_ms = e.duration_ms ?? (e.attrs?.untimed ? null : t - visit.start);
         visit.ref_url = e.ref_url ?? visit.ref_url;
         open.delete(e.station);
@@ -779,6 +878,7 @@ export function mineFlow(events: PipelineEvent[], options: FlowOptions): FlowMod
     }
   }
   const stations: StationStats[] = [];
+  const waiting: WaitingGroup[] = [];
   for (const id of stationIds) {
     const visitsIn: Array<{ c: Case; v: Visit }> = [];
     for (const c of windowCases) for (const v of c.visits) if (v.station === id) visitsIn.push({ c, v });
@@ -837,6 +937,53 @@ export function mineFlow(events: PipelineEvent[], options: FlowOptions): FlowMod
     const target = targets.get(id) ?? null;
     const slaMs = target?.sla_hours != null ? target.sla_hours * 3_600_000 : null;
     const overSla = slaMs == null ? 0 : openItems.filter((o) => now - Date.parse(o.since) > slaMs).length;
+    // The same open cases by why they wait (oldest first within a reason).
+    const byCause = new Map<string, OpenItem[]>();
+    for (const item of openItems) {
+      const cause = waitCause(item.reason, id);
+      byCause.set(cause, [...(byCause.get(cause) ?? []), item]);
+    }
+    // Failed, and the PR is still open: nothing moves until someone fixes or
+    // closes it. Not WIP (the visit ended), but it is where the case sits.
+    const blocked: OpenItem[] = [];
+    const blockedRules = new Map<string, number>();
+    for (const c of factory) {
+      const v = c.visits[c.visits.length - 1];
+      if (v?.station !== id || v.outcome !== "fail" || !v.prOpen) continue;
+      blocked.push({ case_id: c.id, citation: c.citation, since: new Date(v.start).toISOString(), reason: v.reason, ref_url: v.ref_url });
+      const rule = v.rule_id ?? "check:unknown";
+      blockedRules.set(rule, (blockedRules.get(rule) ?? 0) + 1);
+    }
+    if (blocked.length) {
+      blocked.sort((a, b) => a.since.localeCompare(b.since));
+      const top = [...blockedRules].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 3);
+      waiting.push({
+        station: id,
+        label: stationLabel(id),
+        cause: `${id === "pr_checks" ? "check" : id}:failed-pr-open`,
+        detail: top.map(([rule, count]) => `${count} × ${rule.replace(/^check:/, "")}`).join("; "),
+        failed: true,
+        cases: blocked.length,
+        runs: blocked.filter((o) => !isReleaseCase(o.case_id) && casePopulation(o.case_id) === "runs").length,
+        over_sla: slaMs == null ? 0 : blocked.filter((o) => now - Date.parse(o.since) > slaMs).length,
+        since: blocked[0].since,
+        oldest: blocked.slice(0, 3),
+      });
+    }
+    for (const [cause, items] of byCause) {
+      const text = items[0].reason?.startsWith(`${cause}: `) ? items[0].reason.slice(cause.length + 2) : null;
+      waiting.push({
+        station: id,
+        label: stationLabel(id),
+        cause,
+        detail: text,
+        cases: items.length,
+        runs: items.filter((o) => !isReleaseCase(o.case_id) && casePopulation(o.case_id) === "runs").length,
+        over_sla: slaMs == null ? 0 : items.filter((o) => now - Date.parse(o.since) > slaMs).length,
+        since: items[0].since,
+        oldest: items.slice(0, 3),
+      });
+    }
     const positions: number[] = [];
     for (const c of windowCases.length ? windowCases : factory) {
       const i = c.visits.findIndex((v) => v.station === id);
@@ -957,6 +1104,8 @@ export function mineFlow(events: PipelineEvent[], options: FlowOptions): FlowMod
     waiting: stations.reduce((s, x) => s + x.wip, 0),
     waiting_over_sla: stations.reduce((s, x) => s + x.over_sla, 0),
   };
+  const encodeStates = dispatches.map((c) => encodeState(c.visits).state);
+  const oracleStates = merged.map((c) => caseOracle(c.visits)?.state ?? "unknown");
   const tryStart = Math.min(...factory.flatMap((c) => c.visits.filter((v) => v.try_no != null && v.actor).map((v) => v.start)));
   const trust: DataTrust = {
     dispatched: dispatches.length,
@@ -966,6 +1115,16 @@ export function mineFlow(events: PipelineEvent[], options: FlowOptions): FlowMod
     untimed: stations.filter((x) => !x.timed && !x.unmeasured && x.id !== "dispatch").map((x) => x.id),
     partly_timed: stations.filter((x) => x.timed && x.timed_share < 0.5).map((x) => ({ station: x.id, share: x.timed_share })),
     tries_since: Number.isFinite(tryStart) ? new Date(tryStart).toISOString() : null,
+    with_typed_checks: dispatches.filter((c) => c.visits.some((v) => v.checks)).length,
+    no_encode: encodeStates.filter((state) => state === "no_encode").length,
+    no_try_record: encodeStates.filter((state) => state === "no_try_record").length,
+    oracle: {
+      merged: merged.length,
+      compared: oracleStates.filter((state) => state === "compared").length,
+      pending: oracleStates.filter((state) => state === "pending").length,
+      none: oracleStates.filter((state) => state === "none").length,
+      unknown: oracleStates.filter((state) => state === "unknown").length,
+    },
     releases: windowCases.length - encodeCases.length,
     unmeasured: stations.filter((x) => x.unmeasured).map((x) => ({ station: x.id, reason: x.unmeasured! })),
     source_errors: options.sourceErrors ?? [],
@@ -980,6 +1139,7 @@ export function mineFlow(events: PipelineEvent[], options: FlowOptions): FlowMod
     populations,
     jurisdiction: options.jurisdiction ?? null,
     stations,
+    waiting: waiting.sort((a, b) => b.cases - a.cases || a.since.localeCompare(b.since)),
     edges,
     sinks: (Object.keys(sinkCounts) as SinkId[]).filter((id) => sinkCounts[id] > 0).map((id) => ({ id, label: SINK_LABELS[id], cases: sinkCounts[id] })),
     ladder,
@@ -988,6 +1148,7 @@ export function mineFlow(events: PipelineEvent[], options: FlowOptions): FlowMod
     trends,
     follows,
     trust,
+    typed_checks: typedCheckRows(encodeCases),
     looping,
     alerts: [],
     totals,
@@ -1173,7 +1334,7 @@ export function stationFlows(windowCases: Case[], allCases: Case[], stations: St
   for (const c of allCases) {
     for (const v of c.visits) {
       if (v.outcome !== "open") continue;
-      const cause = v.reason ? v.reason.split(": ")[0] : `wait:${v.station}`;
+      const cause = waitCause(v.reason, v.station);
       push(waits, v.station, { cause, c, v });
     }
   }
@@ -1636,6 +1797,26 @@ export function formatDuration(ms: number | null): string {
   return `${(ms / DAY_MS).toFixed(ms < 10 * DAY_MS ? 1 : 0)}d`;
 }
 
+/** The typed checks that failed the most tries, most tries first. */
+function typedCheckRows(cases: Case[], limit = 10): TypedCheckRow[] {
+  const rows = new Map<string, TypedCheckRow & { seen: Set<string> }>();
+  for (const c of cases) {
+    for (const v of c.visits) {
+      for (const check of v.checks ?? []) {
+        const row = rows.get(check.id) ?? { id: check.id, gate: check.gate, tries: 0, cases: 0, seen: new Set<string>() };
+        row.tries += 1;
+        row.gate ??= check.gate;
+        row.seen.add(c.id);
+        rows.set(check.id, row);
+      }
+    }
+  }
+  return [...rows.values()]
+    .map(({ seen, ...row }) => ({ ...row, cases: seen.size }))
+    .sort((a, b) => b.tries - a.tries || a.id.localeCompare(b.id))
+    .slice(0, limit);
+}
+
 /** One citation: each case's visits, for the lanes view. */
 export interface CitationLane {
   case_id: string;
@@ -1659,6 +1840,74 @@ export interface LaneVisit {
   reason: string | null;
   ref_url: string | null;
   waived: boolean;
+  /** A failed try's typed checks, and how many more its record left out. */
+  checks?: VisitCheck[];
+  checks_more?: number;
+}
+
+/** What a case's encode step left on record. */
+export interface EncodeState {
+  /** tries: the encoder recorded each try. no_try_record: the encode step ran, with no try, model, or cost synced.
+   *  no_encode: the run ended before the encode step. not_yet: the run has not reached it. outside: not a dispatch. */
+  state: "tries" | "no_try_record" | "no_encode" | "not_yet" | "outside";
+  /** The state in words, with the station that stopped the run when known. */
+  label: string;
+}
+
+type StateVisit = Pick<Visit, "station" | "outcome" | "actor" | "rule_id">;
+
+/** The stations a run passes before its encode step. */
+const BEFORE_ENCODE = new Set(["dispatch", "approval", "setup", "target_gate"]);
+
+/**
+ * Whether a case's encode step ran, and what it recorded. A run with no
+ * tries and no cost is one of three things: the encoder kept no try record
+ * (older runs, or a step that made no model call), the run ended before the
+ * encode step, or it has not reached it yet.
+ */
+export function encodeState(visits: StateVisit[]): EncodeState {
+  const generate = visits.filter((v) => v.station === "generate");
+  if (generate.some((v) => v.actor)) return { state: "tries", label: "Tries recorded" };
+  if (generate.length) {
+    return { state: "no_try_record", label: "No try recorded: the encode step ran, and the encoder synced no try, model, or cost" };
+  }
+  if (visits[0]?.station !== "dispatch") return { state: "outside", label: "Not encoded by this run" };
+  const stop = visits.find((v) => v.outcome === "fail" || v.outcome === "cancel");
+  if (stop) {
+    const how = stop.outcome === "cancel" ? "cancelled" : "failed";
+    const where = `${how} at ${stationLabel(stop.station)}${stop.rule_id ? ` (${stop.rule_id})` : ""}`;
+    // Only a stop before the encode step shows that no encode ran; a later stop has no try record to say.
+    return BEFORE_ENCODE.has(stop.station)
+      ? { state: "no_encode", label: `No encode ran: ${where}` }
+      : { state: "no_try_record", label: `No try recorded: the run ${where}, and the encoder synced no try, model, or cost` };
+  }
+  if (visits.some((v) => v.outcome === "open")) return { state: "not_yet", label: "Not at the encode step yet" };
+  return { state: "no_encode", label: "No encode ran: the run recorded no encode step" };
+}
+
+/** A merged case's oracle state. */
+export interface CaseOracle {
+  state: "compared" | "pending" | "none";
+  label: string;
+}
+
+/** The oracle state of a merged case: a comparison, pending in the repo's ledger, or none. Null before a merge, or when the merge event predates the state. */
+export function caseOracle(visits: Array<Pick<Visit, "station" | "outcome"> & { oracle?: string | null }>): CaseOracle | null {
+  const merge = visits.find((v) => v.station === "merge" && v.outcome === "ok");
+  if (!merge) return null;
+  const oracle = visits.find((v) => v.station === "oracle");
+  if (oracle) {
+    return oracle.outcome === "open"
+      ? { state: "compared", label: "An oracle report covers it, and the report is older than the module (stale)" }
+      : { state: "compared", label: "Compared by an oracle (see the oracle station)" };
+  }
+  if (merge.oracle === "pending") {
+    return { state: "pending", label: "Pending: no oracle compares it yet (listed in oracle-coverage-pending.yaml)" };
+  }
+  if (merge.oracle === "none") return { state: "none", label: "No oracle compares this module" };
+  // A verdict on the merge with no oracle visit: the tests on main have not cleared, so the comparison is not shown yet.
+  if (merge.oracle) return { state: "compared", label: `An oracle report covers it (${merge.oracle}); the oracle station shows it once the tests on main pass` };
+  return null;
 }
 
 function laneVisit(v: Visit): LaneVisit {
@@ -1676,6 +1925,7 @@ function laneVisit(v: Visit): LaneVisit {
     reason: v.reason,
     ref_url: v.ref_url,
     waived: v.waived,
+    ...(v.checks ? { checks: v.checks, ...(v.checksMore ? { checks_more: v.checksMore } : {}) } : {}),
   };
 }
 
@@ -1701,6 +1951,10 @@ export interface CaseDetail extends CitationLane {
   jurisdiction: string | null;
   issues: Array<{ try_no: number | null; rule_id: string | null; message: string | null; source: string; final: boolean }>;
   encoder_version: string | null;
+  /** Whether the encode step ran and what it recorded. */
+  encode: EncodeState;
+  /** The merged module's oracle state; null before a merge. */
+  oracle: CaseOracle | null;
 }
 
 export function caseDetail(events: PipelineEvent[], caseId: string): CaseDetail | null {
@@ -1713,6 +1967,8 @@ export function caseDetail(events: PipelineEvent[], caseId: string): CaseDetail 
     citation: c.citation,
     jurisdiction: c.jurisdiction,
     encoder_version: own.find((e) => e.encoder_version)?.encoder_version ?? null,
+    encode: encodeState(c.visits),
+    oracle: caseOracle(c.visits),
     issues: own
       .filter((e) => e.kind === "issue")
       .map((e) => ({ try_no: e.try_no, rule_id: e.rule_id, message: e.message, source: e.source, final: Boolean(e.attrs?.final) })),
@@ -1811,6 +2067,26 @@ export function agentBrief(model: FlowModel, siteUrl: string): string {
     for (const l of model.looping.slice(0, 10)) lines.push(`- ${l.citation}: ${l.cases} runs, none merged, ${l.failed_visits} failures, ${l.cost_usd == null ? "cost not recorded" : `$${l.cost_usd.toFixed(2)} model cost`}; ${l.rules.join(", ") || "no rule"} (${link(`/ops/journey?citation=${encodeURIComponent(l.citation)}`, siteUrl)})`);
     lines.push("");
   }
+  if (model.waiting.length) {
+    lines.push("## Where cases wait now");
+    lines.push("| station | why | cases (runs) | over SLA | oldest since | oldest case |");
+    lines.push("|---|---|---|---|---|---|");
+    for (const w of model.waiting.slice(0, 15)) {
+      const first = w.oldest[0];
+      lines.push(
+        `| ${w.label} | \`${w.cause}\`${w.detail ? ` ${w.detail.replace(/\|/g, "/")}` : ""} | ${w.cases} (${w.runs}) | ${w.over_sla} | ${w.since.slice(0, 10)} | ${first ? `${first.citation} (${link(`/ops/journey?citation=${encodeURIComponent(first.citation)}`, siteUrl)})` : ""} |`
+      );
+    }
+    lines.push("");
+  }
+  if (model.typed_checks.length) {
+    lines.push("## Typed checks that failed tries");
+    lines.push("From the encoder's issue document per try (registry check id and gate). Only tries that carry one are counted.");
+    for (const row of model.typed_checks) {
+      lines.push(`- \`${row.id}\` (gate ${row.gate ?? "not recorded"}): ${row.tries} tries in ${row.cases} cases`);
+    }
+    lines.push("");
+  }
   lines.push("## Alerts");
   if (!model.alerts.length) lines.push("- None.");
   for (const a of model.alerts.slice(0, 15)) lines.push(`- **${a.severity}** ${a.title}. ${a.detail}${a.href ? ` (${link(a.href, siteUrl)})` : ""}`);
@@ -1827,7 +2103,7 @@ export function agentBrief(model: FlowModel, siteUrl: string): string {
   const tr = model.trust;
   lines.push("## How much these numbers can see");
   lines.push(
-    `Of ${tr.dispatched} dispatched runs: ${tr.with_tries} have per-try records (since ${tr.tries_since?.slice(0, 10) ?? "never"}), ${tr.with_cost} a recorded cost, ${tr.with_issue_list} a full issue list. Not timed: ${tr.untimed.map(stationLabel).join(", ") || "none"}.${tr.partly_timed.length ? ` Timed for part of their visits: ${tr.partly_timed.map((x) => `${stationLabel(x.station)} (${pct(x.share)})`).join(", ")}.` : ""}${tr.unmeasured.length ? ` Not measured: ${tr.unmeasured.map((x) => `${stationLabel(x.station)} (${x.reason})`).join(", ")}.` : ""} ${tr.releases} corpus releases in the window.`
+    `Of ${tr.dispatched} dispatched runs: ${tr.with_tries} have per-try records (since ${tr.tries_since?.slice(0, 10) ?? "never"}), ${tr.with_cost} a recorded cost, ${tr.with_issue_list} a full issue list, ${tr.with_typed_checks} typed checks (rule id and gate) on a failed try. ${tr.no_encode} ran no encode (the run ended before the encode step); ${tr.no_try_record} ran the encode step with no try record. Of ${tr.oracle.merged} merged: ${tr.oracle.compared} compared by an oracle, ${tr.oracle.pending} pending (listed in oracle-coverage-pending.yaml), ${tr.oracle.none} with no oracle${tr.oracle.unknown ? `, ${tr.oracle.unknown} not recorded` : ""}. Not timed: ${tr.untimed.map(stationLabel).join(", ") || "none"}.${tr.partly_timed.length ? ` Timed for part of their visits: ${tr.partly_timed.map((x) => `${stationLabel(x.station)} (${pct(x.share)})`).join(", ")}.` : ""}${tr.unmeasured.length ? ` Not measured: ${tr.unmeasured.map((x) => `${stationLabel(x.station)} (${x.reason})`).join(", ")}.` : ""} ${tr.releases} corpus releases in the window.`
   );
   lines.push("");
   lines.push(`Data: ${model.events} events (${Object.entries(model.sources).map(([s, n]) => `${s} ${n}`).join(", ")}). JSON: ${link("/api/ops/flow", siteUrl)}.`);

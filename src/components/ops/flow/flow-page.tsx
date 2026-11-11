@@ -204,6 +204,12 @@ function CasePanel({ detail, params }: { detail: CaseDetail; params: FlowParams 
   const links = [...new Map(detail.visits.filter((v) => v.ref_url).map((v) => [v.ref_url!, v.station])).entries()];
   const cost = detail.visits.reduce((s, v) => s + (v.cost_usd ?? 0), 0);
   const tries = detail.visits.filter((v) => v.station === "validate").length;
+  // A run with no try record says why, in place of a zero or a dash.
+  const recorded = detail.encode.state === "tries";
+  const noRecord = { tries: "", no_try_record: "none recorded", no_encode: "no encode ran", not_yet: "not yet", outside: "none" }[
+    detail.encode.state
+  ];
+  const typedTries = detail.visits.filter((v) => v.station === "validate" && v.checks?.length);
   return (
     <aside className={styles.panel} aria-label="Run details">
       <a className={styles.close} href={flowHref(params, { case: null })}>
@@ -216,11 +222,11 @@ function CasePanel({ detail, params }: { detail: CaseDetail; params: FlowParams 
       <div className={styles.metrics} style={{ marginTop: 12 }}>
         <div className={styles.metric}>
           <span>Tries</span>
-          <b>{tries}</b>
+          <b style={recorded ? undefined : { fontSize: 13 }}>{recorded ? tries : noRecord}</b>
         </div>
         <div className={styles.metric}>
           <span>Model cost</span>
-          <b>{cost ? `$${cost.toFixed(2)}` : "–"}</b>
+          <b style={cost || recorded ? undefined : { fontSize: 13 }}>{cost ? `$${cost.toFixed(2)}` : recorded ? "–" : noRecord}</b>
           <small>recorded tries only</small>
         </div>
         <div className={styles.metric}>
@@ -232,6 +238,12 @@ function CasePanel({ detail, params }: { detail: CaseDetail; params: FlowParams 
           <b>{detail.issues.length}</b>
         </div>
       </div>
+      {!recorded ? <p style={{ marginTop: 12 }}>{detail.encode.label}.</p> : null}
+      {detail.oracle ? (
+        <p style={{ marginTop: 12 }}>
+          <b>Oracle</b> · {detail.oracle.label}.
+        </p>
+      ) : null}
       <h3>Pages</h3>
       <ul className={styles.items}>
         {links.map(([url, station]) => (
@@ -279,8 +291,33 @@ function CasePanel({ detail, params }: { detail: CaseDetail; params: FlowParams 
           </div>
         );
       })}
+      {typedTries.map((v, n) => (
+        <div key={`${v.try_no ?? "x"}-${n}`}>
+          <h3>{v.try_no != null ? `Try ${v.try_no}` : "Try"}: typed checks that failed</h3>
+          <ul className={styles.items}>
+            {v.checks!.map((check) => (
+              <li key={check.id}>
+                <code>{check.id}</code>
+                <span>
+                  {[check.gate ? `gate ${check.gate}` : null, check.n != null ? `${check.n}` : null].filter(Boolean).join(" · ")}
+                </span>
+              </li>
+            ))}
+            {v.checks_more ? (
+              <li>
+                <span>and {v.checks_more} more checks</span>
+                <span />
+              </li>
+            ) : null}
+          </ul>
+        </div>
+      ))}
       {!detail.issues.length ? (
-        <p style={{ marginTop: 12 }}>No archived issue list for this run: its record keeps only the first error of each try (shown on the try).</p>
+        <p style={{ marginTop: 12 }}>
+          {typedTries.length
+            ? "No archived issue list for this run: its record keeps the first error of each try (shown on the try) and the typed checks above."
+            : "No archived issue list for this run: its record keeps only the first error of each try (shown on the try)."}
+        </p>
       ) : null}
     </aside>
   );

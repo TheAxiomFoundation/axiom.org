@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   activeWaivers,
+  pendingOracleModules,
+  TRY_CHECKS_MAX,
   bookkeepingCause,
   buildAttempts,
   encodeWindow,
   mainMerge,
+  carrierIndex,
+  carrierPrFor,
+  prGate,
   matchEncoderRuns,
   sideBranchLookups,
   viaPrFor,
@@ -22,6 +27,10 @@ import {
   syncWindowStart,
   oracleVerdicts,
   parseRunJobs,
+  parseDispatchTag,
+  stepChecks,
+  stepCheckId,
+  runDetailFields,
   runDetailLookups,
   buildCompileIndex,
   buildMirrorIndex,
@@ -47,6 +56,7 @@ import {
   type CollectInputs,
   type EncoderRunRow,
   type ManifestPr,
+  type PrGateNode,
   type MirrorRow,
   type ShardResult,
   type WorkflowRun,
@@ -317,6 +327,48 @@ describe("buildAttempts", () => {
     );
     expect(applied.failure_source).toBeNull();
     expect(applied.encoder_error).toBeNull();
+  });
+
+  it("gives a failed step its registry check when its error names no typed id", () => {
+    const registry = {
+      schema: "axiom-encode/check-registry/v1",
+      checks: [
+        { id: "infra:require-corpus-read-credentials", gate: "workflow", site: ".github/workflows/targeted-signed-reencode.yml:Require corpus read credentials before the signing gate" },
+        { id: "infra:build-axiom-rules-engine", gate: "workflow", site: ".github/workflows/targeted-signed-reencode.yml:Build Axiom rules engine" },
+        { id: "infra:other-workflow", site: ".github/workflows/other.yml:Build Axiom rules engine" },
+        { id: "complete-source-unit:structure/branch-unencoded", site: "src/axiom_encode/harness/validator_pipeline.py" },
+        { id: 7, site: ".github/workflows/targeted-signed-reencode.yml:Bad id" },
+        null,
+      ],
+    };
+    const checks = stepChecks(registry);
+    expect([...checks]).toEqual([
+      ["Require corpus read credentials before the signing gate", "infra:require-corpus-read-credentials"],
+      ["Build Axiom rules engine", "infra:build-axiom-rules-engine"],
+    ]);
+    expect(stepChecks(null).size).toBe(0);
+    expect(stepChecks({ checks: "nope" }).size).toBe(0);
+    expect(stepCheckId("Queue protected signed RuleSpec re-encode / Build Axiom rules engine", checks)).toBe("infra:build-axiom-rules-engine");
+    expect(stepCheckId("Build Axiom rules engine", checks)).toBe("infra:build-axiom-rules-engine");
+    expect(stepCheckId("encode_apply", checks)).toBeNull();
+    expect(stepCheckId(null, checks)).toBeNull();
+
+    const step = "Queue protected signed RuleSpec re-encode / Require corpus read credentials before the signing gate";
+    const jobs = { source: "jobs" as const, failed_step: step, error: null, rule: null };
+    const build = (overrides: Partial<CollectInputs>) => buildAttempts(inputs({ stepChecks: checks, ...overrides }))[0];
+    // The step's check, also for a cause carried from an earlier pass.
+    expect(build({ failureDetails: new Map([["501", jobs]]) }).encoder_error_rule).toBe("infra:require-corpus-read-credentials");
+    expect(build({ previous: new Map([["501", { failure_source: "jobs", failed_step: step }]]) }).encoder_error_rule).toBe("infra:require-corpus-read-credentials");
+    // A typed id in the error text is more specific and wins.
+    const typed = { source: "log" as const, failed_step: step, error: "[infra:corpus-credentials/missing] no key", rule: "infra:corpus-credentials/missing" };
+    expect(build({ failureDetails: new Map([["501", typed]]) }).encoder_error_rule).toBe("infra:corpus-credentials/missing");
+    // No registry read, a step it does not declare, or a run that did not fail: as before.
+    expect(buildAttempts(inputs({ failureDetails: new Map([["501", jobs]]) }))[0].encoder_error_rule).toBeNull();
+    expect(build({ failureDetails: new Map([["501", { ...jobs, failed_step: "Queue protected signed RuleSpec re-encode / Some new step" }]]) }).encoder_error_rule).toBeNull();
+    expect(build({ runs: [run({ conclusion: "success" })] }).encoder_error_rule).toBeNull();
+    // The step's check names the step, not what it printed: the log is still worth a read.
+    expect(needsLogRead({ failure_source: "jobs", failed_step: step, encoder_error_rule: "infra:require-corpus-read-credentials" })).toBe(true);
+    expect(needsLogRead({ failure_source: "jobs", failed_step: step, encoder_error: "e", encoder_error_rule: "infra:require-corpus-read-credentials" })).toBe(false);
   });
 
   it("falls back to a looked-up detail, then to the previous collection", () => {
@@ -739,6 +791,62 @@ describe("stage joins", () => {
     expect(oracle([]).oracle_status).toBeUndefined();
   });
 
+  it("reads the modules a pending ledger lists, in both repo layouts", () => {
+    const pending = pendingOracleModules({
+      version: 1,
+      ceiling: 3,
+      entries: [
+        { legal_id: "us:regulations/42-cfr/457/800#out", source: "bulk", since: "2026-11-01" },
+        { legal_id: "us:regulations/42-cfr/457/800#other", source: "manual", since: "2026-11-01" },
+        { legal_id: "us-hi:policies/income_tax/x#y", source: "bulk", since: "2026-11-01" },
+        { legal_id: 7 },
+        "not an entry",
+      ],
+    });
+    expect([...pending].sort()).toEqual([
+      "policies/income_tax/x.yaml",
+      "regulations/42-cfr/457/800.yaml",
+      "us-hi/policies/income_tax/x.yaml",
+      "us/regulations/42-cfr/457/800.yaml",
+    ]);
+    expect(pendingOracleModules(null).size).toBe(0);
+    expect(pendingOracleModules({ entries: "nope" }).size).toBe(0);
+  });
+
+  it("marks a merged module pending when no report compares it and its repo's ledger lists it", () => {
+    const listed = new Map([["rulespec-us", new Set(["us/regulations/42-cfr/457/800.yaml"])]]);
+    const empty = new Map([["rulespec-us", new Set<string>()]]);
+    const verdicts = oracleVerdicts([
+      {
+        name: "axiom-policyengine-us-x.json",
+        report: {
+          aggregates: [{ concept: "us:regulations/42-cfr/457/800#out", mismatch_count: 0 }],
+          provenance: { generated_at: "2026-09-20T00:00:00Z", rulespecs: [{ sha: REPORT_SHA }] },
+        },
+      },
+    ]);
+    const build = (overrides: Partial<CollectInputs>) =>
+      buildAttempts(
+        inputs({ prs: [merged()], mirror: mirrorWithCommit, contains: contains([[MERGE, INDEX, true], [MERGE, REPORT_SHA, true]]), ...overrides })
+      )[0];
+    // Between oracle refreshes, and at one with no report on the module.
+    expect(build({ oraclePending: listed })).toMatchObject({ oracle_status: "pending" });
+    expect(build({ oraclePending: listed }).oracle_report).toBeUndefined();
+    expect(build({ oraclePending: listed, oracle: new Map() }).oracle_status).toBe("pending");
+    // A report on the module wins over the ledger, read this pass or carried.
+    expect(build({ oraclePending: listed, oracle: verdicts }).oracle_status).toBe("match");
+    expect(
+      build({ oraclePending: listed, previous: new Map([["501", { oracle_status: "disagree" as const, oracle_engine: "taxsim" }]]) }).oracle_status
+    ).toBe("disagree");
+    // A ledger that no longer lists the module clears a stored pending; a ledger not read keeps it.
+    const stored = new Map([["501", { oracle_status: "pending" as const }]]);
+    expect(build({ oraclePending: empty, previous: stored }).oracle_status).toBeUndefined();
+    expect(build({ previous: stored }).oracle_status).toBe("pending");
+    expect(build({}).oracle_status).toBeUndefined();
+    // An open PR has no oracle state.
+    expect(buildAttempts(inputs({ prs: [pr()], oraclePending: listed }))[0].oracle_status).toBeUndefined();
+  });
+
   it("lists the ancestry checks the joins need", () => {
     const queries = containmentQueries(
       [
@@ -846,11 +954,94 @@ describe("run details", () => {
     const none = { setup: null, encode: null, publish: null };
     expect(parseRunJobs([budget, encodeJob([{ conclusion: "success", started_at: "2026-09-30T01:00:00Z" }, { conclusion: "skipped" }])], "success"))
       .toMatchObject({ encodeStartedAt: "2026-09-30T01:00:00Z", cancelStage: null });
-    expect(parseRunJobs([budget, encodeJob([])], "cancelled")).toEqual({ encodeStartedAt: null, cancelStage: "approval", phases: none });
+    expect(parseRunJobs([budget, encodeJob([])], "cancelled")).toEqual({ encodeStartedAt: null, cancelStage: "approval", phases: none, prRequested: null });
     expect(parseRunJobs([budget, encodeJob([{ conclusion: "cancelled", started_at: "2026-09-30T01:00:00Z" }])], "cancelled"))
       .toMatchObject({ encodeStartedAt: "2026-09-30T01:00:00Z", cancelStage: "running" });
-    expect(parseRunJobs([budget], "cancelled")).toEqual({ encodeStartedAt: null, cancelStage: "before_job", phases: none });
-    expect(parseRunJobs([{ name: "build", steps: null }], "failure")).toEqual({ encodeStartedAt: null, cancelStage: null, phases: none });
+    expect(parseRunJobs([budget], "cancelled")).toEqual({ encodeStartedAt: null, cancelStage: "before_job", phases: none, prRequested: null });
+    expect(parseRunJobs([{ name: "build", steps: null }], "failure")).toEqual({ encodeStartedAt: null, cancelStage: null, phases: none, prRequested: null });
+  });
+
+  const recordJob = (tag: string | null, conclusion = "success") => ({
+    name: "Record dispatch",
+    conclusion,
+    steps: [
+      { name: "Checkout axiom-encode for the dispatch record", conclusion: "success", started_at: "2026-09-30T00:00:05Z" },
+      { name: "Write dispatch record", conclusion: "success", started_at: "2026-09-30T00:00:06Z" },
+      ...(tag === null ? [] : [{ name: `Upload dispatch record: ${tag}`, conclusion: "success", started_at: "2026-09-30T00:00:07Z" }]),
+    ],
+  });
+
+  it("reads what the dispatch asked for from the record job's step name", () => {
+    expect(parseDispatchTag("kind=repair open_pr=true pr_base_branch=main repair_run_id=35160240952")).toEqual({
+      kind: "repair",
+      open_pr: true,
+      pr_base_branch: "main",
+      repair_run_id: "35160240952",
+    });
+    expect(parseDispatchTag("kind=adhoc open_pr=false pr_base_branch=release/2026.11 repair_run_id=none")).toEqual({
+      kind: "adhoc",
+      open_pr: false,
+      pr_base_branch: "release/2026.11",
+      repair_run_id: null,
+    });
+    // A value the record marks invalid, or a kind this reader does not know, is null; so is a later field.
+    expect(parseDispatchTag("kind=other open_pr=invalid pr_base_branch=invalid repair_run_id=abc new_field=1")).toBeNull();
+    expect(parseDispatchTag("kind=queue")).toEqual({ kind: "queue", open_pr: null, pr_base_branch: null, repair_run_id: null });
+    // The record step failed: the name carries no tag.
+    expect(parseDispatchTag("")).toBeNull();
+
+    const ran = encodeJob([{ conclusion: "success", started_at: "2026-09-30T01:00:00Z" }]);
+    const detail = parseRunJobs([budget, recordJob("kind=queue open_pr=true pr_base_branch=main repair_run_id=none"), ran], "success");
+    expect(detail.dispatch).toEqual({ kind: "queue", open_pr: true, pr_base_branch: "main", repair_run_id: null });
+    expect(detail.encodeStartedAt).toBe("2026-09-30T01:00:00Z");
+    expect(runDetailFields(detail, "2026-09-30T02:00:00Z")).toMatchObject({ dispatch_record: { kind: "queue" } });
+    // A run before the record job, and one whose tag is empty: no record, and no field written.
+    expect(parseRunJobs([budget, ran], "success")).not.toHaveProperty("dispatch");
+    expect(parseRunJobs([budget, recordJob(""), ran], "success")).not.toHaveProperty("dispatch");
+    expect(parseRunJobs([budget, recordJob(null), ran], "success")).not.toHaveProperty("dispatch");
+    expect(runDetailFields(parseRunJobs([budget, ran], "success"), "2026-09-30T02:00:00Z")).not.toHaveProperty("dispatch_record");
+  });
+
+  it("never takes the record job for the encode job", () => {
+    const tag = "kind=adhoc open_pr=true pr_base_branch=main repair_run_id=none";
+    const none = { setup: null, encode: null, publish: null };
+    // Cancelled before the encode job existed: the record job ran its steps, the run did not.
+    expect(parseRunJobs([recordJob(tag), budget], "cancelled")).toMatchObject({ encodeStartedAt: null, cancelStage: "before_job", phases: none });
+    expect(parseRunJobs([recordJob(tag)], "failure")).toMatchObject({ encodeStartedAt: null, phases: none });
+    // An encode job under another name is still found after it.
+    expect(parseRunJobs([recordJob(tag), { name: "encode", steps: [{ conclusion: "success", started_at: "2026-09-30T01:00:00Z" }] }], "failure").encodeStartedAt).toBe(
+      "2026-09-30T01:00:00Z"
+    );
+  });
+
+  it("reads a run whose protected jobs both skipped as skipped, though its record job makes the run pass", () => {
+    const tag = "kind=adhoc open_pr=true pr_base_branch=main repair_run_id=none";
+    const skippedJob = (name: string) => ({ name, conclusion: "skipped", steps: [] });
+    const both = [skippedJob("Enforce failed-attempt budget"), recordJob(tag), skippedJob("Queue protected signed RuleSpec re-encode")];
+    const detail = parseRunJobs(both, "success");
+    expect(detail).toMatchObject({ skipped: true, prRequested: null, encodeStartedAt: null, dispatch: { kind: "adhoc" } });
+    expect(parseRunJobs([recordJob(tag)], "success")).toMatchObject({ skipped: true, prRequested: null });
+    // A run that encoded, and a run from before the record job, are not skipped.
+    const ran = encodeJob([{ conclusion: "success", started_at: "2026-09-30T01:00:00Z" }]);
+    expect(parseRunJobs([budget, recordJob(tag), ran], "success")).not.toHaveProperty("skipped");
+    expect(parseRunJobs([budget, ran], "success")).toMatchObject({ prRequested: true });
+    expect(parseRunJobs([], "success")).not.toHaveProperty("skipped");
+
+    // The attempt reads skipped, not "passed with no PR", this pass and the ones after it.
+    const passed = run({ conclusion: "success" });
+    const [fresh] = buildAttempts(inputs({ runs: [passed], runDetails: new Map([["501", detail]]) }));
+    expect(fresh).toMatchObject({ run_conclusion: "skipped", dispatch_record: { kind: "adhoc", open_pr: true } });
+    expect(fresh.pr_requested).toBeNull();
+    const stored = new Map([["501", { jobs_checked_at: fresh.jobs_checked_at, run_conclusion: "skipped", dispatch_record: fresh.dispatch_record }]]);
+    const [later] = buildAttempts(inputs({ runs: [passed], previous: stored }));
+    expect(later).toMatchObject({ run_conclusion: "skipped", dispatch_record: { kind: "adhoc" } });
+    // Its jobs are not read again to learn whether it asked for a PR: it has no answer.
+    expect(runDetailLookups([passed], stored, 10, { prRequest: true })).toEqual([]);
+    expect(runDetailLookups([passed], new Map([["501", { jobs_checked_at: fresh.jobs_checked_at, run_conclusion: "success" }]]), 10, { prRequest: true })).toHaveLength(1);
+    // A run that passed keeps its conclusion.
+    const [kept] = buildAttempts(inputs({ runs: [passed], previous: new Map([["501", { jobs_checked_at: fresh.jobs_checked_at, run_conclusion: "success" }]]) }));
+    expect(kept.run_conclusion).toBe("success");
+    expect(kept.dispatch_record).toBeUndefined();
   });
 
   it("splits the encode job into setup, the encode step, and publishing", () => {
@@ -1151,6 +1342,50 @@ describe("encoder tries", () => {
     expect(encoderTries(encoderRow({ iterations: [] }))).toBeNull();
     // A record with no attempt numbers counts its tries in order.
     expect(encoderTries(encoderRow({ iterations: [{ model: "m" }] }))?.[0]).toMatchObject({ attempt: 1, ms: null, ok: false });
+  });
+
+  it("keeps a try's typed checks with their gates, most findings first and bounded", () => {
+    const issue = (check: string | null, gate: string) => ({ check, gate, cause: "encoder_output", fingerprint: "f" });
+    const iterations = [
+      {
+        attempt: 1,
+        model: "m",
+        success: false,
+        errors: [
+          {
+            message: "x.yaml: ci: [complete-source-unit:structure] Source branch (b) is not encoded",
+            issue_document: {
+              total: 4,
+              issues: [
+                issue("proof:source-evidence/not-found", "validation"),
+                issue("complete-source-unit:structure/branch-unencoded", "ci"),
+                issue("complete-source-unit:structure/branch-unencoded", "ci"),
+                issue(null, "validation"),
+                "not an issue",
+              ],
+            },
+          },
+          { message: "second error", issue_document: { issues: [issue("compile:rules-engine/failed", "compile")] } },
+          { message: "no document" },
+        ],
+      },
+      { attempt: 2, model: "m", success: true, errors: [] },
+    ];
+    const tries = encoderTries(encoderRow({ iterations }))!;
+    expect(tries[0].checks).toEqual([
+      { id: "complete-source-unit:structure/branch-unencoded", gate: "ci", n: 2 },
+      { id: "compile:rules-engine/failed", gate: "compile", n: 1 },
+      { id: "proof:source-evidence/not-found", gate: "validation", n: 1 },
+    ]);
+    expect(tries[0].checksMore).toBeUndefined();
+    expect(tries[0].error).toContain("[complete-source-unit:structure]");
+    // A try with no typed check keeps no list.
+    expect(tries[1]).not.toHaveProperty("checks");
+    // More checks than the limit: the list stops there and says how many it left out.
+    const many = Array.from({ length: TRY_CHECKS_MAX + 3 }, (_, index) => issue(`family:rule/site-${String(index).padStart(2, "0")}`, "ci"));
+    const bounded = encoderTries(encoderRow({ iterations: [{ success: false, errors: [{ message: "m", issue_document: { issues: many } }] }] }))![0];
+    expect(bounded.checks).toHaveLength(TRY_CHECKS_MAX);
+    expect(bounded.checksMore).toBe(3);
   });
 
   it("puts the matched encoder record's tries on the attempt", () => {
@@ -1617,5 +1852,183 @@ describe("first tests run's page", () => {
     expect(mergeValidationLookups([merged], previous, 10, { detail: true, url: true })).toEqual([
       { repo: "rulespec-us", commit: "m1" },
     ]);
+  });
+});
+
+describe("what stands between a PR and its merge", () => {
+  const check = (startedAt: string, completedAt: string | null) => ({
+    __typename: "CheckRun",
+    status: completedAt ? "COMPLETED" : "IN_PROGRESS",
+    startedAt,
+    completedAt,
+  });
+  const node = (contexts: unknown[], extra: Record<string, unknown> = {}): PrGateNode => ({
+    state: "OPEN",
+    headRefOid: "head2",
+    mergeStateStatus: "BEHIND",
+    commits: { totalCount: 3, nodes: [{ commit: { statusCheckRollup: { contexts: { nodes: contexts as never } } } }] },
+    ...extra,
+  });
+
+  it("reads the head commit's CI window, the approval's commit and the merge state", () => {
+    const gate = prGate(
+      node([check("2026-11-10T10:00:00Z", "2026-11-10T13:00:00Z"), check("2026-11-10T10:05:00Z", "2026-11-10T16:30:00Z"), { __typename: "StatusContext" }, null], {
+        reviews: {
+          nodes: [
+            { state: "APPROVED", submittedAt: "2026-11-10T09:00:00Z", commit: { oid: "head1" } },
+            { state: "DISMISSED", submittedAt: "2026-11-09T09:00:00Z", commit: { oid: "head0" } },
+            { state: "COMMENTED", submittedAt: "2026-11-10T09:30:00Z", commit: { oid: "head2" } },
+          ],
+        },
+      })
+    );
+    expect(gate).toMatchObject({
+      headSha: "head2",
+      mergeState: "BEHIND",
+      commitCount: 3,
+      checksStartedAt: "2026-11-10T10:00:00Z",
+      checksFinishedAt: "2026-11-10T16:30:00Z",
+      approvedAt: "2026-11-10T09:00:00Z",
+      approvalOnHead: false,
+      approvalsDismissed: 1,
+      crossRefs: [],
+    });
+  });
+
+  it("has no finish while a check runs, no merge state once closed, and no approval when none was given", () => {
+    const running = prGate(node([check("2026-11-10T10:00:00Z", "2026-11-10T13:00:00Z"), check("2026-11-10T10:05:00Z", null)]));
+    expect(running).toMatchObject({ checksStartedAt: "2026-11-10T10:00:00Z", checksFinishedAt: null, approvedAt: null, approvalOnHead: null, approvalsDismissed: 0 });
+    expect(prGate(node([], { state: "MERGED" }))).toMatchObject({ mergeState: null, checksStartedAt: null, checksFinishedAt: null });
+    expect(prGate(node([], { mergeStateStatus: "UNKNOWN" })).mergeState).toBeNull();
+    expect(prGate({})).toMatchObject({ headSha: null, mergeState: null, commitCount: null, crossRefs: [] });
+  });
+
+  it("lists the pull requests that mention it, once each", () => {
+    const source = {
+      __typename: "PullRequest",
+      number: 2154,
+      url: "https://github.com/TheAxiomFoundation/rulespec-us/pull/2154",
+      state: "MERGED",
+      isDraft: false,
+      createdAt: "2026-11-09T20:00:00Z",
+      mergedAt: "2026-11-10T13:26:00Z",
+      baseRefName: "main",
+      mergeCommit: { oid: "train1" },
+      repository: { name: "rulespec-us", defaultBranchRef: { name: "main" } },
+    };
+    const gate = prGate(node([], { timelineItems: { nodes: [{ source }, { source }, { source: { __typename: "Issue", number: 7 } }, null] } }));
+    expect(gate.crossRefs).toEqual([
+      {
+        repo: "rulespec-us",
+        number: 2154,
+        url: "https://github.com/TheAxiomFoundation/rulespec-us/pull/2154",
+        state: "MERGED",
+        isDraft: false,
+        createdAt: "2026-11-09T20:00:00Z",
+        mergedAt: "2026-11-10T13:26:00Z",
+        mergeCommit: "train1",
+        baseRefName: "main",
+        defaultBranch: "main",
+      },
+    ]);
+  });
+});
+
+describe("a merge train that replaces closed PRs", () => {
+  const MODULE = "us/regulations/42-cfr/457/800.yaml";
+  const train = (override: Record<string, unknown> = {}) => ({
+    repo: "rulespec-us",
+    number: 2154,
+    url: "https://github.com/TheAxiomFoundation/rulespec-us/pull/2154",
+    state: "MERGED" as const,
+    isDraft: false,
+    createdAt: "2026-09-29T20:00:00Z",
+    mergedAt: "2026-09-30T02:00:00Z",
+    mergeCommit: "train1",
+    baseRefName: "main",
+    defaultBranch: "main",
+    ...override,
+  });
+  const closed = (override: Partial<ManifestPr> = {}) => pr({ state: "CLOSED", isDraft: false, closedAt: "2026-09-30T02:05:00Z", crossRefs: [train()], ...override });
+  const holds = { files: new Map([["rulespec-us#2154", new Set([MODULE, "us/other.yaml"])]]), recorded: new Map<string, number>() };
+
+  it("links a closed PR to the merged PR that mentions it and holds its module", () => {
+    expect(carrierPrFor(closed(), holds)).toMatchObject({ number: 2154, state: "MERGED", mergedAt: "2026-09-30T02:00:00Z", mergeCommit: "train1" });
+    // A mention alone is not a replacement: the train must hold every module file.
+    expect(carrierPrFor(closed(), { files: new Map([["rulespec-us#2154", new Set(["us/other.yaml"])]]), recorded: new Map() })).toBeNull();
+    expect(carrierPrFor(closed(), { files: new Map(), recorded: new Map() })).toBeNull();
+    // Not an open PR, not a train that is still open, merged elsewhere, in another repo, or merged before the PR existed.
+    expect(carrierPrFor(pr({ crossRefs: [train()] }), holds)).toBeNull();
+    expect(carrierPrFor(closed({ crossRefs: [train({ state: "OPEN", mergedAt: null })] }), holds)).toBeNull();
+    expect(carrierPrFor(closed({ crossRefs: [train({ baseRefName: "side" })] }), holds)).toBeNull();
+    expect(carrierPrFor(closed({ crossRefs: [train({ repo: "rulespec-us-co" })] }), holds)).toBeNull();
+    expect(carrierPrFor(closed({ crossRefs: [train({ mergedAt: "2026-09-01T00:00:00Z" })] }), holds)).toBeNull();
+    expect(carrierPrFor(closed({ crossRefs: [] }), holds)).toBeNull();
+  });
+
+  it("knows a train's files from this pass, from its stored outside rows, or from an earlier link", () => {
+    const merged = [
+      { repo: "rulespec-us", number: 2154, url: "u", author: "x", createdAt: "2026-09-29T20:00:00Z", mergedAt: "2026-09-30T02:00:00Z", baseRefName: "main", defaultBranch: "main", mergeCommit: "train1", files: [MODULE] },
+    ];
+    expect(carrierPrFor(closed(), carrierIndex(merged, new Map()))?.number).toBe(2154);
+    const stored = new Map([[`pr:rulespec-us#2154:${MODULE}`, { id: `pr:rulespec-us#2154:${MODULE}` }]]);
+    expect(carrierPrFor(closed(), carrierIndex([], stored))?.number).toBe(2154);
+    // Once linked, the outside rows are gone: the recorded link keeps it.
+    const linked = new Map([["501", { id: "501", pr_repo: "rulespec-us", pr_number: 1500, pr_via_number: 2154, pr_via_state: "merged" as const }]]);
+    expect(carrierPrFor(closed(), carrierIndex([], linked))?.number).toBe(2154);
+    expect(carrierPrFor(closed(), carrierIndex([], new Map()))).toBeNull();
+  });
+
+  it("counts the closed PR's module as merged into main by the train", () => {
+    const via = carrierPrFor(closed(), holds);
+    const carried = closed({ via });
+    expect(mainMerge(carried)).toEqual({ mergedAt: "2026-09-30T02:00:00Z", mergeCommit: "train1" });
+    expect(mainMerge(closed({ via: null }))).toBeNull();
+    const [attempt] = buildAttempts(inputs({ runs: [run({ conclusion: "success" })], prs: [carried] }));
+    expect(attempt).toMatchObject({
+      pr_state: "closed",
+      pr_via_number: 2154,
+      pr_via_state: "merged",
+      pr_via_merged_at: "2026-09-30T02:00:00Z",
+      pr_via_merge_commit: "train1",
+    });
+    expect(attemptStage(attempt)).not.toBe("closed");
+    const [plain] = buildAttempts(inputs({ runs: [run({ conclusion: "success" })], prs: [closed({ via: null })] }));
+    expect(plain.pr_via_number ?? null).toBeNull();
+  });
+});
+
+describe("PR gate columns and the open-PR request", () => {
+  it("stores what prGate read, and nothing when the search did not read it", () => {
+    const gated = pr({ headSha: "h", mergeState: "BEHIND", commitCount: 4, checksStartedAt: "2026-09-29T19:00:00Z", checksFinishedAt: "2026-09-29T23:00:00Z", approvedAt: null, approvalOnHead: null, approvalsDismissed: 0 });
+    const [attempt] = buildAttempts(inputs({ runs: [run({ conclusion: "success" })], prs: [gated] }));
+    expect(attempt).toMatchObject({ pr_head_sha: "h", pr_merge_state: "BEHIND", pr_commit_count: 4, pr_checks_finished_at: "2026-09-29T23:00:00Z", pr_approvals_dismissed: 0 });
+    const [bare] = buildAttempts(inputs({ runs: [run({ conclusion: "success" })], prs: [pr()] }));
+    expect("pr_head_sha" in bare).toBe(false);
+    expect("pr_merge_state" in bare).toBe(false);
+  });
+
+  it("reads whether a passed run was asked to open a PR, and keeps the answer", () => {
+    const job = (conclusion: string) => ({
+      name: "Queue protected signed RuleSpec re-encode",
+      steps: [
+        { name: "Encode, review, validate, and apply", conclusion: "success", started_at: "2026-09-30T01:00:00Z" },
+        { name: "Push lane branch and open draft pull request", conclusion },
+      ],
+    });
+    expect(parseRunJobs([job("skipped")], "success").prRequested).toBe(false);
+    expect(parseRunJobs([job("success")], "success").prRequested).toBe(true);
+    expect(parseRunJobs([job("skipped")], "failure").prRequested).toBeNull();
+
+    const passed = run({ id: 7, conclusion: "success" });
+    const read = { jobs_checked_at: "T", steps_read_at: "T" };
+    const previous = (row: Record<string, unknown>) => new Map([["7", { ...read, ...row }]]);
+    expect(runDetailLookups([passed], previous({}), 10, { steps: true }).map((r) => r.id)).toEqual([]);
+    expect(runDetailLookups([passed], previous({}), 10, { steps: true, prRequest: true }).map((r) => r.id)).toEqual([7]);
+    expect(runDetailLookups([passed], previous({ pr_requested: false }), 10, { steps: true, prRequest: true })).toEqual([]);
+    expect(runDetailLookups([passed], previous({ pr_number: 12 }), 10, { steps: true, prRequest: true })).toEqual([]);
+
+    const kept = buildAttempts(inputs({ runs: [passed], previous: new Map([["7", { id: "7", jobs_checked_at: "2026-09-30T00:00:00Z", pr_requested: false }]]) }));
+    expect(kept[0].pr_requested).toBe(false);
   });
 });

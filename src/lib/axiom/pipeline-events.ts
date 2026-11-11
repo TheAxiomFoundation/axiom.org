@@ -12,7 +12,7 @@
  * same instant, so the flow mining never needs a hard-coded station order.
  */
 
-import { attemptSource, failedStepStation, mainMergedAt, type PipelineAttempt } from "./encoding-pipeline";
+import { attemptSource, carriedToMain, failedStepStation, mainMergedAt, type PipelineAttempt, type PipelineTry } from "./encoding-pipeline";
 import { compareVersions } from "./encoding-pipeline-insights";
 
 export type EventKind = "enter" | "leave" | "fail" | "cancel" | "wait" | "issue" | "change";
@@ -53,6 +53,20 @@ export function infraRuleId(step: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
   return `infra:${slug || "unknown"}`;
+}
+
+/**
+ * A failed try's typed checks as event attrs: `checks` the registry ids,
+ * `check_detail` each id with its gate and number of findings, `checks_more`
+ * how many the try's record leaves out. Empty when the try has none.
+ */
+function tryCheckAttrs(t: PipelineTry): Record<string, unknown> {
+  if (!t.checks?.length) return {};
+  return {
+    checks: t.checks.map((check) => check.id),
+    check_detail: t.checks,
+    ...(t.checksMore ? { checks_more: t.checksMore } : {}),
+  };
 }
 
 const RULE_RE = /\[([a-z][a-z0-9-]*(?::[a-z0-9-]+)+)\]/i;
@@ -176,7 +190,18 @@ export function attemptEvents(attempt: PipelineAttempt): PipelineEvent[] {
   let encodeFrom = attempt.tries?.[0]?.startedAt ?? attempt.encode_loop?.startedAt ?? attempt.dispatched_at;
   if (kindSource === "dispatch") {
     // Dispatch: a point event.
-    ev({ station: "dispatch", kind: "leave", at: attempt.dispatched_at, outcome: "ok", actor: attempt.dispatched_by ?? null, ref_url: runUrl, duration_ms: 0 });
+    // trigger: what the dispatch asked for, on runs that carry a dispatch record.
+    const record = attempt.dispatch_record;
+    ev({
+      station: "dispatch",
+      kind: "leave",
+      at: attempt.dispatched_at,
+      outcome: "ok",
+      actor: attempt.dispatched_by ?? null,
+      ref_url: runUrl,
+      duration_ms: 0,
+      ...(record ? { attrs: { trigger: record.kind, open_pr: record.open_pr, pr_base_branch: record.pr_base_branch, repair_run_id: record.repair_run_id } } : {}),
+    });
 
     // Approval: from the run's start to the encode job's first step.
     const approvalFrom = attempt.started_at ?? attempt.dispatched_at;
@@ -274,7 +299,7 @@ export function attemptEvents(attempt: PipelineAttempt): PipelineEvent[] {
             rule_id: t.error ? issueRuleId(t.error) : failRule,
             message: clip(t.error),
             actor: t.model,
-            attrs: { phases: tools, ...untimed },
+            attrs: { phases: tools, ...untimed, ...tryCheckAttrs(t) },
           });
         }
         clock = valEnd;
@@ -331,7 +356,20 @@ export function attemptEvents(attempt: PipelineAttempt): PipelineEvent[] {
       return events;
     }
     if (!attempt.pr_created_at) {
-      if (finished) {
+      if (finished && attempt.run_conclusion === "success" && attempt.pr_requested === false) {
+        // The dispatch asked for no PR (open_pr false): the run ends at its
+        // signed artifact by design. Not a failure, and not a landing.
+        ev({
+          station: "publish",
+          kind: "cancel",
+          at: attempt.finished_at ?? clock,
+          outcome: "artifact_only",
+          rule_id: "publish:artifact-only",
+          message: "The dispatch asked for no pull request (open_pr false)",
+          ref_url: runUrl,
+          attrs: { untimed: true },
+        });
+      } else if (finished) {
         ev({
           station: "publish",
           kind: "fail",
@@ -371,54 +409,105 @@ function prEvents(
   if (!prAt && kindSource !== "outside") return;
   const prUrl = attempt.pr_url;
 
+  const carried = carriedToMain(attempt);
   if (prAt) {
     // PR checks.
     ev({ station: "pr_checks", kind: "enter", at: prAt });
     const merged = attempt.pr_state === "merged";
+    // When the head commit's last check finished: the end of the CI that
+    // counts. Each branch update restarts CI, so the time from the PR's
+    // creation to here holds every restart.
+    const prEnd = attempt.pr_merged_at ?? attempt.pr_closed_at ?? null;
+    const checksEnd = within(attempt.pr_checks_finished_at, prAt, null);
+    const checkAttrs = gateAttrs(attempt);
     if (attempt.pr_checks === "failure") {
       const checks = attempt.pr_failed_checks ?? [];
       ev({
         station: "pr_checks",
-        kind: merged ? "wait" : "fail",
-        at: prAt,
+        kind: merged || carried ? "wait" : "fail",
+        at: checksEnd ?? prAt,
         outcome: "fail",
         rule_id: checks.length ? `check:${checks[0]}` : "check:unknown",
         message: clip(attempt.pr_check_error),
         ref_url: attempt.pr_check_job_id && attempt.pr_repo ? `${prUrl}/checks?check_run_id=${attempt.pr_check_job_id}` : prUrl,
-        attrs: checks.length > 1 ? { failed_checks: checks } : {},
+        duration_ms: checksEnd && !merged && !carried ? spanMs(prAt, checksEnd) : null,
+        attrs: {
+          ...checkAttrs,
+          ...(checks.length > 1 ? { failed_checks: checks } : {}),
+          // The PR is still open: the case sits here until someone fixes or closes it.
+          ...(attempt.pr_state === "open" || attempt.pr_state === "draft" ? { pr_open: true } : {}),
+        },
       });
-      if (!merged) return;
+      if (!merged && !carried) return;
     }
-    if (attempt.pr_checks === "pending" && !merged) return;
-    if (attempt.pr_state === "closed" && attempt.pr_checks !== "success") {
+    if (attempt.pr_checks === "pending" && (attempt.pr_state === "open" || attempt.pr_state === "draft")) {
+      const updates = branchUpdates(attempt);
+      ev({
+        station: "pr_checks",
+        kind: "wait",
+        at: within(attempt.pr_checks_started_at, prAt, null) ?? prAt,
+        outcome: "pending",
+        rule_id: "check:pending",
+        message: updates ? `CI is running again after ${plural(updates, "branch update")}` : null,
+        ref_url: prUrl,
+        attrs: checkAttrs,
+      });
+      return;
+    }
+    if (attempt.pr_checks === "pending" && !merged && !carried) return;
+    if (attempt.pr_state === "closed" && attempt.pr_checks !== "success" && !carried) {
       // Closed with checks not passing: the time to the close is not check time.
       ev({ station: "pr_checks", kind: "cancel", at: attempt.pr_closed_at ?? prAt, outcome: "closed", ref_url: prUrl, attrs: { untimed: true } });
       return;
     }
-    // The rollup has no finish time: untimed.
-    ev({ station: "pr_checks", kind: "leave", at: prAt, outcome: "ok", ref_url: prUrl, attrs: { untimed: true } });
+    // Timed to the head commit's last check when the collector read it
+    // (pr_checks_finished_at); the rollup alone has no finish time.
+    const passedAt = attempt.pr_checks === "success" ? within(checksEnd, prAt, prEnd) : null;
+    ev({
+      station: "pr_checks",
+      kind: "leave",
+      at: passedAt ?? prAt,
+      outcome: carried && attempt.pr_checks !== "success" ? "carried" : "ok",
+      duration_ms: passedAt ? spanMs(prAt, passedAt) : null,
+      ref_url: prUrl,
+      attrs: passedAt ? checkAttrs : { untimed: true },
+    });
 
-    // Review and merge decision.
-    ev({ station: "review", kind: "enter", at: prAt });
+    // Review and merge decision: from the checks' finish when it is known.
+    const reviewAt = passedAt ?? prAt;
+    ev({ station: "review", kind: "enter", at: reviewAt });
     if (attempt.pr_review === "changes_requested") {
-      ev({ station: "review", kind: "wait", at: prAt, outcome: "changes_requested", rule_id: "review:changes-requested", ref_url: prUrl });
+      ev({ station: "review", kind: "wait", at: reviewAt, outcome: "changes_requested", rule_id: "review:changes-requested", ref_url: prUrl });
     }
-    if (attempt.pr_state === "closed") {
-      ev({ station: "review", kind: "fail", at: attempt.pr_closed_at ?? prAt, outcome: "closed", rule_id: "review:closed-unmerged", duration_ms: spanMs(prAt, attempt.pr_closed_at), ref_url: prUrl });
+    if (carried) {
+      // Closed, and another PR (a merge train) carried the module to the
+      // default branch: the review ended when the first of the two happened.
+      const handedAt = carriedAt(attempt) ?? reviewAt;
+      ev({
+        station: "review",
+        kind: "leave",
+        at: handedAt,
+        outcome: "carried",
+        duration_ms: spanMs(reviewAt, handedAt),
+        ref_url: attempt.pr_via_url ?? prUrl,
+        attrs: { carried_by: attempt.pr_via_number ?? null },
+      });
+    } else if (attempt.pr_state === "closed") {
+      ev({ station: "review", kind: "fail", at: attempt.pr_closed_at ?? prAt, outcome: "closed", rule_id: "review:closed-unmerged", duration_ms: spanMs(reviewAt, attempt.pr_closed_at), ref_url: prUrl });
       return;
-    }
-    if (!merged) {
-      if (attempt.pr_requested_reviewers?.length) {
-        ev({ station: "review", kind: "wait", at: prAt, outcome: "awaiting_review", rule_id: "review:awaiting-reviewer", actor: attempt.pr_requested_reviewers.join(", "), ref_url: prUrl });
-      }
+    } else if (!merged) {
+      const wait = attempt.pr_review === "changes_requested" ? null : openPrWait(attempt);
+      if (wait) ev({ station: "review", kind: "wait", at: reviewAt, ref_url: prUrl, ...wait, attrs: { ...checkAttrs, ...approvalAttrs(attempt) } });
       return;
+    } else {
+      ev({ station: "review", kind: "leave", at: attempt.pr_merged_at!, outcome: "ok", duration_ms: spanMs(reviewAt, attempt.pr_merged_at), ref_url: prUrl, attrs: approvalAttrs(attempt) });
     }
-    ev({ station: "review", kind: "leave", at: attempt.pr_merged_at!, outcome: "ok", duration_ms: spanMs(prAt, attempt.pr_merged_at), ref_url: prUrl });
   }
 
-  // Merge into the default branch (directly, or through a side branch's PR).
+  // Merge into the default branch (directly, through a side branch's PR, or
+  // inside a merge train that replaced the PR).
   const mergedAt = mainMergedAt(attempt);
-  const mergeEnter = attempt.pr_merged_at ?? attempt.finished_at;
+  const mergeEnter = carried ? carriedAt(attempt) : attempt.pr_merged_at ?? attempt.finished_at;
   if (!mergeEnter) return;
   ev({ station: "merge", kind: "enter", at: mergeEnter });
   if (!mergedAt) {
@@ -435,6 +524,7 @@ function prEvents(
     }
     return;
   }
+  const mergeOracle = attempt.oracle_status ?? (attempt.index_status === "indexed" ? "none" : null);
   // The merged module files: the accepted-module count keys on them.
   ev({
     station: "merge",
@@ -443,7 +533,9 @@ function prEvents(
     outcome: "ok",
     duration_ms: spanMs(mergeEnter, mergedAt),
     ref_url: attempt.pr_via_url ?? prUrl,
-    attrs: { repo: attempt.pr_repo, modules: attempt.module_paths ?? [] },
+    // oracle: the comparison state of the merged module; "none" when it is indexed, no report compares it and
+    // no ledger lists it. Before the index the state is not computed: no attr.
+    attrs: { repo: attempt.pr_repo, modules: attempt.module_paths ?? [], ...(mergeOracle ? { oracle: mergeOracle } : {}), ...(carried ? { carried_by: attempt.pr_via_number ?? null } : {}) },
   });
 
   // Index (the rulespec_files sync) and tests on main both start at the
@@ -461,10 +553,23 @@ function prEvents(
       kind: ok ? "leave" : "fail",
       at: testsAt,
       outcome: attempt.tests_status === "pass" ? "ok" : attempt.tests_status,
-      rule_id: ok ? null : "tests:fail-on-main",
+      rule_id: ok ? null : testsFailRule(attempt),
+      message: ok ? null : testsFailMessage(attempt),
       duration_ms: attempt.tests_first_at ? spanMs(mergedAt, testsAt) : null,
       ref_url: attempt.tests_run_url ?? attempt.tests_first_run_url ?? null,
       attrs: attempt.tests_first_at ? {} : { untimed: true, read_time: true },
+    });
+  } else {
+    // Merged, and no validation run on the default branch has reported on
+    // this module: the collector found no push run that covers it.
+    ev({
+      station: "tests",
+      kind: "wait",
+      at: mergedAt,
+      outcome: "no_verdict",
+      rule_id: "tests:no-verdict",
+      message: "No validation run on the default branch has reported on this module since the merge",
+      ref_url: attempt.pr_via_url ?? prUrl,
     });
   }
   if (attempt.index_status === "missing") {
@@ -491,6 +596,16 @@ function prEvents(
       // and its time is when it was read, not when the station finished.
       attrs: { untimed: true, read_time: true },
     });
+  } else {
+    // Indexed, and axiom-api's compile sweep has no verdict on this module.
+    ev({
+      station: "compile",
+      kind: "wait",
+      at: indexedAt,
+      outcome: "no_verdict",
+      rule_id: "compile:no-verdict",
+      message: "The compile sweep has not reported on this module",
+    });
   }
 
   if (!attempt.tests_status || attempt.tests_status === "fail") return;
@@ -509,6 +624,115 @@ function prEvents(
       ref_url: attempt.oracle_report ?? null,
     });
   }
+}
+
+/** `at` when it lies in [from, to]; else null. A head check can finish after the PR closed. */
+function within(at: string | null | undefined, from: string, to: string | null): string | null {
+  if (!at || at < from) return null;
+  return to && at > to ? null : at;
+}
+
+function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? "" : "s"}`;
+}
+
+/** Commits pushed to the PR after the bot's first one: each is a branch update, and each restarts CI. */
+export function branchUpdates(attempt: Pick<PipelineAttempt, "pr_commit_count">): number {
+  return Math.max(0, (attempt.pr_commit_count ?? 1) - 1);
+}
+
+/** When a merge train took over a closed PR: the earlier of the close and the train's merge. */
+function carriedAt(attempt: PipelineAttempt): string | null {
+  const times = [attempt.pr_closed_at, attempt.pr_via_merged_at].filter((t): t is string => Boolean(t)).sort();
+  return times[0] ?? null;
+}
+
+/** What the collector read about the PR's head commit and its CI, for an event's attrs. */
+function gateAttrs(attempt: PipelineAttempt): Record<string, unknown> {
+  const attrs: Record<string, unknown> = {};
+  const updates = branchUpdates(attempt);
+  if (attempt.pr_commit_count != null) attrs.branch_updates = updates;
+  const last = spanMs(attempt.pr_checks_started_at ?? null, attempt.pr_checks_finished_at ?? null);
+  if (last != null) attrs.last_ci_ms = last;
+  if (attempt.pr_merge_state) attrs.merge_state = attempt.pr_merge_state;
+  return attrs;
+}
+
+function approvalAttrs(attempt: PipelineAttempt): Record<string, unknown> {
+  const attrs: Record<string, unknown> = {};
+  if (attempt.pr_approved_at) attrs.approved_at = attempt.pr_approved_at;
+  if (attempt.pr_approval_on_head != null) attrs.approval_on_head = attempt.pr_approval_on_head;
+  if (attempt.pr_approvals_dismissed) attrs.approvals_dismissed = attempt.pr_approvals_dismissed;
+  return attrs;
+}
+
+/**
+ * Why an open PR with passing checks is not merged: one reason, the first
+ * that holds. The base moving on comes first, because the update it needs
+ * restarts CI and leaves the approval on an older commit.
+ */
+function openPrWait(
+  attempt: PipelineAttempt
+): { outcome: string; rule_id: string; message?: string | null; actor?: string | null } | null {
+  const updates = branchUpdates(attempt);
+  const after = updates ? ` (${plural(updates, "branch update")} so far)` : "";
+  if (attempt.pr_merge_state === "BEHIND") {
+    return {
+      outcome: "behind_base",
+      rule_id: "merge:behind-base",
+      message: `The default branch moved on. The branch needs an update, and the update restarts CI${after}`,
+    };
+  }
+  if (attempt.pr_approved_at && attempt.pr_approval_on_head === false) {
+    return {
+      outcome: "approval_stale",
+      rule_id: "review:approval-not-on-head",
+      message: `The approval is on an older commit than the head${after}`,
+    };
+  }
+  if (attempt.pr_approvals_dismissed && attempt.pr_review !== "approved") {
+    return {
+      outcome: "approval_dismissed",
+      rule_id: "review:approval-dismissed",
+      message: `${plural(attempt.pr_approvals_dismissed, "approval")} dismissed${after}`,
+    };
+  }
+  if (attempt.pr_merge_state === "DIRTY") {
+    return { outcome: "conflict", rule_id: "merge:conflict", message: "The branch conflicts with the default branch" };
+  }
+  if (attempt.pr_review === "approved") {
+    return {
+      outcome: "approved",
+      rule_id: "review:approved-not-merged",
+      message: attempt.pr_merge_state ? `Approved; GitHub merge state ${attempt.pr_merge_state.toLowerCase()}` : null,
+    };
+  }
+  if (attempt.pr_requested_reviewers?.length) {
+    return { outcome: "awaiting_review", rule_id: "review:awaiting-reviewer", actor: attempt.pr_requested_reviewers.join(", ") };
+  }
+  if (attempt.pr_state === "draft") return { outcome: "draft", rule_id: "review:draft" };
+  // Read, and empty: nobody was asked. (Undefined: the collector did not read reviewers.)
+  if (Array.isArray(attempt.pr_requested_reviewers)) {
+    return {
+      outcome: "no_reviewer",
+      rule_id: "review:no-reviewer-requested",
+      message: attempt.pr_merge_state ? `GitHub merge state ${attempt.pr_merge_state.toLowerCase()}${after}` : null,
+    };
+  }
+  return null;
+}
+
+/** Whether the module failed on the merge's own run, or passed then and broke later. */
+function testsFailRule(attempt: PipelineAttempt): string {
+  if (attempt.tests_first_status === "fail") return "tests:failed-at-merge";
+  if (attempt.tests_first_status === "pass") return "tests:broke-after-merge";
+  return "tests:fail-on-main";
+}
+
+function testsFailMessage(attempt: PipelineAttempt): string {
+  if (attempt.tests_first_status === "fail") return "The first validation run on the default branch after the merge failed for this jurisdiction";
+  if (attempt.tests_first_status === "pass") return "The first validation run after the merge passed; a later run on the default branch fails";
+  return "The latest validation run on the default branch fails for this jurisdiction; the first run after the merge was not read";
 }
 
 /** One archived validator issue (handbook obs.jsonl: failure bundles and local A/B runs). */
