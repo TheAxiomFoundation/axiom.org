@@ -370,3 +370,17 @@ describe("typed checks and oracle state on events", () => {
     expect(oracleOf(merge({ oracle_status: "match", oracle_checked_at: "2026-09-22T00:00:00Z" }))).toBe("match");
   });
 });
+
+describe("the dispatch record on the dispatch event", () => {
+  it("says what the dispatch asked for, on runs that carry a record", () => {
+    const dispatch = (events: ReturnType<typeof attemptEvents>) => events.find((e) => e.station === "dispatch")!;
+    const record = { kind: "repair" as const, open_pr: true, pr_base_branch: "main", repair_run_id: "35160240952" };
+    expect(dispatch(attemptEvents(pipelineAttempt({ dispatch_record: record }))).attrs).toMatchObject({
+      trigger: "repair",
+      open_pr: true,
+      pr_base_branch: "main",
+      repair_run_id: "35160240952",
+    });
+    expect(dispatch(attemptEvents(pipelineAttempt())).attrs).not.toHaveProperty("trigger");
+  });
+});

@@ -34,6 +34,8 @@ import {
   type PipelineAttempt,
   type PipelineTry,
   type PipelineTryCheck,
+  type DispatchRecord,
+  isInfraRule,
   type PipelineTryPhase,
 } from "./encoding-pipeline";
 
@@ -1428,6 +1430,10 @@ export interface RunDetail {
   /** For a run that passed: whether it was asked to open a PR (false when
    *  its open-PR step was skipped: open_pr false). Null for any other run. */
   prRequested?: boolean | null;
+  /** True when the run passed and its encode job did not run (skipped): it encoded nothing. */
+  skipped?: boolean;
+  /** What the dispatch asked for, when the run has a "Record dispatch" job with a readable tag. */
+  dispatch?: DispatchRecord;
 }
 
 export interface JobPhases {
@@ -1445,6 +1451,7 @@ interface RunStep {
 
 interface RunJob {
   name: string;
+  conclusion?: string | null;
   steps?: RunStep[] | null;
 }
 
@@ -1505,9 +1512,11 @@ export function jobPhases(steps: RunStep[]): JobPhases {
  * for approval.
  */
 export function parseRunJobs(jobs: RunJob[], conclusion: string | null): RunDetail {
+  // The telemetry job is never the encode job, also when the encode job is missing.
+  const record = jobs.find((job) => DISPATCH_RECORD_JOB_RE.test(job.name)) ?? null;
   const encode =
     jobs.find((job) => /re-encode/i.test(job.name)) ??
-    jobs.find((job) => !/budget/i.test(job.name)) ??
+    jobs.find((job) => !/budget/i.test(job.name) && job !== record) ??
     null;
   const ran = (encode?.steps ?? []).filter(
     (step) => step.conclusion && step.conclusion !== "skipped"
@@ -1523,8 +1532,86 @@ export function parseRunJobs(jobs: RunJob[], conclusion: string | null): RunDeta
   // A run that passed with its open-PR step skipped was dispatched with
   // open_pr false: it ends at its signed artifact by design.
   const openPr = (encode?.steps ?? []).find((step) => OPEN_PR_STEP_RE.test(step.name ?? ""));
-  const prRequested = conclusion === "success" ? openPr?.conclusion !== "skipped" : null;
-  return { encodeStartedAt: starts[0] ?? null, cancelStage, phases: jobPhases(encode?.steps ?? []), prRequested };
+  // A run whose protected jobs both skipped (a dispatch from another ref, a
+  // re-run of a queue dispatch) ends "success" once it has a record job: the
+  // jobs say it encoded nothing.
+  const skipped = conclusion === "success" && (encode?.conclusion === "skipped" || (!encode && !!record));
+  const prRequested = conclusion === "success" && !skipped ? openPr?.conclusion !== "skipped" : null;
+  const dispatch = record ? dispatchRecord(record) : undefined;
+  return {
+    encodeStartedAt: starts[0] ?? null,
+    cancelStage,
+    phases: jobPhases(encode?.steps ?? []),
+    prRequested,
+    ...(skipped ? { skipped } : {}),
+    ...(dispatch ? { dispatch } : {}),
+  };
+}
+
+/** The job that records what a dispatch asked for (axiom-encode's dispatch record). */
+const DISPATCH_RECORD_JOB_RE = /^Record dispatch$/i;
+/** Its upload step repeats the record's main fields in its name. */
+const DISPATCH_TAG_PREFIX = "Upload dispatch record: ";
+const DISPATCH_KINDS = new Set(["promotion", "repair", "queue", "adhoc"]);
+
+/**
+ * Read a dispatch record's tag, `kind=<kind> open_pr=<bool>
+ * pr_base_branch=<branch> repair_run_id=<id>`. A value of `none` or
+ * `invalid`, or one this reader does not know, is null. Null when the tag
+ * names no field (the record step failed and left the name empty).
+ */
+export function parseDispatchTag(tag: string): DispatchRecord | null {
+  const fields = new Map<string, string>();
+  for (const token of tag.trim().split(/\s+/)) {
+    const at = token.indexOf("=");
+    if (at > 0) fields.set(token.slice(0, at), token.slice(at + 1));
+  }
+  const value = (name: string) => {
+    const text = fields.get(name);
+    return !text || text === "none" || text === "invalid" ? null : text.slice(0, 200);
+  };
+  const kind = value("kind");
+  const openPr = value("open_pr");
+  const record: DispatchRecord = {
+    kind: kind && DISPATCH_KINDS.has(kind) ? (kind as DispatchRecord["kind"]) : null,
+    open_pr: openPr === "true" ? true : openPr === "false" ? false : null,
+    pr_base_branch: value("pr_base_branch"),
+    repair_run_id: /^\d+$/.test(value("repair_run_id") ?? "") ? value("repair_run_id") : null,
+  };
+  return Object.values(record).some((field) => field !== null) ? record : null;
+}
+
+function dispatchRecord(job: RunJob): DispatchRecord | undefined {
+  const step = (job.steps ?? []).find((s) => s.name?.startsWith(DISPATCH_TAG_PREFIX));
+  return (step && parseDispatchTag(step.name!.slice(DISPATCH_TAG_PREFIX.length))) || undefined;
+}
+
+/** The workflow whose step checks the registry declares. */
+export const STEP_CHECK_WORKFLOW = ".github/workflows/targeted-signed-reencode.yml";
+
+/**
+ * Step name → check id, from axiom-encode's check registry: the checks whose
+ * `site` is `<workflow>:<step name>`. Empty for a registry without them.
+ */
+export function stepChecks(registry: unknown, workflow = STEP_CHECK_WORKFLOW): Map<string, string> {
+  const checks = new Map<string, string>();
+  const list = (registry as { checks?: unknown } | null)?.checks;
+  if (!Array.isArray(list)) return checks;
+  const prefix = `${workflow}:`;
+  for (const entry of list) {
+    const { id, site } = (entry ?? {}) as { id?: unknown; site?: unknown };
+    if (typeof id !== "string" || typeof site !== "string" || !site.startsWith(prefix)) continue;
+    const step = site.slice(prefix.length).trim();
+    if (step && id) checks.set(step, id.slice(0, 120));
+  }
+  return checks;
+}
+
+/** The check a failed step has: `failed_step` reads "<job> / <step>", or the bare step. */
+export function stepCheckId(failedStep: string | null | undefined, checks: Map<string, string>): string | null {
+  if (!failedStep) return null;
+  const name = failedStep.includes(" / ") ? failedStep.slice(failedStep.lastIndexOf(" / ") + 3) : failedStep;
+  return checks.get(name.trim()) ?? null;
 }
 
 /** The attempt fields a run's jobs, read at `readAt`, fill in. */
@@ -1538,6 +1625,9 @@ export function runDetailFields(detail: RunDetail, readAt: string): Partial<Pipe
     publish_seconds: detail.phases.publish,
     steps_read_at: readAt,
     ...(detail.prRequested !== undefined ? { pr_requested: detail.prRequested } : {}),
+    ...(detail.dispatch ? { dispatch_record: detail.dispatch } : {}),
+    // The run's own conclusion is "success" (its record job passed): its jobs say nothing ran.
+    ...(detail.skipped ? { run_conclusion: "skipped" } : {}),
   };
 }
 
@@ -1701,6 +1791,8 @@ export interface CollectInputs {
   /** Per repo, module paths its oracle-coverage-pending.yaml lists (see pendingOracleModules);
    *  a repo absent from the map was not read this pass. */
   oraclePending?: Map<string, Set<string>>;
+  /** Step name → check id from axiom-encode's check registry (see stepChecks); none when it was not read. */
+  stepChecks?: Map<string, string>;
   /** Jobs read this pass, by run id (see runDetailLookups). */
   runDetails?: Map<string, RunDetail>;
   /** Package versions read this pass, by axiom-encode commit (see versionLookups). */
@@ -2048,6 +2140,8 @@ function emptyAttempt(nowIso: string): Omit<PipelineAttempt, "id" | "citation" |
   };
 }
 
+const NO_STEP_CHECKS = new Map<string, string>();
+
 function isFailedRun(run: WorkflowRun): boolean {
   return (
     run.status === "completed" &&
@@ -2125,6 +2219,9 @@ export function buildAttempts(inputs: CollectInputs): PipelineAttempt[] {
       attempt.cancel_stage = previous.cancel_stage ?? null;
       attempt.jobs_checked_at = previous.jobs_checked_at;
       if (previous.pr_requested != null) attempt.pr_requested = previous.pr_requested;
+      if (previous.dispatch_record) attempt.dispatch_record = previous.dispatch_record;
+      // A run its jobs showed skipped stays skipped: the run itself reads "success".
+      if (previous.run_conclusion === "skipped" && attempt.run_conclusion === "success") attempt.run_conclusion = "skipped";
       if (previous.steps_read_at) {
         attempt.setup_seconds = previous.setup_seconds ?? null;
         attempt.encode_seconds = previous.encode_seconds ?? null;
@@ -2165,6 +2262,11 @@ export function buildAttempts(inputs: CollectInputs): PipelineAttempt[] {
         attempt.encoder_error = previous.encoder_error ?? null;
         attempt.encoder_error_rule = previous.encoder_error_rule ?? null;
       }
+    }
+    // A failed step with no typed id in its error still has a check: the
+    // registry's step check. A typed id is more specific and wins.
+    if (isFailedRun(run) && !attempt.encoder_error_rule) {
+      attempt.encoder_error_rule = stepCheckId(attempt.failed_step, inputs.stepChecks ?? NO_STEP_CHECKS);
     }
 
     attempts.push(withPr(attempt, byRun.get(id), context, previous));
@@ -2300,7 +2402,8 @@ export function needsLogRead(known: Partial<PipelineAttempt>): boolean {
   return (
     (known.failure_source === "diagnostics" || known.failure_source === "jobs") &&
     !known.encoder_error &&
-    !known.encoder_error_rule
+    // A step's own check (infra:<step>) names the step, not what it printed.
+    (!known.encoder_error_rule || isInfraRule(known.encoder_error_rule))
   );
 }
 

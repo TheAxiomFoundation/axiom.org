@@ -150,6 +150,8 @@ export interface PipelineAttempt {
   /** Whether the dispatch asked for a pull request: false for a run whose
    *  open-PR step was skipped (open_pr false), which ends at its signed artifact. */
   pr_requested?: boolean | null;
+  /** What the dispatch asked for, from the run's "Record dispatch" job; null for a run without that job. */
+  dispatch_record?: DispatchRecord | null;
   /** The module's jurisdiction validation (compile, companion tests,
    *  source-unit rules) on the default branch at a commit with the merge. */
   tests_status?: "pass" | "fail" | "waived" | null;
@@ -222,6 +224,19 @@ export interface PipelineTry {
 }
 
 /** One typed check that failed a try: its registry id, the gate that ran it, and its number of findings. */
+/**
+ * What a dispatch requested (axiom-encode's dispatch record, read from a step
+ * name of the run's "Record dispatch" job). It says what was asked, not what
+ * the workflow admitted. A field is null when the record leaves it out or
+ * marks it invalid.
+ */
+export interface DispatchRecord {
+  kind: "promotion" | "repair" | "queue" | "adhoc" | null;
+  open_pr: boolean | null;
+  pr_base_branch: string | null;
+  repair_run_id: string | null;
+}
+
 export interface PipelineTryCheck {
   id: string;
   gate: string | null;
@@ -642,6 +657,11 @@ export function dependentModule(attempt: PipelineAttempt): string | null {
   return attempt.encoder_error?.match(/^(\S+?\.ya?ml):/)?.[1] ?? null;
 }
 
+/** A workflow step's check id (infra:<step>), as against a validator rule. */
+export function isInfraRule(rule: string | null | undefined): boolean {
+  return !!rule && rule.startsWith("infra:");
+}
+
 export function failureReason(attempt: PipelineAttempt): FailureReason {
   // A cancelled run's story is how far it got, not what it last logged.
   if (attempt.run_conclusion === "timed_out") {
@@ -660,7 +680,8 @@ export function failureReason(attempt: PipelineAttempt): FailureReason {
     return {
       key: `rule:${attempt.encoder_error_rule}`,
       label: attempt.encoder_error_rule,
-      kind: "validator",
+      // An infra:<step> check is the workflow's, not a validator rule.
+      kind: isInfraRule(attempt.encoder_error_rule) ? "workflow" : "validator",
     };
   }
   // An issue or log error with no rule id: group by what it says, which
@@ -780,7 +801,8 @@ export function encodeGate(attempt: PipelineAttempt): EncodeGate {
   if (check && ERROR_CHECK_GATES[check]) return ERROR_CHECK_GATES[check];
   if (attempt.encoder_status === "apply_blocked_generation") return "generate";
   if (attempt.encoder_status === "apply_blocked_manifest") return "sign";
-  if (attempt.encoder_error_rule || attempt.encoder_status === "apply_blocked_validation") {
+  // An infra:<step> check names a workflow step: the step decides its gate, below.
+  if ((attempt.encoder_error_rule && !isInfraRule(attempt.encoder_error_rule)) || attempt.encoder_status === "apply_blocked_validation") {
     return "validate";
   }
   if (attempt.failed_step) {

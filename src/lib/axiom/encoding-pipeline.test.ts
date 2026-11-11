@@ -832,3 +832,22 @@ describe("the oracle step of a merged module", () => {
     expect(oracleLabel(mergedAttempt({ oracle_status: "pending" }))).toContain("Oracle pending");
   });
 });
+
+describe("an infra step check as the failure rule", () => {
+  it("is the workflow's, at the step's own gate, not a validator rule", () => {
+    const failed = pipelineAttempt({
+      failure_source: "jobs",
+      failed_step: "Queue protected signed RuleSpec re-encode / Verify immutable checkout identities",
+      encoder_error_rule: "infra:verify-immutable-checkout-identities",
+    });
+    expect(encodeGate(failed)).toBe("setup");
+    expect(failureReason(failed)).toEqual({
+      key: "rule:infra:verify-immutable-checkout-identities",
+      label: "infra:verify-immutable-checkout-identities",
+      kind: "workflow",
+    });
+    const rule = pipelineAttempt({ failure_source: "diagnostics", failed_step: "encode_apply", encoder_error_rule: "complete-source-unit:tests" });
+    expect(encodeGate(rule)).toBe("validate");
+    expect(failureReason(rule).kind).toBe("validator");
+  });
+});

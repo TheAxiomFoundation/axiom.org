@@ -190,7 +190,18 @@ export function attemptEvents(attempt: PipelineAttempt): PipelineEvent[] {
   let encodeFrom = attempt.tries?.[0]?.startedAt ?? attempt.encode_loop?.startedAt ?? attempt.dispatched_at;
   if (kindSource === "dispatch") {
     // Dispatch: a point event.
-    ev({ station: "dispatch", kind: "leave", at: attempt.dispatched_at, outcome: "ok", actor: attempt.dispatched_by ?? null, ref_url: runUrl, duration_ms: 0 });
+    // trigger: what the dispatch asked for, on runs that carry a dispatch record.
+    const record = attempt.dispatch_record;
+    ev({
+      station: "dispatch",
+      kind: "leave",
+      at: attempt.dispatched_at,
+      outcome: "ok",
+      actor: attempt.dispatched_by ?? null,
+      ref_url: runUrl,
+      duration_ms: 0,
+      ...(record ? { attrs: { trigger: record.kind, open_pr: record.open_pr, pr_base_branch: record.pr_base_branch, repair_run_id: record.repair_run_id } } : {}),
+    });
 
     // Approval: from the run's start to the encode job's first step.
     const approvalFrom = attempt.started_at ?? attempt.dispatched_at;

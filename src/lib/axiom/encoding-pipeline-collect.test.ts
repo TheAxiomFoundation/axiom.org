@@ -27,6 +27,10 @@ import {
   syncWindowStart,
   oracleVerdicts,
   parseRunJobs,
+  parseDispatchTag,
+  stepChecks,
+  stepCheckId,
+  runDetailFields,
   runDetailLookups,
   buildCompileIndex,
   buildMirrorIndex,
@@ -323,6 +327,48 @@ describe("buildAttempts", () => {
     );
     expect(applied.failure_source).toBeNull();
     expect(applied.encoder_error).toBeNull();
+  });
+
+  it("gives a failed step its registry check when its error names no typed id", () => {
+    const registry = {
+      schema: "axiom-encode/check-registry/v1",
+      checks: [
+        { id: "infra:require-corpus-read-credentials", gate: "workflow", site: ".github/workflows/targeted-signed-reencode.yml:Require corpus read credentials before the signing gate" },
+        { id: "infra:build-axiom-rules-engine", gate: "workflow", site: ".github/workflows/targeted-signed-reencode.yml:Build Axiom rules engine" },
+        { id: "infra:other-workflow", site: ".github/workflows/other.yml:Build Axiom rules engine" },
+        { id: "complete-source-unit:structure/branch-unencoded", site: "src/axiom_encode/harness/validator_pipeline.py" },
+        { id: 7, site: ".github/workflows/targeted-signed-reencode.yml:Bad id" },
+        null,
+      ],
+    };
+    const checks = stepChecks(registry);
+    expect([...checks]).toEqual([
+      ["Require corpus read credentials before the signing gate", "infra:require-corpus-read-credentials"],
+      ["Build Axiom rules engine", "infra:build-axiom-rules-engine"],
+    ]);
+    expect(stepChecks(null).size).toBe(0);
+    expect(stepChecks({ checks: "nope" }).size).toBe(0);
+    expect(stepCheckId("Queue protected signed RuleSpec re-encode / Build Axiom rules engine", checks)).toBe("infra:build-axiom-rules-engine");
+    expect(stepCheckId("Build Axiom rules engine", checks)).toBe("infra:build-axiom-rules-engine");
+    expect(stepCheckId("encode_apply", checks)).toBeNull();
+    expect(stepCheckId(null, checks)).toBeNull();
+
+    const step = "Queue protected signed RuleSpec re-encode / Require corpus read credentials before the signing gate";
+    const jobs = { source: "jobs" as const, failed_step: step, error: null, rule: null };
+    const build = (overrides: Partial<CollectInputs>) => buildAttempts(inputs({ stepChecks: checks, ...overrides }))[0];
+    // The step's check, also for a cause carried from an earlier pass.
+    expect(build({ failureDetails: new Map([["501", jobs]]) }).encoder_error_rule).toBe("infra:require-corpus-read-credentials");
+    expect(build({ previous: new Map([["501", { failure_source: "jobs", failed_step: step }]]) }).encoder_error_rule).toBe("infra:require-corpus-read-credentials");
+    // A typed id in the error text is more specific and wins.
+    const typed = { source: "log" as const, failed_step: step, error: "[infra:corpus-credentials/missing] no key", rule: "infra:corpus-credentials/missing" };
+    expect(build({ failureDetails: new Map([["501", typed]]) }).encoder_error_rule).toBe("infra:corpus-credentials/missing");
+    // No registry read, a step it does not declare, or a run that did not fail: as before.
+    expect(buildAttempts(inputs({ failureDetails: new Map([["501", jobs]]) }))[0].encoder_error_rule).toBeNull();
+    expect(build({ failureDetails: new Map([["501", { ...jobs, failed_step: "Queue protected signed RuleSpec re-encode / Some new step" }]]) }).encoder_error_rule).toBeNull();
+    expect(build({ runs: [run({ conclusion: "success" })] }).encoder_error_rule).toBeNull();
+    // The step's check names the step, not what it printed: the log is still worth a read.
+    expect(needsLogRead({ failure_source: "jobs", failed_step: step, encoder_error_rule: "infra:require-corpus-read-credentials" })).toBe(true);
+    expect(needsLogRead({ failure_source: "jobs", failed_step: step, encoder_error: "e", encoder_error_rule: "infra:require-corpus-read-credentials" })).toBe(false);
   });
 
   it("falls back to a looked-up detail, then to the previous collection", () => {
@@ -913,6 +959,86 @@ describe("run details", () => {
       .toMatchObject({ encodeStartedAt: "2026-09-30T01:00:00Z", cancelStage: "running" });
     expect(parseRunJobs([budget], "cancelled")).toEqual({ encodeStartedAt: null, cancelStage: "before_job", phases: none, prRequested: null });
     expect(parseRunJobs([{ name: "build", steps: null }], "failure")).toEqual({ encodeStartedAt: null, cancelStage: null, phases: none, prRequested: null });
+  });
+
+  const recordJob = (tag: string | null, conclusion = "success") => ({
+    name: "Record dispatch",
+    conclusion,
+    steps: [
+      { name: "Checkout axiom-encode for the dispatch record", conclusion: "success", started_at: "2026-09-30T00:00:05Z" },
+      { name: "Write dispatch record", conclusion: "success", started_at: "2026-09-30T00:00:06Z" },
+      ...(tag === null ? [] : [{ name: `Upload dispatch record: ${tag}`, conclusion: "success", started_at: "2026-09-30T00:00:07Z" }]),
+    ],
+  });
+
+  it("reads what the dispatch asked for from the record job's step name", () => {
+    expect(parseDispatchTag("kind=repair open_pr=true pr_base_branch=main repair_run_id=35160240952")).toEqual({
+      kind: "repair",
+      open_pr: true,
+      pr_base_branch: "main",
+      repair_run_id: "35160240952",
+    });
+    expect(parseDispatchTag("kind=adhoc open_pr=false pr_base_branch=release/2026.11 repair_run_id=none")).toEqual({
+      kind: "adhoc",
+      open_pr: false,
+      pr_base_branch: "release/2026.11",
+      repair_run_id: null,
+    });
+    // A value the record marks invalid, or a kind this reader does not know, is null; so is a later field.
+    expect(parseDispatchTag("kind=other open_pr=invalid pr_base_branch=invalid repair_run_id=abc new_field=1")).toBeNull();
+    expect(parseDispatchTag("kind=queue")).toEqual({ kind: "queue", open_pr: null, pr_base_branch: null, repair_run_id: null });
+    // The record step failed: the name carries no tag.
+    expect(parseDispatchTag("")).toBeNull();
+
+    const ran = encodeJob([{ conclusion: "success", started_at: "2026-09-30T01:00:00Z" }]);
+    const detail = parseRunJobs([budget, recordJob("kind=queue open_pr=true pr_base_branch=main repair_run_id=none"), ran], "success");
+    expect(detail.dispatch).toEqual({ kind: "queue", open_pr: true, pr_base_branch: "main", repair_run_id: null });
+    expect(detail.encodeStartedAt).toBe("2026-09-30T01:00:00Z");
+    expect(runDetailFields(detail, "2026-09-30T02:00:00Z")).toMatchObject({ dispatch_record: { kind: "queue" } });
+    // A run before the record job, and one whose tag is empty: no record, and no field written.
+    expect(parseRunJobs([budget, ran], "success")).not.toHaveProperty("dispatch");
+    expect(parseRunJobs([budget, recordJob(""), ran], "success")).not.toHaveProperty("dispatch");
+    expect(parseRunJobs([budget, recordJob(null), ran], "success")).not.toHaveProperty("dispatch");
+    expect(runDetailFields(parseRunJobs([budget, ran], "success"), "2026-09-30T02:00:00Z")).not.toHaveProperty("dispatch_record");
+  });
+
+  it("never takes the record job for the encode job", () => {
+    const tag = "kind=adhoc open_pr=true pr_base_branch=main repair_run_id=none";
+    const none = { setup: null, encode: null, publish: null };
+    // Cancelled before the encode job existed: the record job ran its steps, the run did not.
+    expect(parseRunJobs([recordJob(tag), budget], "cancelled")).toMatchObject({ encodeStartedAt: null, cancelStage: "before_job", phases: none });
+    expect(parseRunJobs([recordJob(tag)], "failure")).toMatchObject({ encodeStartedAt: null, phases: none });
+    // An encode job under another name is still found after it.
+    expect(parseRunJobs([recordJob(tag), { name: "encode", steps: [{ conclusion: "success", started_at: "2026-09-30T01:00:00Z" }] }], "failure").encodeStartedAt).toBe(
+      "2026-09-30T01:00:00Z"
+    );
+  });
+
+  it("reads a run whose protected jobs both skipped as skipped, though its record job makes the run pass", () => {
+    const tag = "kind=adhoc open_pr=true pr_base_branch=main repair_run_id=none";
+    const skippedJob = (name: string) => ({ name, conclusion: "skipped", steps: [] });
+    const both = [skippedJob("Enforce failed-attempt budget"), recordJob(tag), skippedJob("Queue protected signed RuleSpec re-encode")];
+    const detail = parseRunJobs(both, "success");
+    expect(detail).toMatchObject({ skipped: true, prRequested: null, encodeStartedAt: null, dispatch: { kind: "adhoc" } });
+    expect(parseRunJobs([recordJob(tag)], "success")).toMatchObject({ skipped: true, prRequested: null });
+    // A run that encoded, and a run from before the record job, are not skipped.
+    const ran = encodeJob([{ conclusion: "success", started_at: "2026-09-30T01:00:00Z" }]);
+    expect(parseRunJobs([budget, recordJob(tag), ran], "success")).not.toHaveProperty("skipped");
+    expect(parseRunJobs([budget, ran], "success")).toMatchObject({ prRequested: true });
+    expect(parseRunJobs([], "success")).not.toHaveProperty("skipped");
+
+    // The attempt reads skipped, not "passed with no PR", this pass and the ones after it.
+    const passed = run({ conclusion: "success" });
+    const [fresh] = buildAttempts(inputs({ runs: [passed], runDetails: new Map([["501", detail]]) }));
+    expect(fresh).toMatchObject({ run_conclusion: "skipped", dispatch_record: { kind: "adhoc", open_pr: true } });
+    expect(fresh.pr_requested).toBeNull();
+    const stored = new Map([["501", { jobs_checked_at: fresh.jobs_checked_at, run_conclusion: "skipped", dispatch_record: fresh.dispatch_record }]]);
+    const [later] = buildAttempts(inputs({ runs: [passed], previous: stored }));
+    expect(later).toMatchObject({ run_conclusion: "skipped", dispatch_record: { kind: "adhoc" } });
+    // A run that passed keeps its conclusion.
+    const [kept] = buildAttempts(inputs({ runs: [passed], previous: new Map([["501", { jobs_checked_at: fresh.jobs_checked_at, run_conclusion: "success" }]]) }));
+    expect(kept.run_conclusion).toBe("success");
+    expect(kept.dispatch_record).toBeUndefined();
   });
 
   it("splits the encode job into setup, the encode step, and publishing", () => {

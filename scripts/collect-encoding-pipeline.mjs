@@ -105,6 +105,7 @@ import {
   outsideModules,
   parseDiagnostics,
   parseRunJobs,
+  stepChecks,
   parseVersion,
   prCitation,
   prGate,
@@ -258,6 +259,9 @@ const SIDE_CARRIED = ["pr_via_merge_commit", "tests_first_run_url"];
 // Added by the 2026-11-11 PR-gate migration: whether a run that passed was
 // asked to open a PR (read once from its jobs).
 const GATE_CARRIED = ["pr_requested"];
+// Added by the 2026-11-11 dispatch-record migration: what a dispatch asked
+// for, read once from the run's "Record dispatch" job.
+const DISPATCH_CARRIED = ["dispatch_record"];
 
 async function columnsExist(columns) {
   const { error } = await supabase.from("pipeline_attempts").select(columns.join(",")).limit(1);
@@ -271,7 +275,7 @@ async function readPrevious() {
     return new Map(rows.map((row) => [row.id, row]));
   }
   const base =
-    "id,citation,synced_at,failure_source,failed_step,encoder_error,encoder_error_rule,pr_repo,pr_number";
+    "id,citation,run_conclusion,synced_at,failure_source,failed_step,encoder_error,encoder_error_rule,pr_repo,pr_number";
   const read = (columns) => readAll("pipeline_attempts", columns, (query) => query.order("id"));
   try {
     // Carried columns arrive by migration; read each group only once it exists.
@@ -285,6 +289,7 @@ async function readPrevious() {
     // With the carrier's number and state, a closed PR keeps the merge train an earlier pass linked.
     if (await columnsExist(SIDE_CARRIED)) columns += `,${SIDE_CARRIED.join(",")},pr_via_number,pr_via_state`;
     if (await columnsExist(GATE_CARRIED)) columns += `,${GATE_CARRIED.join(",")}`;
+    if (await columnsExist(DISPATCH_CARRIED)) columns += `,${DISPATCH_CARRIED.join(",")}`;
     const rows = await read(columns);
     // Rows of modules merged outside the pipeline carry their PR whole (its
     // files are never read again), and dependent rows their stages: read every column.
@@ -548,6 +553,24 @@ async function readWaivers(repos) {
  * oracle comparison. One read per merged repo per run; the rulespec-us file is
  * about 2 MB, so it is read raw (the JSON contents API stops at 1 MB).
  */
+/**
+ * Step name → check id from axiom-encode's check registry on its default
+ * branch: one read per pass. An empty map when it cannot be read, so a failed
+ * step keeps its rule from the error text alone.
+ */
+async function readStepChecks() {
+  try {
+    const res = await github(
+      `repos/${GITHUB_ORG}/${ENCODE_REPO}/contents/src/axiom_encode/data/check_registry.json`,
+      { headers: { Accept: "application/vnd.github.raw" } },
+    );
+    return stepChecks(JSON.parse(await res.text()));
+  } catch (error) {
+    console.warn(`check registry: ${error.message.split("\n")[0]}`);
+    return new Map();
+  }
+}
+
 async function readOraclePending(repos) {
   const pending = new Map();
   for (const repo of repos) {
@@ -1111,6 +1134,7 @@ async function upsert(rows) {
     ["loop timing", LOOP_COLUMNS],
     ["side branch", SIDE_COLUMNS],
     ["PR gate", GATE_COLUMNS],
+    ["dispatch record", DISPATCH_CARRIED],
   ]) {
     if (await columnsExist(group)) continue;
     console.log(`${name} columns not written yet (migration not applied)`);
@@ -1310,11 +1334,13 @@ async function main() {
     ]),
   ].sort();
   const defaultBranches = new Map([...prs, ...outsidePrs].filter((pr) => pr.defaultBranch).map((pr) => [pr.repo, pr.defaultBranch]));
-  const [validation, waivers, oraclePending] = await Promise.all([
+  const [validation, waivers, oraclePending, stepCheckIds] = await Promise.all([
     readValidation(mergedRepos, defaultBranches),
     readWaivers(mergedRepos),
     readOraclePending(mergedRepos),
+    readStepChecks(),
   ]);
+  console.log(`check registry: ${stepCheckIds.size} step checks`);
   console.log(
     `oracle pending ledgers: ${[...oraclePending.values()].reduce((sum, set) => sum + set.size, 0)} module paths in ${oraclePending.size} of ${mergedRepos.length} repos`,
   );
@@ -1392,6 +1418,7 @@ async function main() {
     waivers,
     oracle,
     oraclePending,
+    stepChecks: stepCheckIds,
     runDetails,
     encoderVersions,
     checkErrors,
