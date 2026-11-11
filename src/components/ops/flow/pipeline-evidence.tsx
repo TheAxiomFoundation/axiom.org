@@ -587,6 +587,18 @@ function Coverage({ model }: { model: FlowModel }) {
           t.tries_since ? ` (recorded since ${t.tries_since.slice(0, 10)})` : ""
         }, ${n(t.with_cost)} have a model cost.`}
       </li>
+      <li>
+        {`${n(t.no_encode)} ran no encode (the run ended before the encode step); ${n(t.no_try_record)} ran the encode step with no try record; ${n(
+          t.with_typed_checks
+        )} name the typed checks (rule id and gate) of a failed try.`}
+      </li>
+      {t.oracle.merged ? (
+        <li>
+          {`${n(t.oracle.merged)} merged: ${n(t.oracle.compared)} compared by an oracle, ${n(t.oracle.pending)} pending (listed in oracle-coverage-pending.yaml), ${n(
+            t.oracle.none
+          )} with no oracle${t.oracle.unknown ? `, ${n(t.oracle.unknown)} not recorded` : ""}.`}
+        </li>
+      ) : null}
       {untimed.length ? <li>Time not measured: {untimed.join(", ")}.</li> : null}
       {t.unmeasured.length ? (
         <li>

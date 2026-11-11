@@ -84,6 +84,7 @@ import { createClient } from "@supabase/supabase-js";
 import yaml from "js-yaml";
 import {
   activeWaivers,
+  pendingOracleModules,
   buildAttempts,
   carrierIndex,
   carrierPrFor,
@@ -540,6 +541,29 @@ async function readWaivers(repos) {
     }
   }
   return waivers;
+}
+
+/**
+ * Per repo, the modules its oracle-coverage-pending.yaml lists as awaiting an
+ * oracle comparison. One read per merged repo per run; the rulespec-us file is
+ * about 2 MB, so it is read raw (the JSON contents API stops at 1 MB).
+ */
+async function readOraclePending(repos) {
+  const pending = new Map();
+  for (const repo of repos) {
+    try {
+      const res = await github(
+        `repos/${GITHUB_ORG}/${repo}/contents/oracle-coverage-pending.yaml`,
+        { headers: { Accept: "application/vnd.github.raw" } },
+      );
+      pending.set(repo, pendingOracleModules(yaml.load(await res.text())));
+    } catch (error) {
+      // No file means nothing is declared pending; anything else leaves the repo unknown.
+      if (/ 404 /.test(error.message)) pending.set(repo, new Set());
+      else console.warn(`oracle pending ledger for ${repo}: ${error.message}`);
+    }
+  }
+  return pending;
 }
 
 // Axiom-vs-engine comparison reports: axiom-<engine>-<suite>.json (PolicyEngine,
@@ -1286,10 +1310,14 @@ async function main() {
     ]),
   ].sort();
   const defaultBranches = new Map([...prs, ...outsidePrs].filter((pr) => pr.defaultBranch).map((pr) => [pr.repo, pr.defaultBranch]));
-  const [validation, waivers] = await Promise.all([
+  const [validation, waivers, oraclePending] = await Promise.all([
     readValidation(mergedRepos, defaultBranches),
     readWaivers(mergedRepos),
+    readOraclePending(mergedRepos),
   ]);
+  console.log(
+    `oracle pending ledgers: ${[...oraclePending.values()].reduce((sum, set) => sum + set.size, 0)} module paths in ${oraclePending.size} of ${mergedRepos.length} repos`,
+  );
   const oracle = oracleRef
     ? await readOracleVerdicts(oracleRef).catch((error) => {
         console.warn(`oracle reports unavailable: ${error.message}`);
@@ -1363,6 +1391,7 @@ async function main() {
     validation,
     waivers,
     oracle,
+    oraclePending,
     runDetails,
     encoderVersions,
     checkErrors,

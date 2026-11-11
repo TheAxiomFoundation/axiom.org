@@ -12,7 +12,7 @@
  * same instant, so the flow mining never needs a hard-coded station order.
  */
 
-import { attemptSource, carriedToMain, failedStepStation, mainMergedAt, type PipelineAttempt } from "./encoding-pipeline";
+import { attemptSource, carriedToMain, failedStepStation, mainMergedAt, type PipelineAttempt, type PipelineTry } from "./encoding-pipeline";
 import { compareVersions } from "./encoding-pipeline-insights";
 
 export type EventKind = "enter" | "leave" | "fail" | "cancel" | "wait" | "issue" | "change";
@@ -53,6 +53,20 @@ export function infraRuleId(step: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
   return `infra:${slug || "unknown"}`;
+}
+
+/**
+ * A failed try's typed checks as event attrs: `checks` the registry ids,
+ * `check_detail` each id with its gate and number of findings, `checks_more`
+ * how many the try's record leaves out. Empty when the try has none.
+ */
+function tryCheckAttrs(t: PipelineTry): Record<string, unknown> {
+  if (!t.checks?.length) return {};
+  return {
+    checks: t.checks.map((check) => check.id),
+    check_detail: t.checks,
+    ...(t.checksMore ? { checks_more: t.checksMore } : {}),
+  };
 }
 
 const RULE_RE = /\[([a-z][a-z0-9-]*(?::[a-z0-9-]+)+)\]/i;
@@ -274,7 +288,7 @@ export function attemptEvents(attempt: PipelineAttempt): PipelineEvent[] {
             rule_id: t.error ? issueRuleId(t.error) : failRule,
             message: clip(t.error),
             actor: t.model,
-            attrs: { phases: tools, ...untimed },
+            attrs: { phases: tools, ...untimed, ...tryCheckAttrs(t) },
           });
         }
         clock = valEnd;
@@ -507,7 +521,8 @@ function prEvents(
     outcome: "ok",
     duration_ms: spanMs(mergeEnter, mergedAt),
     ref_url: attempt.pr_via_url ?? prUrl,
-    attrs: { repo: attempt.pr_repo, modules: attempt.module_paths ?? [], ...(carried ? { carried_by: attempt.pr_via_number ?? null } : {}) },
+    // oracle: the comparison state of the merged module; "none" when no report compares it and no ledger lists it.
+    attrs: { repo: attempt.pr_repo, modules: attempt.module_paths ?? [], oracle: attempt.oracle_status ?? "none", ...(carried ? { carried_by: attempt.pr_via_number ?? null } : {}) },
   });
 
   // Index (the rulespec_files sync) and tests on main both start at the

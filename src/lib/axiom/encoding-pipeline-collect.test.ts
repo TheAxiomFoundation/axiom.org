@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   activeWaivers,
+  pendingOracleModules,
+  TRY_CHECKS_MAX,
   bookkeepingCause,
   buildAttempts,
   encodeWindow,
@@ -743,6 +745,62 @@ describe("stage joins", () => {
     expect(oracle([]).oracle_status).toBeUndefined();
   });
 
+  it("reads the modules a pending ledger lists, in both repo layouts", () => {
+    const pending = pendingOracleModules({
+      version: 1,
+      ceiling: 3,
+      entries: [
+        { legal_id: "us:regulations/42-cfr/457/800#out", source: "bulk", since: "2026-11-01" },
+        { legal_id: "us:regulations/42-cfr/457/800#other", source: "manual", since: "2026-11-01" },
+        { legal_id: "us-hi:policies/income_tax/x#y", source: "bulk", since: "2026-11-01" },
+        { legal_id: 7 },
+        "not an entry",
+      ],
+    });
+    expect([...pending].sort()).toEqual([
+      "policies/income_tax/x.yaml",
+      "regulations/42-cfr/457/800.yaml",
+      "us-hi/policies/income_tax/x.yaml",
+      "us/regulations/42-cfr/457/800.yaml",
+    ]);
+    expect(pendingOracleModules(null).size).toBe(0);
+    expect(pendingOracleModules({ entries: "nope" }).size).toBe(0);
+  });
+
+  it("marks a merged module pending when no report compares it and its repo's ledger lists it", () => {
+    const listed = new Map([["rulespec-us", new Set(["us/regulations/42-cfr/457/800.yaml"])]]);
+    const empty = new Map([["rulespec-us", new Set<string>()]]);
+    const verdicts = oracleVerdicts([
+      {
+        name: "axiom-policyengine-us-x.json",
+        report: {
+          aggregates: [{ concept: "us:regulations/42-cfr/457/800#out", mismatch_count: 0 }],
+          provenance: { generated_at: "2026-09-20T00:00:00Z", rulespecs: [{ sha: REPORT_SHA }] },
+        },
+      },
+    ]);
+    const build = (overrides: Partial<CollectInputs>) =>
+      buildAttempts(
+        inputs({ prs: [merged()], mirror: mirrorWithCommit, contains: contains([[MERGE, INDEX, true], [MERGE, REPORT_SHA, true]]), ...overrides })
+      )[0];
+    // Between oracle refreshes, and at one with no report on the module.
+    expect(build({ oraclePending: listed })).toMatchObject({ oracle_status: "pending" });
+    expect(build({ oraclePending: listed }).oracle_report).toBeUndefined();
+    expect(build({ oraclePending: listed, oracle: new Map() }).oracle_status).toBe("pending");
+    // A report on the module wins over the ledger, read this pass or carried.
+    expect(build({ oraclePending: listed, oracle: verdicts }).oracle_status).toBe("match");
+    expect(
+      build({ oraclePending: listed, previous: new Map([["501", { oracle_status: "disagree" as const, oracle_engine: "taxsim" }]]) }).oracle_status
+    ).toBe("disagree");
+    // A ledger that no longer lists the module clears a stored pending; a ledger not read keeps it.
+    const stored = new Map([["501", { oracle_status: "pending" as const }]]);
+    expect(build({ oraclePending: empty, previous: stored }).oracle_status).toBeUndefined();
+    expect(build({ previous: stored }).oracle_status).toBe("pending");
+    expect(build({}).oracle_status).toBeUndefined();
+    // An open PR has no oracle state.
+    expect(buildAttempts(inputs({ prs: [pr()], oraclePending: listed }))[0].oracle_status).toBeUndefined();
+  });
+
   it("lists the ancestry checks the joins need", () => {
     const queries = containmentQueries(
       [
@@ -1155,6 +1213,50 @@ describe("encoder tries", () => {
     expect(encoderTries(encoderRow({ iterations: [] }))).toBeNull();
     // A record with no attempt numbers counts its tries in order.
     expect(encoderTries(encoderRow({ iterations: [{ model: "m" }] }))?.[0]).toMatchObject({ attempt: 1, ms: null, ok: false });
+  });
+
+  it("keeps a try's typed checks with their gates, most findings first and bounded", () => {
+    const issue = (check: string | null, gate: string) => ({ check, gate, cause: "encoder_output", fingerprint: "f" });
+    const iterations = [
+      {
+        attempt: 1,
+        model: "m",
+        success: false,
+        errors: [
+          {
+            message: "x.yaml: ci: [complete-source-unit:structure] Source branch (b) is not encoded",
+            issue_document: {
+              total: 4,
+              issues: [
+                issue("proof:source-evidence/not-found", "validation"),
+                issue("complete-source-unit:structure/branch-unencoded", "ci"),
+                issue("complete-source-unit:structure/branch-unencoded", "ci"),
+                issue(null, "validation"),
+                "not an issue",
+              ],
+            },
+          },
+          { message: "second error", issue_document: { issues: [issue("compile:rules-engine/failed", "compile")] } },
+          { message: "no document" },
+        ],
+      },
+      { attempt: 2, model: "m", success: true, errors: [] },
+    ];
+    const tries = encoderTries(encoderRow({ iterations }))!;
+    expect(tries[0].checks).toEqual([
+      { id: "complete-source-unit:structure/branch-unencoded", gate: "ci", n: 2 },
+      { id: "compile:rules-engine/failed", gate: "compile", n: 1 },
+      { id: "proof:source-evidence/not-found", gate: "validation", n: 1 },
+    ]);
+    expect(tries[0].checksMore).toBeUndefined();
+    expect(tries[0].error).toContain("[complete-source-unit:structure]");
+    // A try with no typed check keeps no list.
+    expect(tries[1]).not.toHaveProperty("checks");
+    // More checks than the limit: the list stops there and says how many it left out.
+    const many = Array.from({ length: TRY_CHECKS_MAX + 3 }, (_, index) => issue(`family:rule/site-${String(index).padStart(2, "0")}`, "ci"));
+    const bounded = encoderTries(encoderRow({ iterations: [{ success: false, errors: [{ message: "m", issue_document: { issues: many } }] }] }))![0];
+    expect(bounded.checks).toHaveLength(TRY_CHECKS_MAX);
+    expect(bounded.checksMore).toBe(3);
   });
 
   it("puts the matched encoder record's tries on the attempt", () => {

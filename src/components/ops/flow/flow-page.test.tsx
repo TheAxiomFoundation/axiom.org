@@ -176,6 +176,31 @@ describe("JourneyView", () => {
     expect(screen.getByRole("complementary", { name: "Run details" })).toBeTruthy();
   });
 
+  it("says in the run details that no encode ran, the oracle state, and a try's typed checks", () => {
+    const typed = { ...tryOf(1, false), checks: [{ id: "complete-source-unit:structure/branch-unencoded", gate: "ci", n: 2 }], checksMore: 3 };
+    const more = [
+      pipelineAttempt({ id: "5", run_conclusion: "cancelled", cancel_stage: "approval" }),
+      pipelineAttempt({ id: "6", failed_step: "encode_apply", tries: [typed] }),
+      mergedAttempt({ id: "7", tries: [tryOf(1, true)], indexed_at: "2026-09-21T12:00:00Z", index_status: "indexed", tests_status: "waived", oracle_status: "pending" }),
+    ].flatMap(attemptEvents);
+    const panel = (id: string) => {
+      cleanup();
+      const detail = caseDetail(more, id)!;
+      render(<JourneyView citation={detail.citation} stationOrder={stationOrder} lanes={[]} detail={detail} bundles={[]} error={null} />);
+      return screen.getByRole("complementary", { name: "Run details" }).textContent ?? "";
+    };
+    const cancelled = panel("5");
+    expect(cancelled).toContain("no encode ran");
+    expect(cancelled).toContain("No encode ran: cancelled at Signing approval.");
+    const failed = panel("6");
+    expect(failed).toContain("Try 1: typed checks that failed");
+    expect(failed).toContain("complete-source-unit:structure/branch-unencoded");
+    expect(failed).toContain("gate ci · 2");
+    expect(failed).toContain("and 3 more checks");
+    expect(failed).not.toContain("no encode ran");
+    expect(panel("7")).toContain("Oracle · Pending: no oracle compares it yet (listed in oracle-coverage-pending.yaml).");
+  });
+
   it("shows a plain title with no citation", () => {
     render(<JourneyView citation={null} stationOrder={[]} lanes={[]} detail={null} bundles={[]} error={null} />);
     expect(screen.getByRole("heading", { name: "Encoding journey" })).toBeTruthy();

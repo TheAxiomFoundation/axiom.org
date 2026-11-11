@@ -33,6 +33,7 @@ import {
   type EncodeLoopTiming,
   type PipelineAttempt,
   type PipelineTry,
+  type PipelineTryCheck,
   type PipelineTryPhase,
 } from "./encoding-pipeline";
 
@@ -352,9 +353,46 @@ export function encoderTries(row: EncoderRunRow): PipelineTry[] | null {
       const wallMs = number(entry.wall_duration_ms);
       const phases = tryPhases(entry.phases);
       if (startedAt && wallMs !== null && phases) Object.assign(attempt, { startedAt, wallMs, phases });
+      const { checks, more } = tryChecks(errors);
+      if (checks.length) attempt.checks = checks;
+      if (more) attempt.checksMore = more;
       return attempt;
     });
   return tries.length ? tries : null;
+}
+
+/** How many typed checks a try keeps, and how long an id may be: the tries column stays small. */
+export const TRY_CHECKS_MAX = 12;
+const TRY_CHECK_ID_MAX = 120;
+
+/**
+ * The typed checks in a try's errors: the encoder's issue document lists each
+ * finding with its registry check id and gate. One entry per check id, with
+ * its number of findings, most findings first; a finding with no check id is
+ * left out (the first error message still shows it).
+ */
+function tryChecks(errors: unknown[]): { checks: PipelineTryCheck[]; more: number } {
+  const byId = new Map<string, PipelineTryCheck>();
+  for (const error of errors) {
+    const document = error && typeof error === "object" ? (error as Record<string, unknown>).issue_document : null;
+    const issues = document && typeof document === "object" ? (document as Record<string, unknown>).issues : null;
+    if (!Array.isArray(issues)) continue;
+    for (const issue of issues) {
+      if (!issue || typeof issue !== "object") continue;
+      const { check, gate } = issue as Record<string, unknown>;
+      if (typeof check !== "string" || !check.trim()) continue;
+      const id = check.trim().slice(0, TRY_CHECK_ID_MAX);
+      const known = byId.get(id);
+      if (known) {
+        known.n += 1;
+        if (!known.gate && typeof gate === "string" && gate) known.gate = gate.slice(0, 40);
+      } else {
+        byId.set(id, { id, gate: typeof gate === "string" && gate ? gate.slice(0, 40) : null, n: 1 });
+      }
+    }
+  }
+  const all = [...byId.values()].sort((a, b) => b.n - a.n || a.id.localeCompare(b.id));
+  return { checks: all.slice(0, TRY_CHECKS_MAX), more: Math.max(0, all.length - TRY_CHECKS_MAX) };
 }
 
 /** A try's phases as the encoder lists them, each with its time and, for a check phase, its time by tool. */
@@ -1249,6 +1287,24 @@ export function activeWaivers(doc: unknown): Set<string> {
   return waived;
 }
 
+/**
+ * Module paths with an output that awaits an oracle comparison: the entries
+ * of a repo's oracle-coverage-pending.yaml, each a legal id such as
+ * `us-hi:policies/income_tax/x#output`. Both repo layouts of each path (see
+ * conceptModuleKeys), without the repo.
+ */
+export function pendingOracleModules(doc: unknown): Set<string> {
+  const entries = (doc as { entries?: unknown } | null)?.entries;
+  const pending = new Set<string>();
+  if (!Array.isArray(entries)) return pending;
+  for (const entry of entries) {
+    const legalId = entry && typeof entry === "object" ? (entry as { legal_id?: unknown }).legal_id : null;
+    if (typeof legalId !== "string") continue;
+    for (const key of conceptModuleKeys(legalId)) pending.add(key.slice(key.indexOf(":") + 1));
+  }
+  return pending;
+}
+
 /** One module's verdict from the axiom-oracles comparison reports. */
 export interface OracleVerdict {
   /** match: every compared output agrees. explained: mismatches, all
@@ -1642,6 +1698,9 @@ export interface CollectInputs {
   /** Oracle verdicts read this pass; absent between refreshes, when each
    *  attempt keeps the verdict its previous collection stored. */
   oracle?: Map<string, OracleVerdict>;
+  /** Per repo, module paths its oracle-coverage-pending.yaml lists (see pendingOracleModules);
+   *  a repo absent from the map was not read this pass. */
+  oraclePending?: Map<string, Set<string>>;
   /** Jobs read this pass, by run id (see runDetailLookups). */
   runDetails?: Map<string, RunDetail>;
   /** Package versions read this pass, by axiom-encode commit (see versionLookups). */
@@ -1668,6 +1727,7 @@ interface JoinContext {
   validation: ValidationIndex;
   waivers: Map<string, Set<string>>;
   oracle: Map<string, OracleVerdict> | null;
+  oraclePending: Map<string, Set<string>>;
   checkErrors: Map<string, string>;
   syncRuns: SyncRun[] | null;
   syncSince: string | null;
@@ -1878,16 +1938,24 @@ function withPr(
   // commit it recorded contains the merge, or, for a report that records no
   // commit (EUROMOD/UKMOD), it was generated after the merge. A re-emission
   // never counts: it re-stamps an earlier run.
+  // With no report on the module, its repo's pending ledger says whether an
+  // oracle is still to come. A repo whose ledger was not read keeps what the
+  // previous collection stored.
+  const ledger = context.oraclePending.get(pr.repo);
+  const pending = ledger ? modules.some((path) => ledger.has(path)) : previous?.oracle_status === "pending";
   if (!oracle) {
-    if (previous?.oracle_status) {
+    if (previous?.oracle_status && previous.oracle_status !== "pending") {
       attempt.oracle_status = previous.oracle_status;
       attempt.oracle_report = previous.oracle_report ?? null;
       attempt.oracle_engine = previous.oracle_engine ?? null;
       attempt.oracle_checked_at = previous.oracle_checked_at ?? null;
+    } else if (pending) {
+      attempt.oracle_status = "pending";
     }
     return compileVerdict(attempt, mirrorRows, compile, compileGeneratedAt);
   }
   const verdict = moduleVerdict(oracle, pr.repo, modules);
+  if (!verdict && pending) attempt.oracle_status = "pending";
   if (verdict) {
     const current =
       !verdict.reemitted &&
@@ -2001,6 +2069,7 @@ export function buildAttempts(inputs: CollectInputs): PipelineAttempt[] {
     validation: inputs.validation ?? new Map(),
     waivers: inputs.waivers ?? new Map(),
     oracle: inputs.oracle ?? null,
+    oraclePending: inputs.oraclePending ?? new Map(),
     checkErrors: inputs.checkErrors ?? new Map(),
     syncRuns: inputs.syncRuns ?? null,
     syncSince: inputs.syncSince ?? null,

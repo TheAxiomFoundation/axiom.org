@@ -158,7 +158,9 @@ export interface PipelineAttempt {
   /** The axiom-oracles comparison: match, explained (only dispositioned
    *  engine or bridge differences), disagree, or stale (compared an earlier
    *  version of the module). */
-  oracle_status?: "match" | "explained" | "disagree" | "stale" | null;
+  /** pending: no report compares the module yet, and its repo's
+   *  oracle-coverage-pending.yaml lists an output of it as awaiting an oracle. */
+  oracle_status?: "match" | "explained" | "disagree" | "stale" | "pending" | null;
   oracle_report?: string | null;
   oracle_engine?: string | null;
   oracle_checked_at?: string | null;
@@ -208,11 +210,22 @@ export interface PipelineTry {
   ok: boolean;
   /** The first check that failed this try's candidate. */
   error: string | null;
+  /** The typed checks that failed this try's candidate, most findings first (encoder issue documents). */
+  checks?: PipelineTryCheck[];
+  /** How many further typed checks the list leaves out. */
+  checksMore?: number;
   /** When the try started, and its whole time with its checks (encoder 0.2.2157 on). */
   startedAt?: string;
   wallMs?: number;
   /** What the try did, in order and back to back; the phases add up to its whole time. */
   phases?: PipelineTryPhase[];
+}
+
+/** One typed check that failed a try: its registry id, the gate that ran it, and its number of findings. */
+export interface PipelineTryCheck {
+  id: string;
+  gate: string | null;
+  n: number;
 }
 
 /** One phase of a try: what the encoder did, for how long, and a check phase's time by tool. */
@@ -1275,12 +1288,14 @@ export function journeySteps(attempt: PipelineAttempt): JourneyStep[] {
       detail: attempt.oracle_status
         ? [oracleLabel(attempt), attempt.oracle_report].filter(Boolean).join(" — ")
         : attempt.pr_state === "merged"
-          ? "No oracle report covers it"
+          ? ORACLE_NONE_LABEL
           : null,
       // Attempts retain a filename, so this detail link follows the live report branch.
       href: attempt.oracle_report
         ? `https://github.com/TheAxiomFoundation/axiom-oracles/blob/oracle-data/dashboard/public/data/${attempt.oracle_report}`
-        : null,
+        : attempt.oracle_status === "pending" && attempt.pr_repo
+          ? `https://github.com/TheAxiomFoundation/${attempt.pr_repo}/blob/HEAD/${ORACLE_PENDING_LEDGER}`
+          : null,
     },
   ];
 }
@@ -1322,6 +1337,11 @@ const ORACLE_ENGINE_LABELS: Record<string, string> = {
   spsm: "SPSM",
 };
 
+/** The repo-root ledger of outputs that await an oracle comparison. */
+export const ORACLE_PENDING_LEDGER = "oracle-coverage-pending.yaml";
+/** A merged module no report compares and no ledger lists. */
+export const ORACLE_NONE_LABEL = "No oracle compares this module";
+
 /** The oracle comparison in a few words, or null when no report covers it. */
 export function oracleLabel(attempt: PipelineAttempt): string | null {
   if (!attempt.oracle_status) return null;
@@ -1336,6 +1356,8 @@ export function oracleLabel(attempt: PipelineAttempt): string | null {
       return `Disagrees with ${engine}`;
     case "stale":
       return capitalize(`${engine} report predates this version`);
+    case "pending":
+      return `Oracle pending: no report compares it yet (listed in ${ORACLE_PENDING_LEDGER})`;
   }
 }
 
@@ -1462,7 +1484,7 @@ function itemReason(state: CitationState): string | null {
         : "Waiting for its jurisdiction's validation on main";
     case "verified":
     case "oracle_disagrees":
-      return oracleLabel(latest) ?? "No oracle report covers it";
+      return oracleLabel(latest) ?? ORACLE_NONE_LABEL;
     case "compile_failed":
       return latest.compile_status?.replaceAll("_", " ") ?? null;
     case "merged_off_main": {

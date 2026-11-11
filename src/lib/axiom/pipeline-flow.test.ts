@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { attemptEvents, type PipelineEvent } from "./pipeline-events";
-import { agentBrief, caseDetail, causeOrigin, causeText, citationLanes, formatDuration, inJurisdiction, mineFlow, quantile, rankStations, retryCutoff, ruleWords, splitMessage, trendSentence, type FlowEdge } from "./pipeline-flow";
+import { agentBrief, caseDetail, caseOracle, encodeState, causeOrigin, causeText, citationLanes, formatDuration, inJurisdiction, mineFlow, quantile, rankStations, retryCutoff, ruleWords, splitMessage, trendSentence, type FlowEdge } from "./pipeline-flow";
 import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 import { ingestEvents, type IngestInputs } from "./pipeline-ingest";
 
@@ -450,5 +450,101 @@ describe("where cases wait now", () => {
     for (const cause of ["merge:behind-base", "review:draft", "check:pending", "check:failed-pr-open", "review:no-reviewer-requested", "review:approval-not-on-head", "tests:no-verdict", "publish:artifact-only"]) {
       expect(causeText(cause)).not.toBe(cause);
     }
+  });
+});
+
+describe("what a run recorded: typed checks, no encode, and the oracle state", () => {
+  const typed = {
+    attempt: 1,
+    model: "m",
+    ms: 1000,
+    cost: 0.01,
+    ok: false,
+    error: "x.yaml: ci: [complete-source-unit:structure] no",
+    checks: [
+      { id: "complete-source-unit:structure/branch-unencoded", gate: "ci", n: 2 },
+      { id: "compile:rules-engine/failed", gate: "compile", n: 1 },
+    ],
+    checksMore: 1,
+  };
+  const landed = { indexed_at: "2026-09-21T12:00:00Z", index_status: "indexed" as const, tests_status: "waived" as const, tests_first_at: "2026-09-21T13:00:00Z", compile_status: "ok" as const, compile_checked_at: "2026-09-22T03:00:00Z" };
+  const events = [
+    // Failed with a typed try, then one that names no typed check.
+    pipelineAttempt({ id: "1", citation: "us/a", failed_step: "encode_apply", tries: [typed, tryOf(2, false, "r:tests")] }),
+    pipelineAttempt({ id: "2", citation: "us/b", failed_step: "encode_apply", tries: [{ ...typed, checksMore: undefined }] }),
+    // Cancelled at the approval, and failed in setup: no encode ran.
+    pipelineAttempt({ id: "3", citation: "us/c", run_conclusion: "cancelled", cancel_stage: "approval" }),
+    pipelineAttempt({ id: "4", citation: "us/d", encode_started_at: "2026-09-20T10:01:00Z", failed_step: "Queue protected signed RuleSpec re-encode / Verify immutable checkout identities" }),
+    // The encode step ran with no try record (a run from before the encoder synced its tries).
+    pipelineAttempt({ id: "5", citation: "us/e", encode_started_at: "2026-09-20T10:01:00Z", encode_seconds: 12, failed_step: "encode_apply" }),
+    // Still waiting for the approval.
+    pipelineAttempt({ id: "6", citation: "us/f", run_status: "queued", run_conclusion: null, finished_at: null }),
+    // Merged: one pending in the ledger, one no oracle compares, one compared.
+    mergedAttempt({ id: "7", citation: "us/g", tries: [tryOf(1, true)], ...landed, oracle_status: "pending" }),
+    mergedAttempt({ id: "8", citation: "us/h", tries: [tryOf(1, true)], ...landed }),
+    mergedAttempt({ id: "9", citation: "us/i", tries: [tryOf(1, true)], ...landed, oracle_status: "match", oracle_checked_at: "2026-09-22T00:00:00Z", oracle_engine: "policyengine" }),
+  ].flatMap(attemptEvents);
+  const model = mineFlow(events, { now: NOW, days: 30 });
+
+  it("keeps a failed try's typed checks on its visit", () => {
+    const fail = caseDetail(events, "1")!.visits.find((v) => v.station === "validate" && v.try_no === 1)!;
+    expect(fail.rule_id).toBe("complete-source-unit:structure");
+    expect(fail.checks).toEqual(typed.checks);
+    expect(fail.checks_more).toBe(1);
+    expect(caseDetail(events, "1")!.visits.find((v) => v.station === "validate" && v.try_no === 2)).not.toHaveProperty("checks");
+    // An event that lists ids only (another writer's attrs.checks) still reads.
+    const idsOnly = events.map((e) => (e.case_id === "2" && e.attrs.check_detail ? { ...e, attrs: { checks: e.attrs.checks } } : e));
+    expect(caseDetail(idsOnly, "2")!.visits.find((v) => v.station === "validate")!.checks).toEqual([
+      { id: "complete-source-unit:structure/branch-unencoded", gate: null, n: null },
+      { id: "compile:rules-engine/failed", gate: null, n: null },
+    ]);
+  });
+
+  it("counts the typed checks that failed tries, with their gates", () => {
+    expect(model.typed_checks).toEqual([
+      { id: "compile:rules-engine/failed", gate: "compile", tries: 2, cases: 2 },
+      { id: "complete-source-unit:structure/branch-unencoded", gate: "ci", tries: 2, cases: 2 },
+    ]);
+    const brief = agentBrief(model, "https://axiom.org");
+    expect(brief).toContain("## Typed checks that failed tries");
+    expect(brief).toContain("- `compile:rules-engine/failed` (gate compile): 2 tries in 2 cases");
+  });
+
+  it("says when no encode ran, and where the run stopped", () => {
+    const state = (id: string) => caseDetail(events, id)!.encode;
+    expect(state("1")).toEqual({ state: "tries", label: "Tries recorded" });
+    expect(state("3")).toEqual({ state: "no_encode", label: "No encode ran: cancelled at Signing approval" });
+    expect(state("4")).toEqual({ state: "no_encode", label: "No encode ran: failed at Setup (infra:verify-immutable-checkout-identities)" });
+    expect(state("5").state).toBe("no_try_record");
+    expect(state("5").label).toMatch(/^No try recorded: the encode step ran/);
+    expect(state("6")).toEqual({ state: "not_yet", label: "Not at the encode step yet" });
+    expect(encodeState([{ station: "merge", outcome: "ok", actor: null, rule_id: null }]).state).toBe("outside");
+  });
+
+  it("gives a merged case an oracle state: compared, pending, or none", () => {
+    expect(caseDetail(events, "7")!.oracle).toMatchObject({ state: "pending" });
+    expect(caseDetail(events, "7")!.oracle!.label).toContain("oracle-coverage-pending.yaml");
+    expect(caseDetail(events, "8")!.oracle).toEqual({ state: "none", label: "No oracle compares this module" });
+    expect(caseDetail(events, "9")!.oracle).toMatchObject({ state: "compared" });
+    expect(caseDetail(events, "1")!.oracle).toBeNull();
+    // A pending or uncompared module still lands: the state is not a wait.
+    expect(caseDetail(events, "7")!.end).toBe("landed");
+    expect(caseDetail(events, "8")!.end).toBe("landed");
+    // A merge event from before the state was recorded says nothing.
+    expect(caseOracle([{ station: "merge", outcome: "ok" }])).toBeNull();
+  });
+
+  it("counts all three in what the numbers can see", () => {
+    expect(model.trust).toMatchObject({
+      dispatched: 9,
+      with_typed_checks: 2,
+      no_encode: 2,
+      no_try_record: 1,
+      oracle: { merged: 3, compared: 1, pending: 1, none: 1, unknown: 0 },
+    });
+    const brief = agentBrief(model, "https://axiom.org");
+    expect(brief).toContain("2 typed checks (rule id and gate) on a failed try");
+    expect(brief).toContain("2 ran no encode (the run ended before the encode step); 1 ran the encode step with no try record");
+    expect(brief).toContain("Of 3 merged: 1 compared by an oracle, 1 pending (listed in oracle-coverage-pending.yaml), 1 with no oracle.");
   });
 });

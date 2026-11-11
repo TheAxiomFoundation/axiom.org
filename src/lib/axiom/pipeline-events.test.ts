@@ -320,3 +320,53 @@ describe("issueEvents", () => {
     expect(issues[1].at).toBe("2026-10-21T00:00:00Z");
   });
 });
+
+describe("typed checks and oracle state on events", () => {
+  it("puts a failed try's typed checks on its validate event, and leaves the rule id as it was", () => {
+    const events = attemptEvents(
+      pipelineAttempt({
+        failed_step: "encode_apply",
+        tries: [
+          {
+            attempt: 1,
+            model: "m",
+            ms: 1000,
+            cost: 0.01,
+            ok: false,
+            error: "x.yaml: ci: [complete-source-unit:structure] no",
+            checks: [
+              { id: "complete-source-unit:structure/branch-unencoded", gate: "ci", n: 2 },
+              { id: "compile:rules-engine/failed", gate: "compile", n: 1 },
+            ],
+            checksMore: 4,
+          },
+          { attempt: 2, model: "m", ms: 1000, cost: 0.01, ok: false, error: "x.yaml: ci: [r:tests] no" },
+        ],
+      })
+    );
+    const fails = events.filter((e) => e.station === "validate" && e.kind === "fail");
+    expect(fails[0].rule_id).toBe("complete-source-unit:structure");
+    expect(fails[0].attrs).toMatchObject({
+      checks: ["complete-source-unit:structure/branch-unencoded", "compile:rules-engine/failed"],
+      check_detail: [
+        { id: "complete-source-unit:structure/branch-unencoded", gate: "ci", n: 2 },
+        { id: "compile:rules-engine/failed", gate: "compile", n: 1 },
+      ],
+      checks_more: 4,
+    });
+    // A try whose record names no typed check carries none.
+    expect(fails[1].attrs).not.toHaveProperty("checks");
+  });
+
+  it("says on the merge what compares the module: a verdict, pending, or none", () => {
+    const merge = (overrides: Parameters<typeof mergedAttempt>[0]) =>
+      attemptEvents(mergedAttempt({ indexed_at: "2026-09-21T12:00:00Z", index_status: "indexed", tests_status: "waived", ...overrides }));
+    const oracleOf = (events: ReturnType<typeof attemptEvents>) => events.find((e) => e.station === "merge" && e.kind === "leave")?.attrs.oracle;
+    expect(oracleOf(merge({}))).toBe("none");
+    const pending = merge({ oracle_status: "pending" });
+    expect(oracleOf(pending)).toBe("pending");
+    // Pending is a state of the merged module, not a wait: no oracle visit, so the case still ends landed.
+    expect(pending.some((e) => e.station === "oracle")).toBe(false);
+    expect(oracleOf(merge({ oracle_status: "match", oracle_checked_at: "2026-09-22T00:00:00Z" }))).toBe("match");
+  });
+});
