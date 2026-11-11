@@ -173,12 +173,14 @@ describe("PlanningModelPage", () => {
     );
     // (b) No module a SOUTHMOD suite compares or imports has an
     // .axiom/encoding-manifests entry written by `encode --apply`. In
-    // rulespec-gh, -ug, -zm and -et most have one with backend "manual"
-    // (axiom-encode sign-applied-files), and a few have none covering them:
-    // zm act-2018-19 and act-2021-45, which act-2024-24 imports, have no
-    // manifest, and gh act-1111's first-schedule manifest lists only its
-    // .test.yaml. rulespec-rw has no encoding manifests at all. So the page
-    // says "most" and "a few carry none", never that all carry attestations.
+    // rulespec-gh, -ug, -zm and -et, 32 of the 36 have one with backend
+    // "manual" (axiom-encode sign-applied-files), and four have none
+    // covering them: zm act-2018-19 and act-2021-45, which act-2024-24
+    // imports; gh act-1007's Fifth Schedule personal reliefs, which act-896's
+    // fifth schedule imports; and gh act-1111's First Schedule, whose one
+    // manifest lists only its .test.yaml. rulespec-rw has no encoding
+    // manifests at all. So the page says "most" and "a few carry none",
+    // never that all carry attestations.
     expect(text).toMatch(
       /the compared rule modules are not encoder output \(none carries an encoder apply record: Rwanda's carry no encoding record, and in the other four countries most carry manual attestations and a few carry none\)/,
     );
