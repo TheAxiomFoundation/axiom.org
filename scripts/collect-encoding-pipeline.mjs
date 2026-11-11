@@ -105,6 +105,7 @@ import {
   outsideModules,
   parseDiagnostics,
   parseRunJobs,
+  DISPATCH_RECORD_JOB_RE,
   stepChecks,
   parseVersion,
   prCitation,
@@ -857,7 +858,7 @@ async function jobsDetail(runId) {
     `repos/${GITHUB_ORG}/${ENCODE_REPO}/actions/runs/${runId}/jobs?per_page=50`,
   );
   for (const job of body.jobs ?? []) {
-    if (job.conclusion !== "failure") continue;
+    if (job.conclusion !== "failure" || DISPATCH_RECORD_JOB_RE.test(job.name)) continue;
     const step = (job.steps ?? []).find((s) => s.conclusion === "failure");
     return {
       source: "jobs",
@@ -881,7 +882,7 @@ async function logError(runId) {
     const body = await githubJson(
       `repos/${GITHUB_ORG}/${ENCODE_REPO}/actions/runs/${runId}/jobs?per_page=50`,
     );
-    const job = (body.jobs ?? []).find((j) => j.conclusion === "failure");
+    const job = (body.jobs ?? []).find((j) => j.conclusion === "failure" && !DISPATCH_RECORD_JOB_RE.test(j.name));
     if (!job) return null;
     const res = await github(`repos/${GITHUB_ORG}/${ENCODE_REPO}/actions/jobs/${job.id}/logs`);
     return checkErrorFromLog(await res.text());

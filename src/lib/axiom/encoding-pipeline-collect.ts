@@ -1548,8 +1548,8 @@ export function parseRunJobs(jobs: RunJob[], conclusion: string | null): RunDeta
   };
 }
 
-/** The job that records what a dispatch asked for (axiom-encode's dispatch record). */
-const DISPATCH_RECORD_JOB_RE = /^Record dispatch$/i;
+/** The job that records what a dispatch asked for (axiom-encode's dispatch record): telemetry, never the cause of a failure. */
+export const DISPATCH_RECORD_JOB_RE = /^Record dispatch$/i;
 /** Its upload step repeats the record's main fields in its name. */
 const DISPATCH_TAG_PREFIX = "Upload dispatch record: ";
 const DISPATCH_KINDS = new Set(["promotion", "repair", "queue", "adhoc"]);
@@ -1650,7 +1650,8 @@ export function runDetailLookups(
   // learn whether it was asked for one (its jobs always answer yes or no).
   const prUnread = (run: WorkflowRun) => {
     const known = previous.get(String(run.id));
-    return prRequest && run.conclusion === "success" && !!known && known.pr_number == null && known.pr_requested == null;
+    // A run its jobs showed skipped encoded nothing: it has no answer, and is not read again.
+    return prRequest && run.conclusion === "success" && !!known && known.run_conclusion !== "skipped" && known.pr_number == null && known.pr_requested == null;
   };
   const storable = (run: WorkflowRun) => !!parseRunTitle(run.display_title) || previous.has(String(run.id));
   return runs

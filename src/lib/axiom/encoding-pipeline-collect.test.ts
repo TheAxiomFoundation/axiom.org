@@ -1035,6 +1035,9 @@ describe("run details", () => {
     const stored = new Map([["501", { jobs_checked_at: fresh.jobs_checked_at, run_conclusion: "skipped", dispatch_record: fresh.dispatch_record }]]);
     const [later] = buildAttempts(inputs({ runs: [passed], previous: stored }));
     expect(later).toMatchObject({ run_conclusion: "skipped", dispatch_record: { kind: "adhoc" } });
+    // Its jobs are not read again to learn whether it asked for a PR: it has no answer.
+    expect(runDetailLookups([passed], stored, 10, { prRequest: true })).toEqual([]);
+    expect(runDetailLookups([passed], new Map([["501", { jobs_checked_at: fresh.jobs_checked_at, run_conclusion: "success" }]]), 10, { prRequest: true })).toHaveLength(1);
     // A run that passed keeps its conclusion.
     const [kept] = buildAttempts(inputs({ runs: [passed], previous: new Map([["501", { jobs_checked_at: fresh.jobs_checked_at, run_conclusion: "success" }]]) }));
     expect(kept.run_conclusion).toBe("success");
