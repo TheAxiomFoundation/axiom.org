@@ -513,6 +513,7 @@ function prEvents(
     }
     return;
   }
+  const mergeOracle = attempt.oracle_status ?? (attempt.index_status === "indexed" ? "none" : null);
   // The merged module files: the accepted-module count keys on them.
   ev({
     station: "merge",
@@ -521,8 +522,9 @@ function prEvents(
     outcome: "ok",
     duration_ms: spanMs(mergeEnter, mergedAt),
     ref_url: attempt.pr_via_url ?? prUrl,
-    // oracle: the comparison state of the merged module; "none" when no report compares it and no ledger lists it.
-    attrs: { repo: attempt.pr_repo, modules: attempt.module_paths ?? [], oracle: attempt.oracle_status ?? "none", ...(carried ? { carried_by: attempt.pr_via_number ?? null } : {}) },
+    // oracle: the comparison state of the merged module; "none" when it is indexed, no report compares it and
+    // no ledger lists it. Before the index the state is not computed: no attr.
+    attrs: { repo: attempt.pr_repo, modules: attempt.module_paths ?? [], ...(mergeOracle ? { oracle: mergeOracle } : {}), ...(carried ? { carried_by: attempt.pr_via_number ?? null } : {}) },
   });
 
   // Index (the rulespec_files sync) and tests on main both start at the

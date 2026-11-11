@@ -737,6 +737,10 @@ describe("encodeRecord", () => {
     });
     expect(encodeRecord(pipelineAttempt({ run_status: "in_progress", run_conclusion: null, finished_at: null })).state).toBe("not_yet");
     expect(encodeRecord(outsideAttempt()).state).toBe("outside");
+    // The pre-encode gate blocks before a model call, also when the encode step has a duration.
+    expect(
+      encodeRecord(pipelineAttempt({ ...steps, encode_started_at: "2026-10-12T08:00:00Z", encode_seconds: 12, failed_step: "encode_apply", encoder_status: "pre_encode_blocked" })).state
+    ).toBe("no_encode");
   });
 
   it("puts the state on the run row and the note on its timeline", () => {

@@ -198,6 +198,10 @@ export function encodeRecord(attempt: PipelineAttempt): EncodeRecord {
   if (attempt.run_status !== "completed" && attemptSource(attempt) === "dispatch") {
     return { state: "not_yet", label: "No try recorded yet: the run is still going" };
   }
+  // The encoder's pre-encode gate blocks before any model call.
+  if (attempt.encoder_status === "pre_encode_blocked") {
+    return { state: "no_encode", label: "No encode ran: the target gate blocked the run before the first model call" };
+  }
   const failedStation = attempt.failed_step ? failedStepStation(attempt.failed_step) : null;
   if (!reached || failedStation === "setup") {
     const why = cancelledBeforeEncode(attempt)

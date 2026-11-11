@@ -1856,6 +1856,9 @@ export interface EncodeState {
 
 type StateVisit = Pick<Visit, "station" | "outcome" | "actor" | "rule_id">;
 
+/** The stations a run passes before its encode step. */
+const BEFORE_ENCODE = new Set(["dispatch", "approval", "setup", "target_gate"]);
+
 /**
  * Whether a case's encode step ran, and what it recorded. A run with no
  * tries and no cost is one of three things: the encoder kept no try record
@@ -1872,7 +1875,11 @@ export function encodeState(visits: StateVisit[]): EncodeState {
   const stop = visits.find((v) => v.outcome === "fail" || v.outcome === "cancel");
   if (stop) {
     const how = stop.outcome === "cancel" ? "cancelled" : "failed";
-    return { state: "no_encode", label: `No encode ran: ${how} at ${stationLabel(stop.station)}${stop.rule_id ? ` (${stop.rule_id})` : ""}` };
+    const where = `${how} at ${stationLabel(stop.station)}${stop.rule_id ? ` (${stop.rule_id})` : ""}`;
+    // Only a stop before the encode step shows that no encode ran; a later stop has no try record to say.
+    return BEFORE_ENCODE.has(stop.station)
+      ? { state: "no_encode", label: `No encode ran: ${where}` }
+      : { state: "no_try_record", label: `No try recorded: the run ${where}, and the encoder synced no try, model, or cost` };
   }
   if (visits.some((v) => v.outcome === "open")) return { state: "not_yet", label: "Not at the encode step yet" };
   return { state: "no_encode", label: "No encode ran: the run recorded no encode step" };
@@ -1889,13 +1896,17 @@ export function caseOracle(visits: Array<Pick<Visit, "station" | "outcome"> & { 
   const merge = visits.find((v) => v.station === "merge" && v.outcome === "ok");
   if (!merge) return null;
   const oracle = visits.find((v) => v.station === "oracle");
-  if (oracle) return { state: "compared", label: "Compared by an oracle (see the oracle station)" };
+  if (oracle) {
+    return oracle.outcome === "open"
+      ? { state: "compared", label: "An oracle report covers it, and the report is older than the module (stale)" }
+      : { state: "compared", label: "Compared by an oracle (see the oracle station)" };
+  }
   if (merge.oracle === "pending") {
     return { state: "pending", label: "Pending: no oracle compares it yet (listed in oracle-coverage-pending.yaml)" };
   }
   if (merge.oracle === "none") return { state: "none", label: "No oracle compares this module" };
   // A verdict on the merge with no oracle visit: the tests on main have not cleared, so the comparison is not shown yet.
-  if (merge.oracle) return { state: "compared", label: `Oracle: ${merge.oracle} (shown once the tests on main clear)` };
+  if (merge.oracle) return { state: "compared", label: `An oracle report covers it (${merge.oracle}); the oracle station shows it once the tests on main pass` };
   return null;
 }
 

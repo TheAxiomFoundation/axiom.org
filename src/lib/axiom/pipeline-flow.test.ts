@@ -519,6 +519,10 @@ describe("what a run recorded: typed checks, no encode, and the oracle state", (
     expect(state("5").label).toMatch(/^No try recorded: the encode step ran/);
     expect(state("6")).toEqual({ state: "not_yet", label: "Not at the encode step yet" });
     expect(encodeState([{ station: "merge", outcome: "ok", actor: null, rule_id: null }]).state).toBe("outside");
+    // A run that stopped at or after the encode step, with no generate visit: no try record, not "no encode".
+    const late = attemptEvents(pipelineAttempt({ id: "20", failed_step: "Queue protected signed RuleSpec re-encode / Sign artifact" }));
+    expect(caseDetail(late, "20")!.encode.state).toBe("no_try_record");
+    expect(caseDetail(late, "20")!.encode.label).toMatch(/^No try recorded: the run failed at /);
   });
 
   it("gives a merged case an oracle state: compared, pending, or none", () => {
@@ -532,6 +536,11 @@ describe("what a run recorded: typed checks, no encode, and the oracle state", (
     expect(caseDetail(events, "8")!.end).toBe("landed");
     // A merge event from before the state was recorded says nothing.
     expect(caseOracle([{ station: "merge", outcome: "ok" }])).toBeNull();
+    // Merged and not indexed yet: the state is not computed, so the case says nothing.
+    const unindexed = attemptEvents(mergedAttempt({ id: "21", tries: [tryOf(1, true)] }));
+    expect(caseDetail(unindexed, "21")!.oracle).toBeNull();
+    // A stale report covers the module: it says stale, not compared.
+    expect(caseOracle([{ station: "merge", outcome: "ok", oracle: "stale" }, { station: "oracle", outcome: "open" }])!.label).toContain("stale");
   });
 
   it("counts all three in what the numbers can see", () => {
