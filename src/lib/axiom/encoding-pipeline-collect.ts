@@ -102,8 +102,21 @@ export interface ManifestPr {
   requestedReviewers?: string[];
   mergeCommit?: string | null;
   /** For a PR merged into a side branch, once looked up: that branch's own
-   *  PR into the default branch that carries it there, or null (see viaPrFor). */
+   *  PR into the default branch that carries it there, or null (see viaPrFor).
+   *  For a PR closed without a merge: the PR that carried its module to the
+   *  default branch in its place (a merge train), or null (see carrierPrFor). */
   via?: BranchPr | null;
+  /** The head commit and what GitHub says about merging it (see prGate). */
+  headSha?: string | null;
+  mergeState?: string | null;
+  commitCount?: number | null;
+  checksStartedAt?: string | null;
+  checksFinishedAt?: string | null;
+  approvedAt?: string | null;
+  approvalOnHead?: boolean | null;
+  approvalsDismissed?: number | null;
+  /** Pull requests that mention this one (GitHub cross-references). */
+  crossRefs?: CrossRefPr[];
   /** For one module of a PR merged outside the pipeline: the module's
    *  jurisdiction (a manifest PR's comes from its title) and the PR's author. */
   jurisdiction?: string | null;
@@ -119,6 +132,120 @@ export interface BranchPr {
   createdAt: string;
   mergedAt: string | null;
   mergeCommit: string | null;
+}
+
+/** A pull request that mentions another one, with where it merged. */
+export interface CrossRefPr extends BranchPr {
+  repo: string;
+  baseRefName: string;
+  defaultBranch: string | null;
+}
+
+/** The part of a GraphQL PullRequest node prGate reads. */
+export interface PrGateNode {
+  state?: string | null;
+  headRefOid?: string | null;
+  mergeStateStatus?: string | null;
+  commits?: {
+    totalCount?: number | null;
+    nodes?: Array<{
+      commit?: {
+        statusCheckRollup?: {
+          contexts?: {
+            nodes?: Array<{ __typename?: string; status?: string | null; startedAt?: string | null; completedAt?: string | null } | null> | null;
+          } | null;
+        } | null;
+      } | null;
+    } | null> | null;
+  } | null;
+  reviews?: { nodes?: Array<{ state?: string | null; submittedAt?: string | null; commit?: { oid?: string | null } | null } | null> | null } | null;
+  timelineItems?: {
+    nodes?: Array<{
+      source?: {
+        __typename?: string;
+        number?: number;
+        url?: string;
+        state?: string;
+        isDraft?: boolean;
+        createdAt?: string;
+        mergedAt?: string | null;
+        baseRefName?: string;
+        mergeCommit?: { oid?: string | null } | null;
+        repository?: { name?: string; defaultBranchRef?: { name?: string } | null } | null;
+      } | null;
+    } | null> | null;
+  } | null;
+}
+
+export type PrGate = Required<
+  Pick<
+    ManifestPr,
+    | "headSha"
+    | "mergeState"
+    | "commitCount"
+    | "checksStartedAt"
+    | "checksFinishedAt"
+    | "approvedAt"
+    | "approvalOnHead"
+    | "approvalsDismissed"
+    | "crossRefs"
+  >
+>;
+
+/**
+ * What stands between a PR and its merge, from its GraphQL node: the head
+ * commit, GitHub's merge state (only an open PR has one), how many commits
+ * it holds, when the head commit's check runs started and finished (no
+ * finish while one still runs), the latest approval and whether it is on
+ * the head commit, how many reviews were dismissed, and the PRs that
+ * mention it.
+ */
+export function prGate(node: PrGateNode): PrGate {
+  const head = node.headRefOid ?? null;
+  const runs = (node.commits?.nodes?.[0]?.commit?.statusCheckRollup?.contexts?.nodes ?? []).filter(
+    (context): context is NonNullable<typeof context> => context?.__typename === "CheckRun"
+  );
+  const starts = runs.map((run) => run.startedAt).filter((at): at is string => !!at).sort();
+  const running = runs.some((run) => !run.completedAt || (run.status != null && run.status !== "COMPLETED"));
+  const ends = runs.map((run) => run.completedAt).filter((at): at is string => !!at).sort();
+  const reviews = (node.reviews?.nodes ?? []).filter((review): review is NonNullable<typeof review> => !!review);
+  const approval = reviews
+    .filter((review) => review.state === "APPROVED" && review.submittedAt)
+    .sort((a, b) => a.submittedAt!.localeCompare(b.submittedAt!))
+    .pop();
+  const crossRefs: CrossRefPr[] = [];
+  const seen = new Set<string>();
+  for (const item of node.timelineItems?.nodes ?? []) {
+    const source = item?.source;
+    if (source?.__typename !== "PullRequest" || !source.number || !source.repository?.name || !source.createdAt) continue;
+    const key = `${source.repository.name}#${source.number}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    crossRefs.push({
+      repo: source.repository.name,
+      number: source.number,
+      url: source.url ?? "",
+      state: source.state === "MERGED" ? "MERGED" : source.state === "CLOSED" ? "CLOSED" : "OPEN",
+      isDraft: !!source.isDraft,
+      createdAt: source.createdAt,
+      mergedAt: source.mergedAt ?? null,
+      mergeCommit: source.mergeCommit?.oid ?? null,
+      baseRefName: source.baseRefName ?? "",
+      defaultBranch: source.repository.defaultBranchRef?.name ?? null,
+    });
+  }
+  const mergeState = node.state === "OPEN" && node.mergeStateStatus && node.mergeStateStatus !== "UNKNOWN" ? node.mergeStateStatus : null;
+  return {
+    headSha: head,
+    mergeState,
+    commitCount: node.commits?.totalCount ?? null,
+    checksStartedAt: starts[0] ?? null,
+    checksFinishedAt: runs.length && !running ? ends[ends.length - 1] ?? null : null,
+    approvedAt: approval?.submittedAt ?? null,
+    approvalOnHead: approval ? (head && approval.commit?.oid ? approval.commit.oid === head : null) : null,
+    approvalsDismissed: reviews.filter((review) => review.state === "DISMISSED").length,
+    crossRefs,
+  };
 }
 
 export interface FailedJob {
@@ -648,10 +775,74 @@ export function viaPrFor(pr: ManifestPr, branchPrs: BranchPr[]): BranchPr | null
  * into it, or the merge of the side branch's own PR. Null until it has.
  */
 export function mainMerge(pr: ManifestPr): { mergedAt: string; mergeCommit: string | null } | null {
+  if (pr.state === "CLOSED") {
+    // Closed without a merge: a merge train may have carried its module (see carrierPrFor).
+    const carrier = pr.via;
+    return carrier?.state === "MERGED" && carrier.mergedAt ? { mergedAt: carrier.mergedAt, mergeCommit: carrier.mergeCommit } : null;
+  }
   if (pr.state !== "MERGED" || !pr.mergedAt) return null;
   if (!mergedOffDefault(pr)) return { mergedAt: pr.mergedAt, mergeCommit: pr.mergeCommit ?? null };
   const via = pr.via;
   return via?.state === "MERGED" && via.mergedAt ? { mergedAt: via.mergedAt, mergeCommit: via.mergeCommit } : null;
+}
+
+/** What says which merged PR holds which module files, for carrierPrFor. */
+export interface CarrierIndex {
+  /** Module paths per merged PR ("repo#number"): read this pass, or stored as outside rows. */
+  files: Map<string, Set<string>>;
+  /** The carrier an earlier pass recorded per closed PR ("repo#number"). */
+  recorded: Map<string, number>;
+}
+
+export function carrierIndex(merged: MergedPr[], previous: Map<string, Partial<PipelineAttempt>>): CarrierIndex {
+  const files = new Map<string, Set<string>>();
+  const add = (key: string, path: string) => files.set(key, (files.get(key) ?? new Set<string>()).add(path));
+  for (const pr of merged) for (const path of pr.files ?? []) add(prKey(pr.repo, pr.number), path);
+  const recorded = new Map<string, number>();
+  for (const row of previous.values()) {
+    const parts = row.id ? outsideIdParts(row.id) : null;
+    if (parts) add(prKey(parts.repo, parts.number), parts.path);
+    else if (row.pr_repo && row.pr_number != null && row.pr_via_number != null && row.pr_via_state === "merged") {
+      recorded.set(prKey(row.pr_repo, Number(row.pr_number)), Number(row.pr_via_number));
+    }
+  }
+  return { files, recorded };
+}
+
+/**
+ * The PR that carried a closed manifest PR's module to the default branch
+ * (a merge train that replaces several PRs): one that mentions the closed
+ * PR, merged into the default branch of the same repo after the PR was
+ * opened, and holds every module file of it. The files come from this
+ * pass's read, from the train's stored outside rows, or from the link an
+ * earlier pass recorded (its outside rows are dropped once linked). A
+ * mention alone is not enough: a PR can name another without replacing it.
+ */
+export function carrierPrFor(pr: ManifestPr, index: CarrierIndex): BranchPr | null {
+  if (pr.state !== "CLOSED" || !pr.crossRefs?.length) return null;
+  const modules = rulespecModulePaths(pr.files);
+  if (modules.length === 0) return null;
+  const recorded = index.recorded.get(prKey(pr.repo, pr.number));
+  const carriers = pr.crossRefs
+    .filter(
+      (ref) =>
+        ref.repo === pr.repo &&
+        ref.state === "MERGED" &&
+        !!ref.mergedAt &&
+        ref.mergedAt >= pr.createdAt &&
+        !!ref.defaultBranch &&
+        ref.baseRefName === ref.defaultBranch
+    )
+    .filter((ref) => {
+      if (ref.number === recorded) return true;
+      const held = index.files.get(prKey(ref.repo, ref.number));
+      return !!held && modules.every((path) => held.has(path));
+    })
+    .sort((a, b) => a.mergedAt!.localeCompare(b.mergedAt!));
+  const carrier = carriers[0];
+  if (!carrier) return null;
+  const { number, url, state, isDraft, createdAt, mergedAt, mergeCommit } = carrier;
+  return { number, url, state, isDraft, createdAt, mergedAt, mergeCommit };
 }
 
 function branchPrState(pr: BranchPr): NonNullable<PipelineAttempt["pr_via_state"]> {
@@ -1178,6 +1369,9 @@ export interface RunDetail {
   cancelStage: PipelineAttempt["cancel_stage"];
   /** The encode job's parts in seconds (see jobPhases); null for a part that did not run. */
   phases: JobPhases;
+  /** For a run that passed: whether it was asked to open a PR (false when
+   *  its open-PR step was skipped: open_pr false). Null for any other run. */
+  prRequested?: boolean | null;
 }
 
 export interface JobPhases {
@@ -1207,6 +1401,9 @@ const ENCODE_STEP_RE = /^Encode, review, validate, and apply$/i;
 const LANE_STEP_RE = /^Apply prepared signature \d+$/i;
 /** Steps outside the three parts: bookkeeping, failure bundles, and cleanup. */
 const UNTIMED_STEP_RE = /^(?:Post |Complete job$|Summarize model spend$|(?:Package|Upload) failed re-encode diagnostics$)/i;
+
+/** The step that pushes the lane branch and opens the signed manifest PR. */
+const OPEN_PR_STEP_RE = /open (?:a )?draft pull request/i;
 
 const seconds = (from: string, to: string) =>
   Math.max(0, Math.round((Date.parse(to) - Date.parse(from)) / 1000));
@@ -1267,7 +1464,11 @@ export function parseRunJobs(jobs: RunJob[], conclusion: string | null): RunDeta
   if (conclusion === "cancelled") {
     cancelStage = !encode ? "before_job" : ran.length === 0 ? "approval" : "running";
   }
-  return { encodeStartedAt: starts[0] ?? null, cancelStage, phases: jobPhases(encode?.steps ?? []) };
+  // A run that passed with its open-PR step skipped was dispatched with
+  // open_pr false: it ends at its signed artifact by design.
+  const openPr = (encode?.steps ?? []).find((step) => OPEN_PR_STEP_RE.test(step.name ?? ""));
+  const prRequested = conclusion === "success" ? openPr?.conclusion !== "skipped" : null;
+  return { encodeStartedAt: starts[0] ?? null, cancelStage, phases: jobPhases(encode?.steps ?? []), prRequested };
 }
 
 /** The attempt fields a run's jobs, read at `readAt`, fill in. */
@@ -1280,6 +1481,7 @@ export function runDetailFields(detail: RunDetail, readAt: string): Partial<Pipe
     encode_seconds: detail.phases.encode,
     publish_seconds: detail.phases.publish,
     steps_read_at: readAt,
+    ...(detail.prRequested !== undefined ? { pr_requested: detail.prRequested } : {}),
   };
 }
 
@@ -1294,13 +1496,19 @@ export function runDetailLookups(
   runs: WorkflowRun[],
   previous: Map<string, Partial<PipelineAttempt>>,
   limit: number,
-  { steps = false }: { steps?: boolean } = {}
+  { steps = false, prRequest = false }: { steps?: boolean; prRequest?: boolean } = {}
 ): WorkflowRun[] {
   const unread = (run: WorkflowRun) => !previous.get(String(run.id))?.jobs_checked_at;
   const stepsUnread = (run: WorkflowRun) => steps && !previous.get(String(run.id))?.steps_read_at;
+  // With `prRequest`, a run that passed and has no PR is read once more to
+  // learn whether it was asked for one (its jobs always answer yes or no).
+  const prUnread = (run: WorkflowRun) => {
+    const known = previous.get(String(run.id));
+    return prRequest && run.conclusion === "success" && !!known && known.pr_number == null && known.pr_requested == null;
+  };
   const storable = (run: WorkflowRun) => !!parseRunTitle(run.display_title) || previous.has(String(run.id));
   return runs
-    .filter((run) => run.status === "completed" && storable(run) && (unread(run) || stepsUnread(run)))
+    .filter((run) => run.status === "completed" && storable(run) && (unread(run) || stepsUnread(run) || prUnread(run)))
     .sort(
       (a, b) =>
         Number(unread(b)) - Number(unread(a)) ||
@@ -1578,11 +1786,23 @@ function withPr(
       : {}),
     ...(pr.mergeCommit !== undefined ? { pr_merge_commit: pr.mergeCommit } : {}),
     ...prCheckError(pr, state, context.checkErrors, previous),
-    ...(pr.via !== undefined ? viaFields(state === "merged" && targetsDefault === false ? pr.via : null) : {}),
+    ...(pr.via !== undefined
+      ? viaFields(
+          (state === "merged" && targetsDefault === false) || (state === "closed" && pr.via?.state === "MERGED") ? pr.via : null
+        )
+      : {}),
+    ...(pr.headSha !== undefined ? { pr_head_sha: pr.headSha } : {}),
+    ...(pr.mergeState !== undefined ? { pr_merge_state: pr.mergeState } : {}),
+    ...(pr.commitCount !== undefined ? { pr_commit_count: pr.commitCount } : {}),
+    ...(pr.checksStartedAt !== undefined ? { pr_checks_started_at: pr.checksStartedAt } : {}),
+    ...(pr.checksFinishedAt !== undefined ? { pr_checks_finished_at: pr.checksFinishedAt } : {}),
+    ...(pr.approvedAt !== undefined ? { pr_approved_at: pr.approvedAt } : {}),
+    ...(pr.approvalOnHead !== undefined ? { pr_approval_on_head: pr.approvalOnHead } : {}),
+    ...(pr.approvalsDismissed !== undefined ? { pr_approvals_dismissed: pr.approvalsDismissed } : {}),
   };
   // From here on, the merge into the default branch: the PR's own, or its side branch's.
   const main = mainMerge(pr);
-  if (state !== "merged" || !main) return attempt;
+  if (!main) return attempt;
   const { mergedAt, mergeCommit } = main;
 
   // The merge commit's own validation on main: the first tests the merge
@@ -1835,6 +2055,7 @@ export function buildAttempts(inputs: CollectInputs): PipelineAttempt[] {
       attempt.encode_started_at = previous.encode_started_at ?? null;
       attempt.cancel_stage = previous.cancel_stage ?? null;
       attempt.jobs_checked_at = previous.jobs_checked_at;
+      if (previous.pr_requested != null) attempt.pr_requested = previous.pr_requested;
       if (previous.steps_read_at) {
         attempt.setup_seconds = previous.setup_seconds ?? null;
         attempt.encode_seconds = previous.encode_seconds ?? null;

@@ -164,6 +164,129 @@ describe("attemptEvents", () => {
     );
     const last = events.at(-1)!;
     expect([last.station, last.kind, last.rule_id]).toEqual(["pr_checks", "fail", "check:validate / validate (dk)"]);
+    // The PR is still open: the event says so, for the "waiting now" view.
+    expect(last.attrs).toMatchObject({ pr_open: true });
+  });
+
+  const openPr = (overrides: Parameters<typeof pipelineAttempt>[0] = {}) =>
+    pipelineAttempt({
+      run_conclusion: "success",
+      encode_seconds: 60,
+      pr_url: "https://github.com/x/pull/1",
+      pr_repo: "rulespec-us",
+      pr_number: 1,
+      pr_state: "open",
+      pr_created_at: "2026-09-20T10:29:00Z",
+      pr_checks: "success",
+      pr_review: "none",
+      ...overrides,
+    });
+  const last = (events: ReturnType<typeof attemptEvents>) => events.at(-1)!;
+
+  it("ends a passed run at its artifact when the dispatch asked for no PR", () => {
+    const end = last(attemptEvents(pipelineAttempt({ run_conclusion: "success", encode_seconds: 60, pr_requested: false })));
+    expect([end.station, end.kind, end.rule_id]).toEqual(["publish", "cancel", "publish:artifact-only"]);
+    // Asked for one and none found: still the collector's no-PR failure.
+    const lost = last(attemptEvents(pipelineAttempt({ run_conclusion: "success", encode_seconds: 60, pr_requested: true })));
+    expect([lost.station, lost.kind]).toEqual(["publish", "fail"]);
+    expect(lost.rule_id).not.toBe("publish:artifact-only");
+  });
+
+  it("holds an open PR at its checks while CI runs, and says how many branch updates restarted it", () => {
+    const end = last(attemptEvents(openPr({ pr_checks: "pending", pr_commit_count: 3, pr_checks_started_at: "2026-09-20T15:00:00Z", pr_merge_state: "BLOCKED" })));
+    expect([end.station, end.kind, end.rule_id, end.at]).toEqual(["pr_checks", "wait", "check:pending", "2026-09-20T15:00:00Z"]);
+    expect(end.message).toBe("CI is running again after 2 branch updates");
+    expect(end.attrs).toMatchObject({ branch_updates: 2, merge_state: "BLOCKED" });
+    expect(last(attemptEvents(openPr({ pr_checks: "pending" }))).message ?? null).toBeNull();
+  });
+
+  it("times the checks to the head commit's last check, and the review from there", () => {
+    const events = attemptEvents(
+      mergedAttempt({ pr_commit_count: 2, pr_checks_started_at: "2026-09-20T12:00:00Z", pr_checks_finished_at: "2026-09-20T16:29:00Z", pr_approved_at: "2026-09-21T08:00:00Z", pr_approval_on_head: true })
+    );
+    const checks = events.find((e) => e.station === "pr_checks" && e.kind === "leave")!;
+    expect(checks.duration_ms).toBe(6 * 3_600_000);
+    expect(checks.attrs).toMatchObject({ branch_updates: 1, last_ci_ms: 269 * 60_000 });
+    const review = events.find((e) => e.station === "review" && e.kind === "leave")!;
+    expect(review.duration_ms).toBe(Date.parse("2026-09-21T09:00:00Z") - Date.parse("2026-09-20T16:29:00Z"));
+    expect(review.attrs).toMatchObject({ approved_at: "2026-09-21T08:00:00Z", approval_on_head: true });
+    // A head check that finished after the merge does not time the checks.
+    const late = attemptEvents(mergedAttempt({ pr_checks_finished_at: "2026-09-22T00:00:00Z" }));
+    const untimed = late.find((e) => e.station === "pr_checks" && e.kind === "leave")!;
+    expect(untimed.duration_ms ?? null).toBeNull();
+    expect(untimed.attrs).toMatchObject({ untimed: true });
+    // Rows from before the columns exist stay untimed.
+    expect(attemptEvents(mergedAttempt()).find((e) => e.station === "pr_checks" && e.kind === "leave")!.attrs).toMatchObject({ untimed: true });
+  });
+
+  it("says why an open PR with passing checks is not merged: one reason, the first that holds", () => {
+    const why = (overrides: Parameters<typeof pipelineAttempt>[0]) => {
+      const end = last(attemptEvents(openPr(overrides)));
+      return [end.station, end.kind, end.rule_id];
+    };
+    const approved = { pr_review: "approved" as const, pr_approved_at: "2026-09-20T12:00:00Z" };
+    expect(why({ ...approved, pr_approval_on_head: false, pr_merge_state: "BEHIND" })).toEqual(["review", "wait", "merge:behind-base"]);
+    expect(why({ ...approved, pr_approval_on_head: false, pr_merge_state: "BLOCKED" })).toEqual(["review", "wait", "review:approval-not-on-head"]);
+    expect(why({ pr_approvals_dismissed: 1, pr_merge_state: "BLOCKED" })).toEqual(["review", "wait", "review:approval-dismissed"]);
+    expect(why({ pr_merge_state: "DIRTY" })).toEqual(["review", "wait", "merge:conflict"]);
+    expect(why({ ...approved, pr_approval_on_head: true, pr_merge_state: "CLEAN" })).toEqual(["review", "wait", "review:approved-not-merged"]);
+    expect(why({ pr_requested_reviewers: ["MaxGhenis"] })).toEqual(["review", "wait", "review:awaiting-reviewer"]);
+    expect(why({ pr_state: "draft", pr_merge_state: "BLOCKED" })).toEqual(["review", "wait", "review:draft"]);
+    expect(why({ pr_review: "changes_requested", pr_merge_state: "BEHIND" })).toEqual(["review", "wait", "review:changes-requested"]);
+    expect(why({ pr_requested_reviewers: [], pr_merge_state: "CLEAN" })).toEqual(["review", "wait", "review:no-reviewer-requested"]);
+    // Nothing known: the review stays open with no stated reason.
+    expect(why({})).toEqual(["review", "enter", null]);
+    const behind = last(attemptEvents(openPr({ pr_merge_state: "BEHIND", pr_commit_count: 4 })));
+    expect(behind.message).toContain("3 branch updates so far");
+  });
+
+  it("follows a closed PR that a merge train carried to main, instead of ending it as closed", () => {
+    const carried = pipelineAttempt({
+      run_conclusion: "success",
+      encode_seconds: 60,
+      pr_repo: "rulespec-us",
+      pr_number: 2062,
+      pr_url: "https://github.com/x/pull/2062",
+      pr_state: "closed",
+      pr_targets_default: true,
+      pr_created_at: "2026-09-20T10:29:00Z",
+      pr_closed_at: "2026-09-22T09:05:00Z",
+      pr_checks: "failure",
+      pr_failed_checks: ["validate / validate (us)"],
+      pr_review: "none",
+      pr_via_number: 2154,
+      pr_via_url: "https://github.com/x/pull/2154",
+      pr_via_state: "merged",
+      pr_via_merged_at: "2026-09-22T09:00:00Z",
+      pr_via_merge_commit: "train1",
+      module_paths: ["us/statutes/7/2017/a.yaml"],
+      tests_status: "fail",
+      tests_first_status: "fail",
+    });
+    const events = attemptEvents(carried);
+    expect(events.some((e) => e.rule_id === "review:closed-unmerged")).toBe(false);
+    const review = events.find((e) => e.station === "review" && e.kind === "leave")!;
+    expect([review.outcome, review.at, review.attrs?.carried_by]).toEqual(["carried", "2026-09-22T09:00:00Z", 2154]);
+    const merge = events.find((e) => e.station === "merge" && e.kind === "leave")!;
+    expect(merge.at).toBe("2026-09-22T09:00:00Z");
+    const tests = events.find((e) => e.station === "tests" && e.kind === "fail")!;
+    expect(tests.rule_id).toBe("tests:failed-at-merge");
+    // The same PR with no carrier still ends closed.
+    const plain = attemptEvents({ ...carried, pr_via_number: null, pr_via_state: null, pr_via_merged_at: null, pr_checks: "success" });
+    expect(last(plain).rule_id).toBe("review:closed-unmerged");
+  });
+
+  it("separates a module that failed at the merge from one that broke later, and one with no verdict", () => {
+    const rule = (overrides: Parameters<typeof mergedAttempt>[0]) => {
+      const e = attemptEvents(mergedAttempt(overrides)).find((x) => x.station === "tests" && x.kind !== "enter")!;
+      return [e.kind, e.rule_id];
+    };
+    expect(rule({ tests_status: "fail", tests_first_status: "fail" })).toEqual(["fail", "tests:failed-at-merge"]);
+    expect(rule({ tests_status: "fail", tests_first_status: "pass" })).toEqual(["fail", "tests:broke-after-merge"]);
+    expect(rule({ tests_status: "fail" })).toEqual(["fail", "tests:fail-on-main"]);
+    expect(rule({})).toEqual(["wait", "tests:no-verdict"]);
+    const indexed = attemptEvents(mergedAttempt({ indexed_at: "2026-09-21T12:00:00Z", index_status: "indexed" }));
+    expect(indexed.find((e) => e.station === "compile" && e.kind === "wait")?.rule_id).toBe("compile:no-verdict");
   });
 
   it("starts an outside merge at its PR and a dependent module at its own tries", () => {

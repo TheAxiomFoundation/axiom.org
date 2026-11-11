@@ -101,6 +101,26 @@ export interface OpenItem {
   ref_url: string | null;
 }
 
+/** Cases open at one station for one reason, now. */
+export interface WaitingGroup {
+  station: string;
+  label: string;
+  /** The reason id of the wait event, or `wait:<station>` when no event says why. */
+  cause: string;
+  /** What the wait event says beside its reason id (the oldest case's text). */
+  detail: string | null;
+  /** The cases failed here and their PR is still open (not counted as WIP). */
+  failed?: boolean;
+  cases: number;
+  /** How many of them are dispatched runs (the rest merged without a run, or inside another run). */
+  runs: number;
+  over_sla: number;
+  /** When the oldest of them reached the station. */
+  since: string;
+  /** The oldest three. */
+  oldest: OpenItem[];
+}
+
 export interface StationStats {
   id: string;
   label: string;
@@ -208,6 +228,11 @@ export function causeOrigin(cause: string | null): CauseOrigin {
   return cause.includes(":") ? "validator" : "unknown";
 }
 
+/** A wait's reason id: the wait event's rule (before its text), or `wait:<station>` when no event says why. */
+export function waitCause(reason: string | null, station: string): string {
+  return reason ? reason.split(": ")[0] : `wait:${station}`;
+}
+
 /**
  * A plain sentence for the reasons the derivation names itself (cancels,
  * waits without a reason, a run with no PR). Every other reason is the id
@@ -233,6 +258,23 @@ export function causeText(cause: string): string | null {
   }
   if (cause === "gate:pre-encode-blocked") return "Stopped by the pre-encode gate";
   if (cause === "infra:no-pr") return "The run passed but opened no PR";
+  if (cause === "publish:artifact-only") return "Dispatched without a PR (open_pr false): ends at its signed artifact";
+  if (cause === "check:pending") return "PR checks still run";
+  if (cause === "check:failed-pr-open") return "Checks failed; the PR is still open";
+  if (cause === "review:no-reviewer-requested") return "Checks pass; no reviewer requested and no approval";
+  if (cause === "merge:behind-base") return "Behind the default branch: needs an update, which restarts CI";
+  if (cause === "merge:conflict") return "Conflicts with the default branch";
+  if (cause === "review:approval-not-on-head") return "Approved on an older commit than the head";
+  if (cause === "review:approval-dismissed") return "The approval was dismissed";
+  if (cause === "review:approved-not-merged") return "Approved, not merged yet";
+  if (cause === "review:draft") return "Still a draft: nobody marked it ready or asked for a review";
+  if (cause === "review:changes-requested") return "A reviewer asked for changes";
+  if (cause === "review:closed-unmerged") return "PR closed without a merge";
+  if (cause === "compile:no-verdict") return "The compile sweep has not reported on the module";
+  if (cause === "tests:no-verdict") return "No validation run on main has reported on the module";
+  if (cause === "tests:failed-at-merge") return "Failed the first validation run on main after the merge";
+  if (cause === "tests:broke-after-merge") return "Passed at the merge, fails on main now";
+  if (cause === "tests:fail-on-main") return "Fails validation on main (first run after the merge not read)";
   if (cause === "check:unknown") return "A check failed; the record does not name it";
   if (cause === "publish:in-host-run") return "Published inside another citation's run";
   if (cause === "review:awaiting-reviewer") return "No reviewer has looked at it yet";
@@ -464,6 +506,8 @@ export interface FlowModel {
   populations: Record<Population, number>;
   jurisdiction: string | null;
   stations: StationStats[];
+  /** Where cases wait now, over all time: per station and reason, most cases first. */
+  waiting: WaitingGroup[];
   edges: FlowEdge[];
   sinks: Array<{ id: SinkId; label: string; cases: number }>;
   ladder: IssueLadder;
@@ -550,6 +594,8 @@ interface Visit {
   readTime: boolean;
   /** The failure class the encoder recorded on the ending event (attrs.failure_class). */
   recordedClass: { class?: unknown; subclass?: unknown } | null;
+  /** Ended in a failure that leaves its PR open (attrs.pr_open): the case still holds a place in the line. */
+  prOpen: boolean;
 }
 
 interface Case {
@@ -618,7 +664,7 @@ function buildCases(events: PipelineEvent[]): Map<string, Case> {
         }
       }
       if (!visit) {
-        visit = { station: e.station, start: t, end: null, outcome: "open", try_no: e.try_no, rule_id: null, reason: null, ref_url: e.ref_url, duration_ms: null, waived: false, actor: e.actor, cost_usd: null, message: null, readTime: false, recordedClass: null };
+        visit = { station: e.station, start: t, end: null, outcome: "open", try_no: e.try_no, rule_id: null, reason: null, ref_url: e.ref_url, duration_ms: null, waived: false, actor: e.actor, cost_usd: null, message: null, readTime: false, recordedClass: null, prOpen: false };
         visits.push(visit);
         open.set(e.station, visit);
         if (e.kind !== "enter" && TERMINAL.has(e.kind)) unentered.set(e.station, visit);
@@ -641,6 +687,7 @@ function buildCases(events: PipelineEvent[]): Map<string, Case> {
         visit.readTime = Boolean(e.attrs?.read_time);
         const recorded = e.attrs?.failure_class;
         visit.recordedClass = recorded && typeof recorded === "object" ? (recorded as Visit["recordedClass"]) : null;
+        visit.prOpen = e.attrs?.pr_open === true;
         visit.duration_ms = e.duration_ms ?? (e.attrs?.untimed ? null : t - visit.start);
         visit.ref_url = e.ref_url ?? visit.ref_url;
         open.delete(e.station);
@@ -779,6 +826,7 @@ export function mineFlow(events: PipelineEvent[], options: FlowOptions): FlowMod
     }
   }
   const stations: StationStats[] = [];
+  const waiting: WaitingGroup[] = [];
   for (const id of stationIds) {
     const visitsIn: Array<{ c: Case; v: Visit }> = [];
     for (const c of windowCases) for (const v of c.visits) if (v.station === id) visitsIn.push({ c, v });
@@ -837,6 +885,53 @@ export function mineFlow(events: PipelineEvent[], options: FlowOptions): FlowMod
     const target = targets.get(id) ?? null;
     const slaMs = target?.sla_hours != null ? target.sla_hours * 3_600_000 : null;
     const overSla = slaMs == null ? 0 : openItems.filter((o) => now - Date.parse(o.since) > slaMs).length;
+    // The same open cases by why they wait (oldest first within a reason).
+    const byCause = new Map<string, OpenItem[]>();
+    for (const item of openItems) {
+      const cause = waitCause(item.reason, id);
+      byCause.set(cause, [...(byCause.get(cause) ?? []), item]);
+    }
+    // Failed, and the PR is still open: nothing moves until someone fixes or
+    // closes it. Not WIP (the visit ended), but it is where the case sits.
+    const blocked: OpenItem[] = [];
+    const blockedRules = new Map<string, number>();
+    for (const c of factory) {
+      const v = c.visits[c.visits.length - 1];
+      if (v?.station !== id || v.outcome !== "fail" || !v.prOpen) continue;
+      blocked.push({ case_id: c.id, citation: c.citation, since: new Date(v.start).toISOString(), reason: v.reason, ref_url: v.ref_url });
+      const rule = v.rule_id ?? "check:unknown";
+      blockedRules.set(rule, (blockedRules.get(rule) ?? 0) + 1);
+    }
+    if (blocked.length) {
+      blocked.sort((a, b) => a.since.localeCompare(b.since));
+      const top = [...blockedRules].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 3);
+      waiting.push({
+        station: id,
+        label: stationLabel(id),
+        cause: `${id === "pr_checks" ? "check" : id}:failed-pr-open`,
+        detail: top.map(([rule, count]) => `${count} × ${rule.replace(/^check:/, "")}`).join("; "),
+        failed: true,
+        cases: blocked.length,
+        runs: blocked.filter((o) => !isReleaseCase(o.case_id) && casePopulation(o.case_id) === "runs").length,
+        over_sla: slaMs == null ? 0 : blocked.filter((o) => now - Date.parse(o.since) > slaMs).length,
+        since: blocked[0].since,
+        oldest: blocked.slice(0, 3),
+      });
+    }
+    for (const [cause, items] of byCause) {
+      const text = items[0].reason?.startsWith(`${cause}: `) ? items[0].reason.slice(cause.length + 2) : null;
+      waiting.push({
+        station: id,
+        label: stationLabel(id),
+        cause,
+        detail: text,
+        cases: items.length,
+        runs: items.filter((o) => !isReleaseCase(o.case_id) && casePopulation(o.case_id) === "runs").length,
+        over_sla: slaMs == null ? 0 : items.filter((o) => now - Date.parse(o.since) > slaMs).length,
+        since: items[0].since,
+        oldest: items.slice(0, 3),
+      });
+    }
     const positions: number[] = [];
     for (const c of windowCases.length ? windowCases : factory) {
       const i = c.visits.findIndex((v) => v.station === id);
@@ -980,6 +1075,7 @@ export function mineFlow(events: PipelineEvent[], options: FlowOptions): FlowMod
     populations,
     jurisdiction: options.jurisdiction ?? null,
     stations,
+    waiting: waiting.sort((a, b) => b.cases - a.cases || a.since.localeCompare(b.since)),
     edges,
     sinks: (Object.keys(sinkCounts) as SinkId[]).filter((id) => sinkCounts[id] > 0).map((id) => ({ id, label: SINK_LABELS[id], cases: sinkCounts[id] })),
     ladder,
@@ -1173,7 +1269,7 @@ export function stationFlows(windowCases: Case[], allCases: Case[], stations: St
   for (const c of allCases) {
     for (const v of c.visits) {
       if (v.outcome !== "open") continue;
-      const cause = v.reason ? v.reason.split(": ")[0] : `wait:${v.station}`;
+      const cause = waitCause(v.reason, v.station);
       push(waits, v.station, { cause, c, v });
     }
   }
@@ -1809,6 +1905,18 @@ export function agentBrief(model: FlowModel, siteUrl: string): string {
   if (model.looping.length) {
     lines.push("## Do not re-dispatch without a change");
     for (const l of model.looping.slice(0, 10)) lines.push(`- ${l.citation}: ${l.cases} runs, none merged, ${l.failed_visits} failures, ${l.cost_usd == null ? "cost not recorded" : `$${l.cost_usd.toFixed(2)} model cost`}; ${l.rules.join(", ") || "no rule"} (${link(`/ops/journey?citation=${encodeURIComponent(l.citation)}`, siteUrl)})`);
+    lines.push("");
+  }
+  if (model.waiting.length) {
+    lines.push("## Where cases wait now");
+    lines.push("| station | why | cases (runs) | over SLA | oldest since | oldest case |");
+    lines.push("|---|---|---|---|---|---|");
+    for (const w of model.waiting.slice(0, 15)) {
+      const first = w.oldest[0];
+      lines.push(
+        `| ${w.label} | \`${w.cause}\`${w.detail ? ` ${w.detail.replace(/\|/g, "/")}` : ""} | ${w.cases} (${w.runs}) | ${w.over_sla} | ${w.since.slice(0, 10)} | ${first ? `${first.citation} (${link(`/ops/journey?citation=${encodeURIComponent(first.citation)}`, siteUrl)})` : ""} |`
+      );
+    }
     lines.push("");
   }
   lines.push("## Alerts");

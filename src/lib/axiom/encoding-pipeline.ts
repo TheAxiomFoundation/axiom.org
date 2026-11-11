@@ -130,6 +130,26 @@ export interface PipelineAttempt {
   pr_via_state?: "draft" | "open" | "merged" | "closed" | null;
   pr_via_merged_at?: string | null;
   pr_via_merge_commit?: string | null;
+  /** The PR's head commit, and how many commits the PR holds: the bot opens
+   *  it with one, and each update from the base branch adds one. */
+  pr_head_sha?: string | null;
+  pr_commit_count?: number | null;
+  /** GitHub's merge state of an open PR: BEHIND (the base moved on; a strict
+   *  branch rule wants an update), BLOCKED, CLEAN, DIRTY (conflicts), UNSTABLE. */
+  pr_merge_state?: string | null;
+  /** When the head commit's first check started, and when its last one
+   *  finished (null while any still runs): the CI run that counts. */
+  pr_checks_started_at?: string | null;
+  pr_checks_finished_at?: string | null;
+  /** The latest approving review: when, and whether it is on the head commit
+   *  (a push after it, such as a branch update, leaves it on an older one). */
+  pr_approved_at?: string | null;
+  pr_approval_on_head?: boolean | null;
+  /** How many reviews were dismissed (a rule dismisses a stale approval). */
+  pr_approvals_dismissed?: number | null;
+  /** Whether the dispatch asked for a pull request: false for a run whose
+   *  open-PR step was skipped (open_pr false), which ends at its signed artifact. */
+  pr_requested?: boolean | null;
   /** The module's jurisdiction validation (compile, companion tests,
    *  source-unit rules) on the default branch at a commit with the merge. */
   tests_status?: "pass" | "fail" | "waived" | null;
@@ -319,16 +339,26 @@ export const FAILED_COMPILE_STATUSES = new Set([
  * Whether a merged attempt reached the repo's default branch: its PR merged
  * into it, or into a side branch whose own PR then merged into it.
  */
+/**
+ * Whether a closed, unmerged PR's change still reached the default branch:
+ * another PR (a merge train) carried its module there. pr_via_* name that PR.
+ */
+export function carriedToMain(attempt: Pick<PipelineAttempt, "pr_state" | "pr_via_state">): boolean {
+  return attempt.pr_state === "closed" && attempt.pr_via_state === "merged";
+}
+
 export function reachedMain(attempt: PipelineAttempt): boolean {
+  if (carriedToMain(attempt)) return true;
   return (
     attempt.pr_state === "merged" &&
     (attempt.pr_targets_default !== false || attempt.pr_via_state === "merged")
   );
 }
 
-/** When the attempt's change reached the default branch: its own merge, or its side branch's. */
+/** When the attempt's change reached the default branch: its own merge, its side branch's, or its merge train's. */
 export function mainMergedAt(attempt: PipelineAttempt): string | null {
   if (!reachedMain(attempt)) return null;
+  if (carriedToMain(attempt)) return attempt.pr_via_merged_at ?? null;
   return attempt.pr_targets_default === false ? (attempt.pr_via_merged_at ?? null) : attempt.pr_merged_at;
 }
 
@@ -341,6 +371,7 @@ export function viaPrLabel(attempt: PipelineAttempt): string | null {
 /** Where a merge went: the default branch, a side branch its own PR took on, or a side branch only. */
 export function mergeDetail(attempt: PipelineAttempt): string {
   const into = `Into ${attempt.pr_base_branch}`;
+  if (carriedToMain(attempt)) return `Closed; ${viaPrLabel(attempt)} carried it into the default branch`;
   if (attempt.pr_targets_default !== false) return into;
   const via = viaPrLabel(attempt);
   if (attempt.pr_via_state === "merged") return `${into}, then the default branch by ${via}`;
@@ -351,7 +382,7 @@ export function mergeDetail(attempt: PipelineAttempt): string {
 }
 
 export function attemptStage(attempt: PipelineAttempt): PipelineStage {
-  if (attempt.pr_state === "merged") {
+  if (attempt.pr_state === "merged" || carriedToMain(attempt)) {
     if (!reachedMain(attempt)) return "merged_off_main";
     if (attempt.index_status === "missing") return "not_indexed";
     if (!attempt.synced_at) return "awaiting_sync";

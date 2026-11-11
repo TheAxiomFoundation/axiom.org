@@ -392,3 +392,63 @@ describe("inJurisdiction", () => {
     expect(inJurisdiction("dk", null, true)).toBe(true);
   });
 });
+
+describe("where cases wait now", () => {
+  const open = (id: string, citation: string, overrides: Parameters<typeof pipelineAttempt>[0] = {}) =>
+    pipelineAttempt({
+      id,
+      citation,
+      run_conclusion: "success",
+      encode_seconds: 60,
+      pr_repo: "rulespec-us",
+      pr_number: Number(id),
+      pr_url: `https://github.com/x/pull/${id}`,
+      pr_state: "open",
+      pr_created_at: "2026-09-20T10:29:00Z",
+      pr_checks: "success",
+      pr_review: "none",
+      ...overrides,
+    });
+  const events = [
+    open("11", "us/behind-old", { pr_created_at: "2026-09-10T10:29:00Z", dispatched_at: "2026-09-10T10:00:00Z", finished_at: "2026-09-10T10:28:00Z", pr_merge_state: "BEHIND", pr_commit_count: 3 }),
+    open("12", "us/behind-new", { pr_merge_state: "BEHIND" }),
+    open("13", "us/draft", { pr_state: "draft" }),
+    open("14", "us/ci", { pr_checks: "pending" }),
+    pipelineAttempt({ id: "15", citation: "us/queued", run_status: "queued", run_conclusion: null, finished_at: null }),
+    // Failed checks on PRs that are still open, and one that was closed.
+    open("16", "us/red-a", { pr_state: "draft", pr_checks: "failure", pr_failed_checks: ["validate / validate (us)"] }),
+    open("17", "us/red-b", { pr_state: "draft", pr_checks: "failure", pr_failed_checks: ["validate / validate (us)"] }),
+    open("18", "us/red-c", { pr_state: "draft", pr_checks: "failure", pr_failed_checks: ["guards"] }),
+    open("19", "us/red-closed", { pr_state: "closed", pr_closed_at: "2026-09-21T00:00:00Z", pr_checks: "failure", pr_failed_checks: ["guards"] }),
+  ].flatMap(attemptEvents);
+  const model = mineFlow(events, { now: NOW, days: 30, targets: [{ station: "review", min_yield: null, max_p95_hours: null, max_wip: null, sla_hours: 24 * 15 }] });
+
+  it("groups open cases by station and reason, most cases first, with the oldest of each", () => {
+    expect(model.waiting.slice(0, 2).map((w) => [w.station, w.cause, w.cases])).toEqual([
+      ["pr_checks", "check:failed-pr-open", 3],
+      ["review", "merge:behind-base", 2],
+    ]);
+    // Failed with the PR still open: listed, with the checks that failed, and not counted as WIP.
+    expect(model.waiting[0]).toMatchObject({ failed: true, runs: 3, detail: "2 × validate / validate (us); 1 × guards" });
+    expect(model.stations.find((s) => s.id === "pr_checks")!.wip).toBe(1);
+    const behind = model.waiting[1];
+    expect(behind).toMatchObject({ runs: 2, over_sla: 1 });
+    expect(Date.parse(behind.since)).toBe(Date.parse("2026-09-10T10:29:00Z"));
+    expect(behind.oldest.map((o) => o.citation)).toEqual(["us/behind-old", "us/behind-new"]);
+    expect(behind.detail).toContain("2 branch updates so far");
+    const causes = model.waiting.map((w) => `${w.station}/${w.cause}`);
+    expect(causes).toEqual(expect.arrayContaining(["review/review:draft", "pr_checks/check:pending", "approval/wait:approval"]));
+    // Every open case is in exactly one group; the closed PR is in none.
+    expect(model.waiting.reduce((sum, w) => sum + w.cases, 0)).toBe(8);
+  });
+
+  it("puts the same table in the agent brief, and has words for each reason", () => {
+    const brief = agentBrief(model, "https://axiom.org");
+    expect(brief).toContain("## Where cases wait now");
+    expect(brief).toContain("`merge:behind-base`");
+    expect(brief).toContain("us/behind-old");
+    for (const cause of ["merge:behind-base", "review:draft", "check:pending", "check:failed-pr-open", "review:no-reviewer-requested", "review:approval-not-on-head", "tests:no-verdict", "publish:artifact-only"]) {
+      expect(causeText(cause)).not.toBe(cause);
+    }
+  });
+});

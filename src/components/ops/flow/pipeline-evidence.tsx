@@ -10,6 +10,7 @@ import {
   type FlowModel,
   type RuleTrend,
   type StationStats,
+  type WaitingGroup,
 } from "@/lib/axiom/pipeline-flow";
 import { PipelineDiagram } from "./pipeline-diagram";
 import styles from "./evidence.module.css";
@@ -29,6 +30,11 @@ export function PipelineEvidence({ model }: { model: FlowModel }) {
         <PipelineDiagram phases={phases} />
         <StageTable phases={phases} maxReached={maxReached} />
       </Panel>
+      {model.waiting.length ? (
+        <Panel title="Waiting now" note="Cases that sit at a stage now, over all time, by why: open there, or failed there with the PR still open; most cases first">
+          <WaitingTable groups={model.waiting} now={model.generated_at} />
+        </Panel>
+      ) : null}
       {model.failure_classes.length ? (
         <Panel title="Failure classes" note="Encode cases that failed in the window, by who owns the fix">
           <FailureClasses rows={model.failure_classes} />
@@ -390,6 +396,75 @@ function FailureClasses({ rows }: { rows: FailureClassRow[] }) {
       <p className={styles.legend}>
         A rejected try is an encoder error or a validator false positive; the data cannot split them yet. Encoders from axiom-encode #1997 on record their own class, and that class comes first.
       </p>
+    </div>
+  );
+}
+
+const WAITING_ROWS = 12;
+
+/** Where cases wait now: stage, why, how many, since when, and the oldest of them. */
+function WaitingTable({ groups, now }: { groups: WaitingGroup[]; now: string }) {
+  const shown = groups.slice(0, WAITING_ROWS);
+  const rest = groups.slice(WAITING_ROWS);
+  const age = (since: string) => formatDuration(Math.max(0, Date.parse(now) - Date.parse(since)));
+  return (
+    <div className={styles.tableWrap}>
+      <table className={styles.table} aria-label="Waiting now">
+        <thead>
+          <tr>
+            <th scope="col">Stage</th>
+            <th scope="col">Why it waits</th>
+            <th scope="col" className={styles.num}>Cases</th>
+            <th scope="col" className={styles.num} title="Cases that started as a dispatched run">
+              Runs
+            </th>
+            <th scope="col" className={styles.num} title="Cases there longer than the stage's target time">
+              Over target
+            </th>
+            <th scope="col" className={styles.num}>Oldest</th>
+            <th scope="col">Oldest cases</th>
+          </tr>
+        </thead>
+        <tbody>
+          {shown.map((w) => (
+            <tr key={`${w.station}/${w.cause}`}>
+              <th scope="row">
+                <span className={styles.stage}>
+                  {w.label}
+                  {PERSON_STATIONS.has(w.station) ? <User size={13} aria-label="A person acts here" className={styles.person} /> : null}
+                </span>
+              </th>
+              <td className={styles.reason} title={[w.cause, w.detail].filter(Boolean).join("\n")}>
+                <span className={styles.reasonText}>{reasonLabel(w.cause)}</span>
+                {w.failed && w.detail ? <span className={styles.sub}> · {w.detail}</span> : null}
+              </td>
+              <td className={styles.num}>{n(w.cases)}</td>
+              <td className={styles.num}>{w.runs ? n(w.runs) : ""}</td>
+              <td className={styles.num}>{w.over_sla ? n(w.over_sla) : ""}</td>
+              <td className={styles.num} title={`Since ${w.since.slice(0, 16).replace("T", " ")} UTC`}>
+                {age(w.since)}
+              </td>
+              <td className={styles.reason}>
+                {w.oldest.map((o, i) => (
+                  <span key={o.case_id}>
+                    {i ? <span className={styles.sub}> · </span> : null}
+                    <a href={`/ops/journey?citation=${encodeURIComponent(o.citation)}`} title={`${age(o.since)} at this stage`}>
+                      {o.citation}
+                    </a>
+                  </span>
+                ))}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {rest.length ? (
+        <p className={styles.legend}>
+          <span>
+            {n(rest.reduce((sum, w) => sum + w.cases, 0))} more cases wait for {n(rest.length)} other reasons
+          </span>
+        </p>
+      ) : null}
     </div>
   );
 }

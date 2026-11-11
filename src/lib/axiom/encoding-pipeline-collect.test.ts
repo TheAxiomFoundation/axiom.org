@@ -5,6 +5,9 @@ import {
   buildAttempts,
   encodeWindow,
   mainMerge,
+  carrierIndex,
+  carrierPrFor,
+  prGate,
   matchEncoderRuns,
   sideBranchLookups,
   viaPrFor,
@@ -47,6 +50,7 @@ import {
   type CollectInputs,
   type EncoderRunRow,
   type ManifestPr,
+  type PrGateNode,
   type MirrorRow,
   type ShardResult,
   type WorkflowRun,
@@ -846,11 +850,11 @@ describe("run details", () => {
     const none = { setup: null, encode: null, publish: null };
     expect(parseRunJobs([budget, encodeJob([{ conclusion: "success", started_at: "2026-09-30T01:00:00Z" }, { conclusion: "skipped" }])], "success"))
       .toMatchObject({ encodeStartedAt: "2026-09-30T01:00:00Z", cancelStage: null });
-    expect(parseRunJobs([budget, encodeJob([])], "cancelled")).toEqual({ encodeStartedAt: null, cancelStage: "approval", phases: none });
+    expect(parseRunJobs([budget, encodeJob([])], "cancelled")).toEqual({ encodeStartedAt: null, cancelStage: "approval", phases: none, prRequested: null });
     expect(parseRunJobs([budget, encodeJob([{ conclusion: "cancelled", started_at: "2026-09-30T01:00:00Z" }])], "cancelled"))
       .toMatchObject({ encodeStartedAt: "2026-09-30T01:00:00Z", cancelStage: "running" });
-    expect(parseRunJobs([budget], "cancelled")).toEqual({ encodeStartedAt: null, cancelStage: "before_job", phases: none });
-    expect(parseRunJobs([{ name: "build", steps: null }], "failure")).toEqual({ encodeStartedAt: null, cancelStage: null, phases: none });
+    expect(parseRunJobs([budget], "cancelled")).toEqual({ encodeStartedAt: null, cancelStage: "before_job", phases: none, prRequested: null });
+    expect(parseRunJobs([{ name: "build", steps: null }], "failure")).toEqual({ encodeStartedAt: null, cancelStage: null, phases: none, prRequested: null });
   });
 
   it("splits the encode job into setup, the encode step, and publishing", () => {
@@ -1617,5 +1621,183 @@ describe("first tests run's page", () => {
     expect(mergeValidationLookups([merged], previous, 10, { detail: true, url: true })).toEqual([
       { repo: "rulespec-us", commit: "m1" },
     ]);
+  });
+});
+
+describe("what stands between a PR and its merge", () => {
+  const check = (startedAt: string, completedAt: string | null) => ({
+    __typename: "CheckRun",
+    status: completedAt ? "COMPLETED" : "IN_PROGRESS",
+    startedAt,
+    completedAt,
+  });
+  const node = (contexts: unknown[], extra: Record<string, unknown> = {}): PrGateNode => ({
+    state: "OPEN",
+    headRefOid: "head2",
+    mergeStateStatus: "BEHIND",
+    commits: { totalCount: 3, nodes: [{ commit: { statusCheckRollup: { contexts: { nodes: contexts as never } } } }] },
+    ...extra,
+  });
+
+  it("reads the head commit's CI window, the approval's commit and the merge state", () => {
+    const gate = prGate(
+      node([check("2026-11-10T10:00:00Z", "2026-11-10T13:00:00Z"), check("2026-11-10T10:05:00Z", "2026-11-10T16:30:00Z"), { __typename: "StatusContext" }, null], {
+        reviews: {
+          nodes: [
+            { state: "APPROVED", submittedAt: "2026-11-10T09:00:00Z", commit: { oid: "head1" } },
+            { state: "DISMISSED", submittedAt: "2026-11-09T09:00:00Z", commit: { oid: "head0" } },
+            { state: "COMMENTED", submittedAt: "2026-11-10T09:30:00Z", commit: { oid: "head2" } },
+          ],
+        },
+      })
+    );
+    expect(gate).toMatchObject({
+      headSha: "head2",
+      mergeState: "BEHIND",
+      commitCount: 3,
+      checksStartedAt: "2026-11-10T10:00:00Z",
+      checksFinishedAt: "2026-11-10T16:30:00Z",
+      approvedAt: "2026-11-10T09:00:00Z",
+      approvalOnHead: false,
+      approvalsDismissed: 1,
+      crossRefs: [],
+    });
+  });
+
+  it("has no finish while a check runs, no merge state once closed, and no approval when none was given", () => {
+    const running = prGate(node([check("2026-11-10T10:00:00Z", "2026-11-10T13:00:00Z"), check("2026-11-10T10:05:00Z", null)]));
+    expect(running).toMatchObject({ checksStartedAt: "2026-11-10T10:00:00Z", checksFinishedAt: null, approvedAt: null, approvalOnHead: null, approvalsDismissed: 0 });
+    expect(prGate(node([], { state: "MERGED" }))).toMatchObject({ mergeState: null, checksStartedAt: null, checksFinishedAt: null });
+    expect(prGate(node([], { mergeStateStatus: "UNKNOWN" })).mergeState).toBeNull();
+    expect(prGate({})).toMatchObject({ headSha: null, mergeState: null, commitCount: null, crossRefs: [] });
+  });
+
+  it("lists the pull requests that mention it, once each", () => {
+    const source = {
+      __typename: "PullRequest",
+      number: 2154,
+      url: "https://github.com/TheAxiomFoundation/rulespec-us/pull/2154",
+      state: "MERGED",
+      isDraft: false,
+      createdAt: "2026-11-09T20:00:00Z",
+      mergedAt: "2026-11-10T13:26:00Z",
+      baseRefName: "main",
+      mergeCommit: { oid: "train1" },
+      repository: { name: "rulespec-us", defaultBranchRef: { name: "main" } },
+    };
+    const gate = prGate(node([], { timelineItems: { nodes: [{ source }, { source }, { source: { __typename: "Issue", number: 7 } }, null] } }));
+    expect(gate.crossRefs).toEqual([
+      {
+        repo: "rulespec-us",
+        number: 2154,
+        url: "https://github.com/TheAxiomFoundation/rulespec-us/pull/2154",
+        state: "MERGED",
+        isDraft: false,
+        createdAt: "2026-11-09T20:00:00Z",
+        mergedAt: "2026-11-10T13:26:00Z",
+        mergeCommit: "train1",
+        baseRefName: "main",
+        defaultBranch: "main",
+      },
+    ]);
+  });
+});
+
+describe("a merge train that replaces closed PRs", () => {
+  const MODULE = "us/regulations/42-cfr/457/800.yaml";
+  const train = (override: Record<string, unknown> = {}) => ({
+    repo: "rulespec-us",
+    number: 2154,
+    url: "https://github.com/TheAxiomFoundation/rulespec-us/pull/2154",
+    state: "MERGED" as const,
+    isDraft: false,
+    createdAt: "2026-09-29T20:00:00Z",
+    mergedAt: "2026-09-30T02:00:00Z",
+    mergeCommit: "train1",
+    baseRefName: "main",
+    defaultBranch: "main",
+    ...override,
+  });
+  const closed = (override: Partial<ManifestPr> = {}) => pr({ state: "CLOSED", isDraft: false, closedAt: "2026-09-30T02:05:00Z", crossRefs: [train()], ...override });
+  const holds = { files: new Map([["rulespec-us#2154", new Set([MODULE, "us/other.yaml"])]]), recorded: new Map<string, number>() };
+
+  it("links a closed PR to the merged PR that mentions it and holds its module", () => {
+    expect(carrierPrFor(closed(), holds)).toMatchObject({ number: 2154, state: "MERGED", mergedAt: "2026-09-30T02:00:00Z", mergeCommit: "train1" });
+    // A mention alone is not a replacement: the train must hold every module file.
+    expect(carrierPrFor(closed(), { files: new Map([["rulespec-us#2154", new Set(["us/other.yaml"])]]), recorded: new Map() })).toBeNull();
+    expect(carrierPrFor(closed(), { files: new Map(), recorded: new Map() })).toBeNull();
+    // Not an open PR, not a train that is still open, merged elsewhere, in another repo, or merged before the PR existed.
+    expect(carrierPrFor(pr({ crossRefs: [train()] }), holds)).toBeNull();
+    expect(carrierPrFor(closed({ crossRefs: [train({ state: "OPEN", mergedAt: null })] }), holds)).toBeNull();
+    expect(carrierPrFor(closed({ crossRefs: [train({ baseRefName: "side" })] }), holds)).toBeNull();
+    expect(carrierPrFor(closed({ crossRefs: [train({ repo: "rulespec-us-co" })] }), holds)).toBeNull();
+    expect(carrierPrFor(closed({ crossRefs: [train({ mergedAt: "2026-09-01T00:00:00Z" })] }), holds)).toBeNull();
+    expect(carrierPrFor(closed({ crossRefs: [] }), holds)).toBeNull();
+  });
+
+  it("knows a train's files from this pass, from its stored outside rows, or from an earlier link", () => {
+    const merged = [
+      { repo: "rulespec-us", number: 2154, url: "u", author: "x", createdAt: "2026-09-29T20:00:00Z", mergedAt: "2026-09-30T02:00:00Z", baseRefName: "main", defaultBranch: "main", mergeCommit: "train1", files: [MODULE] },
+    ];
+    expect(carrierPrFor(closed(), carrierIndex(merged, new Map()))?.number).toBe(2154);
+    const stored = new Map([[`pr:rulespec-us#2154:${MODULE}`, { id: `pr:rulespec-us#2154:${MODULE}` }]]);
+    expect(carrierPrFor(closed(), carrierIndex([], stored))?.number).toBe(2154);
+    // Once linked, the outside rows are gone: the recorded link keeps it.
+    const linked = new Map([["501", { id: "501", pr_repo: "rulespec-us", pr_number: 1500, pr_via_number: 2154, pr_via_state: "merged" as const }]]);
+    expect(carrierPrFor(closed(), carrierIndex([], linked))?.number).toBe(2154);
+    expect(carrierPrFor(closed(), carrierIndex([], new Map()))).toBeNull();
+  });
+
+  it("counts the closed PR's module as merged into main by the train", () => {
+    const via = carrierPrFor(closed(), holds);
+    const carried = closed({ via });
+    expect(mainMerge(carried)).toEqual({ mergedAt: "2026-09-30T02:00:00Z", mergeCommit: "train1" });
+    expect(mainMerge(closed({ via: null }))).toBeNull();
+    const [attempt] = buildAttempts(inputs({ runs: [run({ conclusion: "success" })], prs: [carried] }));
+    expect(attempt).toMatchObject({
+      pr_state: "closed",
+      pr_via_number: 2154,
+      pr_via_state: "merged",
+      pr_via_merged_at: "2026-09-30T02:00:00Z",
+      pr_via_merge_commit: "train1",
+    });
+    expect(attemptStage(attempt)).not.toBe("closed");
+    const [plain] = buildAttempts(inputs({ runs: [run({ conclusion: "success" })], prs: [closed({ via: null })] }));
+    expect(plain.pr_via_number ?? null).toBeNull();
+  });
+});
+
+describe("PR gate columns and the open-PR request", () => {
+  it("stores what prGate read, and nothing when the search did not read it", () => {
+    const gated = pr({ headSha: "h", mergeState: "BEHIND", commitCount: 4, checksStartedAt: "2026-09-29T19:00:00Z", checksFinishedAt: "2026-09-29T23:00:00Z", approvedAt: null, approvalOnHead: null, approvalsDismissed: 0 });
+    const [attempt] = buildAttempts(inputs({ runs: [run({ conclusion: "success" })], prs: [gated] }));
+    expect(attempt).toMatchObject({ pr_head_sha: "h", pr_merge_state: "BEHIND", pr_commit_count: 4, pr_checks_finished_at: "2026-09-29T23:00:00Z", pr_approvals_dismissed: 0 });
+    const [bare] = buildAttempts(inputs({ runs: [run({ conclusion: "success" })], prs: [pr()] }));
+    expect("pr_head_sha" in bare).toBe(false);
+    expect("pr_merge_state" in bare).toBe(false);
+  });
+
+  it("reads whether a passed run was asked to open a PR, and keeps the answer", () => {
+    const job = (conclusion: string) => ({
+      name: "Queue protected signed RuleSpec re-encode",
+      steps: [
+        { name: "Encode, review, validate, and apply", conclusion: "success", started_at: "2026-09-30T01:00:00Z" },
+        { name: "Push lane branch and open draft pull request", conclusion },
+      ],
+    });
+    expect(parseRunJobs([job("skipped")], "success").prRequested).toBe(false);
+    expect(parseRunJobs([job("success")], "success").prRequested).toBe(true);
+    expect(parseRunJobs([job("skipped")], "failure").prRequested).toBeNull();
+
+    const passed = run({ id: 7, conclusion: "success" });
+    const read = { jobs_checked_at: "T", steps_read_at: "T" };
+    const previous = (row: Record<string, unknown>) => new Map([["7", { ...read, ...row }]]);
+    expect(runDetailLookups([passed], previous({}), 10, { steps: true }).map((r) => r.id)).toEqual([]);
+    expect(runDetailLookups([passed], previous({}), 10, { steps: true, prRequest: true }).map((r) => r.id)).toEqual([7]);
+    expect(runDetailLookups([passed], previous({ pr_requested: false }), 10, { steps: true, prRequest: true })).toEqual([]);
+    expect(runDetailLookups([passed], previous({ pr_number: 12 }), 10, { steps: true, prRequest: true })).toEqual([]);
+
+    const kept = buildAttempts(inputs({ runs: [passed], previous: new Map([["7", { id: "7", jobs_checked_at: "2026-09-30T00:00:00Z", pr_requested: false }]]) }));
+    expect(kept[0].pr_requested).toBe(false);
   });
 });

@@ -181,3 +181,38 @@ describe("JourneyView", () => {
     expect(screen.getByRole("heading", { name: "Encoding journey" })).toBeTruthy();
   });
 });
+
+describe("Waiting now", () => {
+  it("lists where open cases wait, why, since when, and links the oldest to its journey", () => {
+    const open = pipelineAttempt({
+      id: "9",
+      citation: "us/behind",
+      run_conclusion: "success",
+      encode_seconds: 60,
+      pr_repo: "rulespec-us",
+      pr_number: 9,
+      pr_url: "https://github.com/x/pull/9",
+      pr_state: "open",
+      pr_created_at: "2026-09-20T10:29:00Z",
+      pr_checks: "success",
+      pr_review: "none",
+      pr_merge_state: "BEHIND",
+      pr_commit_count: 3,
+    });
+    const waiting = mineFlow(attemptEvents(open), { now: NOW, days: 30 });
+    render(<FlowLine model={waiting} error={null} params={params} jurisdictions={[]} />);
+    const table = screen.getByRole("table", { name: "Waiting now" });
+    const row = within(table).getAllByRole("row")[1];
+    expect(row).toHaveTextContent("Behind the default branch");
+    expect(row).toHaveTextContent("10d");
+    expect(within(row).getByRole("link", { name: "us/behind" })).toHaveAttribute("href", "/ops/journey?citation=us%2Fbehind");
+    cleanup();
+  });
+
+  it("has no panel when nothing is open", () => {
+    const done = mineFlow(attemptEvents(pipelineAttempt({ id: "1", failed_step: "encode_apply", tries: [tryOf(1, false)] })), { now: NOW, days: 30 });
+    render(<FlowLine model={done} error={null} params={params} jurisdictions={[]} />);
+    expect(screen.queryByRole("table", { name: "Waiting now" })).toBeNull();
+    cleanup();
+  });
+});
