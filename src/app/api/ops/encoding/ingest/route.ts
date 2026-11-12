@@ -59,6 +59,17 @@ function cleanAttempt(value: unknown): number | null {
   return value;
 }
 
+function cleanRunState(body: Record<string, unknown>): Record<string, unknown> {
+  const data: Record<string, unknown> = {};
+  const phase = cleanText(body.phase, MAX_FIELD_LENGTH);
+  if (phase) data.phase = phase;
+  const attempt = cleanAttempt(body.attempt);
+  if (attempt !== null) data.attempt = attempt;
+  const model = cleanText(body.model, MAX_FIELD_LENGTH);
+  if (model) data.model = model;
+  return data;
+}
+
 /**
  * Whitelist the runner identity fields; everything else is dropped. GitHub
  * run fields are dropped too: here they are self-reported and unverifiable,
@@ -104,14 +115,16 @@ async function countPublicRunningRows(config: IngestConfig): Promise<number> {
   return Number.isNaN(count) ? 0 : count;
 }
 
-/** Update an ingest-stamped row; resolves to false when nothing matched. */
+/** Update an ingest-stamped row; any status predicate is atomic with the write. */
 async function updateIngestRow(
   config: IngestConfig,
   id: string,
-  data: Record<string, unknown>
+  data: Record<string, unknown>,
+  requiredStatus?: "running"
 ): Promise<boolean> {
+  const statusFilter = requiredStatus ? `&status=eq.${requiredStatus}` : "";
   const response = await fetch(
-    `${config.url}/rest/v1/live_encoding_runs?id=eq.${encodeURIComponent(id)}&runner->>reported_via=eq.public_ingest`,
+    `${config.url}/rest/v1/live_encoding_runs?id=eq.${encodeURIComponent(id)}&runner->>reported_via=eq.public_ingest${statusFilter}`,
     {
       method: "PATCH",
       headers: { ...restHeaders(config), Prefer: "return=representation" },
@@ -189,14 +202,9 @@ export async function POST(request: Request) {
     }
 
     if (op === "heartbeat") {
-      const data: Record<string, unknown> = { last_heartbeat_at: now };
-      const phase = cleanText(body.phase, MAX_FIELD_LENGTH);
-      if (phase) data.phase = phase;
-      const attempt = cleanAttempt(body.attempt);
-      if (attempt !== null) data.attempt = attempt;
-      const model = cleanText(body.model, MAX_FIELD_LENGTH);
-      if (model) data.model = model;
-      const matched = await updateIngestRow(config, id, data);
+      const data = { last_heartbeat_at: now, ...cleanRunState(body) };
+      // A heartbeat can arrive after finish even if the client sent it first.
+      const matched = await updateIngestRow(config, id, data, "running");
       if (!matched) {
         return NextResponse.json({ error: "unknown_run" }, { status: 404 });
       }
@@ -212,6 +220,7 @@ export async function POST(request: Request) {
         status,
         finished_at: now,
         last_heartbeat_at: now,
+        ...cleanRunState(body),
       };
       const runId = cleanText(body.run_id, MAX_FIELD_LENGTH);
       if (runId) data.run_id = runId;
