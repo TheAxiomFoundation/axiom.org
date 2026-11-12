@@ -960,6 +960,76 @@ export function indexEncoderRows(rows: EncoderRunRow[]): EncoderIndex {
   return { byCitation, byRunId };
 }
 
+/**
+ * One row of encodings.live_encoding_runs that names its Actions run: the
+ * encoder's own presence record for one `axiom-encode encode` invocation
+ * (axiom-encode #1750 on). outcome_status and error_rule arrive by
+ * migration and are absent before it.
+ */
+export interface LiveRunRow {
+  id: string;
+  citation: string | null;
+  status: string | null;
+  phase: string | null;
+  started_at: string | null;
+  /** runner.github_run_id and runner.github_run_attempt, as text. */
+  github_run_id: string | null;
+  github_run_attempt?: string | number | null;
+  /** runner.reported_via: "public_ingest" marks a self-reported row. */
+  reported_via?: string | null;
+  outcome_status?: string | null;
+  error_rule?: string | null;
+}
+
+/** How a dispatch's encode ended, as its row stores it. */
+export type EncodeExitFields = Pick<PipelineAttempt, "encode_exit_status" | "encode_exit_rule" | "encode_last_phase">;
+
+const NO_EXIT: EncodeExitFields = { encode_exit_status: null, encode_exit_rule: null, encode_last_phase: null };
+const EXIT_TOKEN_RE = /^[A-Za-z0-9_.:/-]+$/;
+
+/** A machine token within its bound, or null: these columns never hold free text. */
+function exitToken(value: unknown, maxLength: number): string | null {
+  return typeof value === "string" && value.length <= maxLength && EXIT_TOKEN_RE.test(value) ? value : null;
+}
+
+/** Live rows by the Actions run they name. Self-reported rows (the public ingest) are left out: their run id is unverified. */
+export function indexLiveRuns(rows: LiveRunRow[]): Map<string, LiveRunRow[]> {
+  const byRun = new Map<string, LiveRunRow[]>();
+  for (const row of rows) {
+    if (!row.github_run_id || row.reported_via === "public_ingest") continue;
+    const id = String(row.github_run_id);
+    byRun.set(id, [...(byRun.get(id) ?? []), row]);
+  }
+  return byRun;
+}
+
+/**
+ * How a run's encode ended, from the live rows that name the run: null when
+ * none does (every run before axiom-encode #1750). A row of another attempt
+ * of the run is left out; a row with no attempt counts. Among several
+ * invocations in one run, the run's own citation first, then the latest to
+ * start: the encode that was running when the step ended.
+ */
+export function liveRunExit(
+  run: Pick<WorkflowRun, "id" | "run_attempt">,
+  citation: string,
+  index: Map<string, LiveRunRow[]>
+): EncodeExitFields | null {
+  const rows = (index.get(String(run.id)) ?? []).filter(
+    (row) => row.github_run_attempt == null || run.run_attempt == null || String(row.github_run_attempt) === String(run.run_attempt)
+  );
+  if (!rows.length) return null;
+  const own = rows.filter((row) => row.citation === citation);
+  const row = (own.length ? own : rows).reduce((latest, next) =>
+    (next.started_at ?? "") >= (latest.started_at ?? "") ? next : latest
+  );
+  return {
+    encode_exit_status: exitToken(row.outcome_status, 64),
+    encode_exit_rule: exitToken(row.error_rule, 160),
+    encode_last_phase: exitToken(row.phase, 64),
+  };
+}
+
 /** What a run's jobs said, as matchEncoderRuns needs it: this pass's read or the stored one. */
 export type RunJobsKnown = Pick<
   Partial<PipelineAttempt>,
@@ -1794,6 +1864,9 @@ export interface CollectInputs {
   oraclePending?: Map<string, Set<string>>;
   /** Step name → check id from axiom-encode's check registry (see stepChecks); none when it was not read. */
   stepChecks?: Map<string, string>;
+  /** Live encoder rows that name an Actions run (see liveRunExit); absent when
+   *  they were not read this pass, when each row keeps what it stored. */
+  liveRuns?: LiveRunRow[];
   /** Jobs read this pass, by run id (see runDetailLookups). */
   runDetails?: Map<string, RunDetail>;
   /** Package versions read this pass, by axiom-encode commit (see versionLookups). */
@@ -2174,6 +2247,7 @@ export function buildAttempts(inputs: CollectInputs): PipelineAttempt[] {
   for (const [sha, version] of inputs.encoderVersions ?? []) versions.set(sha, version);
   const encoderIndex = indexEncoderRows(inputs.encoderRuns);
   const { byRun, orphans } = linkPrsToRuns(inputs.runs, inputs.prs);
+  const liveIndex = inputs.liveRuns ? indexLiveRuns(inputs.liveRuns) : null;
 
   const runAttempts: Array<{ run: WorkflowRun; attempt: PipelineAttempt }> = [];
   for (const run of inputs.runs) {
@@ -2248,6 +2322,18 @@ export function buildAttempts(inputs: CollectInputs): PipelineAttempt[] {
     attempt.tries = null;
     attempt.encode_loop = null;
     if (encoder) applyEncoderRecord(attempt, encoder);
+    // A finished run whose encode step ran and left no record: the encoder's
+    // live row for the run says how it ended. A live row gone from the table
+    // (or not read this pass) keeps what an earlier pass stored.
+    Object.assign(attempt, NO_EXIT);
+    if (!encoder && run.status === "completed" && encodeWindow(run, attempt, inputs.nowMs)) {
+      const exit = liveIndex && liveRunExit(run, attempt.citation, liveIndex);
+      Object.assign(attempt, exit ?? {
+        encode_exit_status: previous?.encode_exit_status ?? null,
+        encode_exit_rule: previous?.encode_exit_rule ?? null,
+        encode_last_phase: previous?.encode_last_phase ?? null,
+      });
+    }
 
     if (isFailedRun(run) && !attempt.failure_source) {
       const detail = inputs.failureDetails.get(id);

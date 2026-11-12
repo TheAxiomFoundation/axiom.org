@@ -29,6 +29,28 @@ export function attemptSource(attempt: Pick<PipelineAttempt, "id">): AttemptSour
   return "dispatch";
 }
 
+/** How an encode with no try record ended: any part may be missing. */
+export interface EncodeExit {
+  status: string | null;
+  rule: string | null;
+  phase: string | null;
+}
+
+/** The recorded end of a row's encode, or null when none of it is recorded (or the columns do not exist yet). */
+export function encodeExit(
+  attempt: Pick<PipelineAttempt, "encode_exit_status" | "encode_exit_rule" | "encode_last_phase">
+): EncodeExit | null {
+  const status = attempt.encode_exit_status || null;
+  const rule = attempt.encode_exit_rule || null;
+  const phase = attempt.encode_last_phase || null;
+  return status || rule || phase ? { status, rule, phase } : null;
+}
+
+/** An encode's end in words: "exited · exit:1 · in phase resolve". */
+export function encodeExitLabel(exit: EncodeExit): string {
+  return [exit.status, exit.rule, exit.phase ? `in phase ${exit.phase}` : null].filter(Boolean).join(" · ");
+}
+
 /** Whether a row is a dispatch: only dispatches count in run statistics. */
 export function isDispatch(attempt: Pick<PipelineAttempt, "id">): boolean {
   return attemptSource(attempt) === "dispatch";
@@ -198,6 +220,17 @@ export interface PipelineAttempt {
   tests_first_run_url?: string | null;
   /** Each try of the encode loop, from the encoder's own record. */
   tries?: PipelineTry[] | null;
+  /**
+   * Why a dispatch whose encode step ran has no encoder record, from the
+   * encoder's live row for the run (encodings.live_encoding_runs, joined on
+   * runner.github_run_id): how the encode ended (an outcome status, or
+   * aborted, exited, interrupted), its typed rule (exception:<Class>,
+   * exit:<code>, a check id), and the last phase it reported. Null when no
+   * live row names the run (every run before axiom-encode #1750).
+   */
+  encode_exit_status?: string | null;
+  encode_exit_rule?: string | null;
+  encode_last_phase?: string | null;
   /** The encode loop's own clock, from the encoder's record (axiom-encode 0.2.2157 on). */
   encode_loop?: EncodeLoopTiming | null;
 }

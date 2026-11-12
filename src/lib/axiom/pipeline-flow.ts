@@ -10,6 +10,7 @@
  */
 
 import { classifyFailure, FAILURE_CLASS_COPY, FAILURE_CLASSES, type FailureBasis, type FailureClassId } from "./failure-class";
+import { encodeExitLabel, type EncodeExit } from "./encoding-pipeline";
 import type { PipelineEvent } from "./pipeline-events";
 import { isReleaseCase } from "./pipeline-ingest";
 
@@ -475,6 +476,9 @@ export interface DataTrust {
   no_encode: number;
   /** Dispatches whose encode step ran with no try record: the encoder synced no try, model, or cost. */
   no_try_record: number;
+  /** ... of those, the ones whose end is on record (the encoder's live row names the run), and each recorded end with its count. */
+  no_try_record_known: number;
+  no_try_record_reasons: Array<{ reason: string; count: number }>;
   /** Merged dispatches by oracle state. unknown: the merge event predates the oracle state. */
   oracle: { merged: number; compared: number; pending: number; none: number; unknown: number };
   /** Corpus releases in the window (the ingest stations' cases). */
@@ -620,6 +624,18 @@ interface Visit {
   checksMore: number;
   /** A merge's oracle state (attrs.oracle): a verdict, "pending", or "none". Null on events that predate it. */
   oracle: string | null;
+  /** How an encode step with no try record ended (attrs.encode_exit), when the encoder's live row says. */
+  encodeExit: EncodeExit | null;
+}
+
+/** The recorded end of an encode an event carries, bounded; null when it carries none. */
+function eventEncodeExit(attrs: Record<string, unknown> | null | undefined): EncodeExit | null {
+  const exit = attrs?.encode_exit;
+  if (!exit || typeof exit !== "object") return null;
+  const text = (value: unknown) => (typeof value === "string" && value ? value.slice(0, 160) : null);
+  const { status, rule, phase } = exit as Record<string, unknown>;
+  const read = { status: text(status), rule: text(rule), phase: text(phase) };
+  return read.status || read.rule || read.phase ? read : null;
 }
 
 /** One typed check that failed a try: its registry id, the gate that ran it, its number of findings. */
@@ -713,7 +729,7 @@ function buildCases(events: PipelineEvent[]): Map<string, Case> {
         }
       }
       if (!visit) {
-        visit = { station: e.station, start: t, end: null, outcome: "open", try_no: e.try_no, rule_id: null, reason: null, ref_url: e.ref_url, duration_ms: null, waived: false, actor: e.actor, cost_usd: null, message: null, readTime: false, recordedClass: null, prOpen: false, checks: null, checksMore: 0, oracle: null };
+        visit = { station: e.station, start: t, end: null, outcome: "open", try_no: e.try_no, rule_id: null, reason: null, ref_url: e.ref_url, duration_ms: null, waived: false, actor: e.actor, cost_usd: null, message: null, readTime: false, recordedClass: null, prOpen: false, checks: null, checksMore: 0, oracle: null, encodeExit: null };
         visits.push(visit);
         open.set(e.station, visit);
         if (e.kind !== "enter" && TERMINAL.has(e.kind)) unentered.set(e.station, visit);
@@ -740,6 +756,7 @@ function buildCases(events: PipelineEvent[]): Map<string, Case> {
         visit.checks = eventChecks(e.attrs);
         visit.checksMore = typeof e.attrs?.checks_more === "number" ? e.attrs.checks_more : 0;
         visit.oracle = e.station === "merge" && typeof e.attrs?.oracle === "string" ? e.attrs.oracle : null;
+        visit.encodeExit = e.station === "generate" ? eventEncodeExit(e.attrs) : null;
         visit.duration_ms = e.duration_ms ?? (e.attrs?.untimed ? null : t - visit.start);
         visit.ref_url = e.ref_url ?? visit.ref_url;
         open.delete(e.station);
@@ -1104,7 +1121,14 @@ export function mineFlow(events: PipelineEvent[], options: FlowOptions): FlowMod
     waiting: stations.reduce((s, x) => s + x.wip, 0),
     waiting_over_sla: stations.reduce((s, x) => s + x.over_sla, 0),
   };
-  const encodeStates = dispatches.map((c) => encodeState(c.visits).state);
+  const encodeRecords = dispatches.map((c) => encodeState(c.visits));
+  const encodeStates = encodeRecords.map((record) => record.state);
+  const noTryReasons = new Map<string, number>();
+  for (const record of encodeRecords) {
+    if (record.state !== "no_try_record" || !record.exit) continue;
+    const reason = encodeExitLabel(record.exit);
+    noTryReasons.set(reason, (noTryReasons.get(reason) ?? 0) + 1);
+  }
   const oracleStates = merged.map((c) => caseOracle(c.visits)?.state ?? "unknown");
   const tryStart = Math.min(...factory.flatMap((c) => c.visits.filter((v) => v.try_no != null && v.actor).map((v) => v.start)));
   const trust: DataTrust = {
@@ -1118,6 +1142,10 @@ export function mineFlow(events: PipelineEvent[], options: FlowOptions): FlowMod
     with_typed_checks: dispatches.filter((c) => c.visits.some((v) => v.checks)).length,
     no_encode: encodeStates.filter((state) => state === "no_encode").length,
     no_try_record: encodeStates.filter((state) => state === "no_try_record").length,
+    no_try_record_known: [...noTryReasons.values()].reduce((sum, count) => sum + count, 0),
+    no_try_record_reasons: [...noTryReasons.entries()]
+      .map(([reason, count]) => ({ reason, count }))
+      .sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason)),
     oracle: {
       merged: merged.length,
       compared: oracleStates.filter((state) => state === "compared").length,
@@ -1852,9 +1880,28 @@ export interface EncodeState {
   state: "tries" | "no_try_record" | "no_encode" | "not_yet" | "outside";
   /** The state in words, with the station that stopped the run when known. */
   label: string;
+  /** How an encode step with no try record ended, when the encoder's live row for the run says. */
+  exit?: EncodeExit;
 }
 
-type StateVisit = Pick<Visit, "station" | "outcome" | "actor" | "rule_id">;
+type StateVisit = Pick<Visit, "station" | "outcome" | "actor" | "rule_id"> & { encodeExit?: EncodeExit | null };
+
+/** A no-try-record state with the encode's recorded end, when a visit carries one. */
+function noTryRecord(visits: StateVisit[], label: string): EncodeState {
+  const exit = visits.find((v) => v.encodeExit)?.encodeExit;
+  if (!exit) return { state: "no_try_record", label: `${label}. Why it stopped is not on record` };
+  return { state: "no_try_record", label: `${label}. The encode ended: ${encodeExitLabel(exit)}`, exit };
+}
+
+/** How many no-try-record runs say how their encode ended, in words: "(3 with a recorded end: exited · exit:1 (2), ...; 16 not on record)". */
+export function noTryRecordSentence(trust: Pick<DataTrust, "no_try_record" | "no_try_record_known" | "no_try_record_reasons">): string {
+  if (!trust.no_try_record) return "";
+  const known = trust.no_try_record_known ?? 0;
+  const unknown = trust.no_try_record - known;
+  if (!known) return ` (why they stopped is not on record)`;
+  const reasons = (trust.no_try_record_reasons ?? []).map((r) => `${r.reason} (${r.count})`).join(", ");
+  return ` (${known} with a recorded end: ${reasons}; ${unknown} not on record)`;
+}
 
 /** The stations a run passes before its encode step. */
 const BEFORE_ENCODE = new Set(["dispatch", "approval", "setup", "target_gate"]);
@@ -1869,7 +1916,7 @@ export function encodeState(visits: StateVisit[]): EncodeState {
   const generate = visits.filter((v) => v.station === "generate");
   if (generate.some((v) => v.actor)) return { state: "tries", label: "Tries recorded" };
   if (generate.length) {
-    return { state: "no_try_record", label: "No try recorded: the encode step ran, and the encoder synced no try, model, or cost" };
+    return noTryRecord(visits, "No try recorded: the encode step ran, and the encoder synced no try, model, or cost");
   }
   if (visits[0]?.station !== "dispatch") return { state: "outside", label: "Not encoded by this run" };
   const stop = visits.find((v) => v.outcome === "fail" || v.outcome === "cancel");
@@ -1879,7 +1926,7 @@ export function encodeState(visits: StateVisit[]): EncodeState {
     // Only a stop before the encode step shows that no encode ran; a later stop has no try record to say.
     return BEFORE_ENCODE.has(stop.station)
       ? { state: "no_encode", label: `No encode ran: ${where}` }
-      : { state: "no_try_record", label: `No try recorded: the run ${where}, and the encoder synced no try, model, or cost` };
+      : noTryRecord(visits, `No try recorded: the run ${where}, and the encoder synced no try, model, or cost`);
   }
   if (visits.some((v) => v.outcome === "open")) return { state: "not_yet", label: "Not at the encode step yet" };
   return { state: "no_encode", label: "No encode ran: the run recorded no encode step" };
@@ -2103,7 +2150,7 @@ export function agentBrief(model: FlowModel, siteUrl: string): string {
   const tr = model.trust;
   lines.push("## How much these numbers can see");
   lines.push(
-    `Of ${tr.dispatched} dispatched runs: ${tr.with_tries} have per-try records (since ${tr.tries_since?.slice(0, 10) ?? "never"}), ${tr.with_cost} a recorded cost, ${tr.with_issue_list} a full issue list, ${tr.with_typed_checks} typed checks (rule id and gate) on a failed try. ${tr.no_encode} ran no encode (the run ended before the encode step); ${tr.no_try_record} ran the encode step with no try record. Of ${tr.oracle.merged} merged: ${tr.oracle.compared} compared by an oracle, ${tr.oracle.pending} pending (listed in oracle-coverage-pending.yaml), ${tr.oracle.none} with no oracle${tr.oracle.unknown ? `, ${tr.oracle.unknown} not recorded` : ""}. Not timed: ${tr.untimed.map(stationLabel).join(", ") || "none"}.${tr.partly_timed.length ? ` Timed for part of their visits: ${tr.partly_timed.map((x) => `${stationLabel(x.station)} (${pct(x.share)})`).join(", ")}.` : ""}${tr.unmeasured.length ? ` Not measured: ${tr.unmeasured.map((x) => `${stationLabel(x.station)} (${x.reason})`).join(", ")}.` : ""} ${tr.releases} corpus releases in the window.`
+    `Of ${tr.dispatched} dispatched runs: ${tr.with_tries} have per-try records (since ${tr.tries_since?.slice(0, 10) ?? "never"}), ${tr.with_cost} a recorded cost, ${tr.with_issue_list} a full issue list, ${tr.with_typed_checks} typed checks (rule id and gate) on a failed try. ${tr.no_encode} ran no encode (the run ended before the encode step); ${tr.no_try_record} ran the encode step with no try record${noTryRecordSentence(tr)}. Of ${tr.oracle.merged} merged: ${tr.oracle.compared} compared by an oracle, ${tr.oracle.pending} pending (listed in oracle-coverage-pending.yaml), ${tr.oracle.none} with no oracle${tr.oracle.unknown ? `, ${tr.oracle.unknown} not recorded` : ""}. Not timed: ${tr.untimed.map(stationLabel).join(", ") || "none"}.${tr.partly_timed.length ? ` Timed for part of their visits: ${tr.partly_timed.map((x) => `${stationLabel(x.station)} (${pct(x.share)})`).join(", ")}.` : ""}${tr.unmeasured.length ? ` Not measured: ${tr.unmeasured.map((x) => `${stationLabel(x.station)} (${x.reason})`).join(", ")}.` : ""} ${tr.releases} corpus releases in the window.`
   );
   lines.push("");
   lines.push(`Data: ${model.events} events (${Object.entries(model.sources).map(([s, n]) => `${s} ${n}`).join(", ")}). JSON: ${link("/api/ops/flow", siteUrl)}.`);
