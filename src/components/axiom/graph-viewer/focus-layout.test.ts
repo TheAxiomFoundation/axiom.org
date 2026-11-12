@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Node, Edge } from "@xyflow/react";
-import { inputContextSubgraph, dependencySubgraph, focusLayout, scopeRootFor, upstreamIds } from "./focus-layout";
+import { inputContextSubgraph, dependencySubgraph, focusLayout, scopeRootFor, upstreamIds, visibleSubgraph } from "./focus-layout";
 const nodes: Node[] = [
  {id:"a",position:{x:0,y:0},width:240,height:90,data:{legalId:"a",kind:"input"}},
  {id:"b",position:{x:0,y:150},width:240,height:90,data:{legalId:"b",kind:"input"}},
@@ -104,4 +104,16 @@ describe("scopeRootFor", () => {
     expect(scopeRootFor(graphNodes, graphEdges, outputs, null)).toBe("summit");
     expect(scopeRootFor(graphNodes, graphEdges, outputs, "missing")).toBe("summit");
   });
+ it("draws a depth-limited tree, the path to the focus and its inputs, and counts hidden inputs",()=>{
+  const chain: Node[] = ["root","mid","leaf","deep","side"].map((id,i)=>({id,position:{x:i*10,y:0},data:{legalId:id,kind:id==="root"?"output":"ruleRef"}}));
+  const chainEdges: Edge[] = [{id:"1",source:"mid",target:"root"},{id:"2",source:"side",target:"root"},{id:"3",source:"leaf",target:"mid"},{id:"4",source:"deep",target:"leaf"}];
+  const direct = visibleSubgraph(chain,chainEdges,"root",null,1);
+  expect(direct.nodes.map(n=>n.id).sort()).toEqual(["mid","root","side"]);
+  expect(direct.hiddenInputs.get("mid")).toBe(1);
+  expect(direct.hiddenInputs.has("root")).toBe(false);
+  const focused = visibleSubgraph(chain,chainEdges,"root","leaf",1);
+  expect(focused.nodes.map(n=>n.id).sort()).toEqual(["deep","leaf","mid","root","side"]);
+  expect(focused.edges).toHaveLength(4);
+  expect(visibleSubgraph(chain,chainEdges,"root",null,Infinity).nodes).toHaveLength(5);
+ });
 });

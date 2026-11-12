@@ -12,6 +12,7 @@ import { RuleBody } from "@/components/axiom/rule-body";
 import { SectionToc } from "./section-toc";
 import { FocusScroll } from "./focus-scroll";
 import { EncodingRail } from "./encoding-rail";
+import type { SourceConflict } from "@/lib/axiom/source-conflicts-normalize";
 import { CitationPreviewLayer } from "./citation-preview";
 import { SubsectionActions } from "./subsection-actions";
 import { ActionStrip } from "./action-strip";
@@ -675,8 +676,11 @@ function NeighborNav({ data }: { data: SectionPageData }) {
 export function SectionReader({
   data,
   highlightRule = null,
+  sourceConflicts = [],
 }: {
   data: SectionPageData;
+  /** Known source conflicts that touch this section. */
+  sourceConflicts?: SourceConflict[];
   /** Rule name the visitor navigated from (graph inspector's
    *  Read-the-law) — the rail spotlights its card. */
   highlightRule?: string | null;
@@ -854,6 +858,7 @@ export function SectionReader({
           citedByFiles={data.citedByFiles}
           citedByOverflow={data.citedByOverflow}
           citedByOverflowUnit={data.citedByOverflowUnit}
+          sourceConflicts={sourceConflicts}
         />
       </aside>
     </div>
