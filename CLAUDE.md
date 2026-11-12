@@ -41,7 +41,13 @@ generate `/axiom/v2/...` hrefs. The app root and marketing pages stay on v1.
   `tries` also carries its start, whole time and phases (with a check
   phase's time by tool), and `encode_loop` keeps the encoder's loop clock;
   the ledger timeline draws the tries on the run's clock from them. Older
-  records lack both and read as "not timed".
+  records lack both and read as "not timed". A dispatch whose encode step
+  ran and left no encoder record takes how the encode ended
+  (`encode_exit_status`, `encode_exit_rule`, `encode_last_phase`) from the
+  encoder's row for the run in `encodings.live_encoding_runs`
+  (`runner.github_run_id`, axiom-encode #1750 on; `outcome_status` and
+  `error_rule` once the encoder sends them); a run no live row names reads
+  as "not on record".
   Two more kinds of rows, told apart by id (`attemptSource`, no extra
   column): `pr:<repo>#<n>:<module path>`, one module file a PR merged into a
   rulespec-* default branch with no dispatch behind it (from 2026-07-22; each
