@@ -739,6 +739,9 @@ describe("encodeRecord", () => {
     expect(
       encodeRecord(pipelineAttempt({ ...steps, encode_started_at: "2026-10-12T08:00:00Z", encode_seconds: 12, failed_step: "encode_apply", encode_exit_status: "exited", encode_exit_rule: "exit:1", encode_last_phase: "resolve" })).label
     ).toBe("No try recorded: the encode step ran 12s, and the encoder synced no try or cost for it. The encode ended: exited · exit:1 · in phase resolve");
+    expect(
+      encodeRecord(pipelineAttempt({ ...steps, encode_started_at: "2026-10-12T08:00:00Z", encode_seconds: 12, failed_step: "encode_apply", encode_last_phase: "generate" })).label
+    ).toBe("No try recorded: the encode step ran 12s, and the encoder synced no try or cost for it. The encode's last reported phase was generate; how it ended is not on record");
     expect(encodeRecord(pipelineAttempt({ run_status: "in_progress", run_conclusion: null, finished_at: null })).state).toBe("not_yet");
     expect(encodeRecord(outsideAttempt()).state).toBe("outside");
     // The pre-encode gate blocks before a model call, also when the encode step has a duration.

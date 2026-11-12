@@ -10,7 +10,7 @@
  */
 
 import { classifyFailure, FAILURE_CLASS_COPY, FAILURE_CLASSES, type FailureBasis, type FailureClassId } from "./failure-class";
-import { encodeExitLabel, type EncodeExit } from "./encoding-pipeline";
+import { encodeExitKnown, encodeExitLabel, encodeExitSentence, type EncodeExit } from "./encoding-pipeline";
 import type { PipelineEvent } from "./pipeline-events";
 import { isReleaseCase } from "./pipeline-ingest";
 
@@ -476,9 +476,12 @@ export interface DataTrust {
   no_encode: number;
   /** Dispatches whose encode step ran with no try record: the encoder synced no try, model, or cost. */
   no_try_record: number;
-  /** ... of those, the ones whose end is on record (the encoder's live row names the run), and each recorded end with its count. */
+  /** ... of those, the ones whose end is on record (the encoder's live row for the run has an outcome status or a typed rule), and each recorded end with its count. */
   no_try_record_known: number;
   no_try_record_reasons: Array<{ reason: string; count: number }>;
+  /** ... and the ones with a last phase alone (a live row that never finished, or one from before the encoder sent its outcome): not a recorded end. */
+  no_try_record_phase_only: number;
+  no_try_record_phases: Array<{ phase: string; count: number }>;
   /** Merged dispatches by oracle state. unknown: the merge event predates the oracle state. */
   oracle: { merged: number; compared: number; pending: number; none: number; unknown: number };
   /** Corpus releases in the window (the ingest stations' cases). */
@@ -1123,12 +1126,19 @@ export function mineFlow(events: PipelineEvent[], options: FlowOptions): FlowMod
   };
   const encodeRecords = dispatches.map((c) => encodeState(c.visits));
   const encodeStates = encodeRecords.map((record) => record.state);
+  // A recorded end needs an outcome status or a typed rule; a last phase alone is counted apart.
   const noTryReasons = new Map<string, number>();
+  const noTryPhases = new Map<string, number>();
   for (const record of encodeRecords) {
     if (record.state !== "no_try_record" || !record.exit) continue;
-    const reason = encodeExitLabel(record.exit);
-    noTryReasons.set(reason, (noTryReasons.get(reason) ?? 0) + 1);
+    const [counts, key] = encodeExitKnown(record.exit) ? [noTryReasons, encodeExitLabel(record.exit)] : [noTryPhases, record.exit.phase!];
+    counts.set(key, (counts.get(key) ?? 0) + 1);
   }
+  const counted = <K extends string>(counts: Map<string, number>, name: K) =>
+    [...counts.entries()]
+      .map(([value, count]) => ({ [name]: value, count }) as Record<K, string> & { count: number })
+      .sort((a, b) => b.count - a.count || a[name].localeCompare(b[name]));
+  const total = (counts: Map<string, number>) => [...counts.values()].reduce((sum, count) => sum + count, 0);
   const oracleStates = merged.map((c) => caseOracle(c.visits)?.state ?? "unknown");
   const tryStart = Math.min(...factory.flatMap((c) => c.visits.filter((v) => v.try_no != null && v.actor).map((v) => v.start)));
   const trust: DataTrust = {
@@ -1142,10 +1152,10 @@ export function mineFlow(events: PipelineEvent[], options: FlowOptions): FlowMod
     with_typed_checks: dispatches.filter((c) => c.visits.some((v) => v.checks)).length,
     no_encode: encodeStates.filter((state) => state === "no_encode").length,
     no_try_record: encodeStates.filter((state) => state === "no_try_record").length,
-    no_try_record_known: [...noTryReasons.values()].reduce((sum, count) => sum + count, 0),
-    no_try_record_reasons: [...noTryReasons.entries()]
-      .map(([reason, count]) => ({ reason, count }))
-      .sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason)),
+    no_try_record_known: total(noTryReasons),
+    no_try_record_reasons: counted(noTryReasons, "reason"),
+    no_try_record_phase_only: total(noTryPhases),
+    no_try_record_phases: counted(noTryPhases, "phase"),
     oracle: {
       merged: merged.length,
       compared: oracleStates.filter((state) => state === "compared").length,
@@ -1890,17 +1900,28 @@ type StateVisit = Pick<Visit, "station" | "outcome" | "actor" | "rule_id"> & { e
 function noTryRecord(visits: StateVisit[], label: string): EncodeState {
   const exit = visits.find((v) => v.encodeExit)?.encodeExit;
   if (!exit) return { state: "no_try_record", label: `${label}. Why it stopped is not on record` };
-  return { state: "no_try_record", label: `${label}. The encode ended: ${encodeExitLabel(exit)}`, exit };
+  return { state: "no_try_record", label: `${label}. ${encodeExitSentence(exit)}`, exit };
 }
 
-/** How many no-try-record runs say how their encode ended, in words: "(3 with a recorded end: exited · exit:1 (2), ...; 16 not on record)". */
-export function noTryRecordSentence(trust: Pick<DataTrust, "no_try_record" | "no_try_record_known" | "no_try_record_reasons">): string {
+/**
+ * How many no-try-record runs say how their encode ended, in words:
+ * "(3 with a recorded end: exited · exit:1 (2), ...; 2 with the last phase
+ * alone: generate (2); 14 not on record)". A last phase alone is not a
+ * recorded end.
+ */
+export function noTryRecordSentence(
+  trust: Pick<DataTrust, "no_try_record" | "no_try_record_known" | "no_try_record_reasons" | "no_try_record_phase_only" | "no_try_record_phases">
+): string {
   if (!trust.no_try_record) return "";
   const known = trust.no_try_record_known ?? 0;
-  const unknown = trust.no_try_record - known;
-  if (!known) return ` (why they stopped is not on record)`;
-  const reasons = (trust.no_try_record_reasons ?? []).map((r) => `${r.reason} (${r.count})`).join(", ");
-  return ` (${known} with a recorded end: ${reasons}; ${unknown} not on record)`;
+  const phaseOnly = trust.no_try_record_phase_only ?? 0;
+  const unknown = trust.no_try_record - known - phaseOnly;
+  if (!known && !phaseOnly) return ` (why they stopped is not on record)`;
+  const parts: string[] = [];
+  if (known) parts.push(`${known} with a recorded end: ${(trust.no_try_record_reasons ?? []).map((r) => `${r.reason} (${r.count})`).join(", ")}`);
+  if (phaseOnly) parts.push(`${phaseOnly} with the last phase alone: ${(trust.no_try_record_phases ?? []).map((p) => `${p.phase} (${p.count})`).join(", ")}`);
+  parts.push(`${unknown} not on record`);
+  return ` (${parts.join("; ")})`;
 }
 
 /** The stations a run passes before its encode step. */

@@ -1523,6 +1523,19 @@ describe("how an encode with no encoder record ended", () => {
     expect(liveRunExit(run(), "us/other", indexLiveRuns([live(), source]))).toMatchObject({ encode_exit_status: "standalone_validated", encode_last_phase: "apply" });
   });
 
+  it("drops an earlier attempt's stored end when the run was re-run", () => {
+    // Attempt 1 ended "exited · exit:1"; the run id is the row id, so the stored row is attempt 1's.
+    const stored = new Map([["501", { ...reached, run_attempt: 1, encode_exit_status: "exited", encode_exit_rule: "exit:1", encode_last_phase: "resolve" }]]);
+    const rerun = [run({ run_attempt: 2 })];
+    // Attempt 2 reached the encode step and opened no live row: nothing is on record for it.
+    expect(exitOf({ runs: rerun, previous: stored, liveRuns: [] })).toEqual([null, null, null]);
+    // Only attempt 1's live row is in the table, or the live rows were not read this pass.
+    expect(exitOf({ runs: rerun, previous: stored, liveRuns: [live({ github_run_attempt: "1" })] })).toEqual([null, null, null]);
+    expect(exitOf({ runs: rerun, previous: stored })).toEqual([null, null, null]);
+    // Attempt 2's own live row is its end.
+    expect(exitOf({ runs: rerun, previous: stored, liveRuns: [live({ github_run_attempt: "2", outcome_status: "aborted", error_rule: "exception:OSError", phase: "generate" })] })).toEqual(["aborted", "exception:OSError", "generate"]);
+  });
+
   it("reads rows from before the outcome columns exist: the last phase alone", () => {
     const { outcome_status: _status, error_rule: _rule, ...before } = live();
     expect(exitOf({ liveRuns: [before] })).toEqual([null, null, "resolve"]);
@@ -1544,9 +1557,12 @@ describe("how an encode with no encoder record ended", () => {
   });
 
   it("keeps what an earlier pass stored when the live rows are gone or were not read", () => {
-    const stored = new Map([["501", { ...reached, encode_exit_status: "exited", encode_exit_rule: "exit:1", encode_last_phase: "resolve" }]]);
+    const end = { encode_exit_status: "exited", encode_exit_rule: "exit:1", encode_last_phase: "resolve" };
+    const stored = new Map([["501", { ...reached, ...end, run_attempt: 1 }]]);
     expect(exitOf({ previous: stored })).toEqual(["exited", "exit:1", "resolve"]);
     expect(exitOf({ previous: stored, liveRuns: [] })).toEqual(["exited", "exit:1", "resolve"]);
+    // A stored end with no attempt on record is not known to be this attempt's.
+    expect(exitOf({ previous: new Map([["501", { ...reached, ...end }]]) })).toEqual([null, null, null]);
     // A record that arrives later replaces the stored end.
     expect(exitOf({ previous: stored, encoderRuns: [encoderRow({ timestamp: "2026-09-29T18:20:00Z" })] })).toEqual([null, null, null]);
   });

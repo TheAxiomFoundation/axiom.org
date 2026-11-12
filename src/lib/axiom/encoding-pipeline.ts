@@ -51,6 +51,18 @@ export function encodeExitLabel(exit: EncodeExit): string {
   return [exit.status, exit.rule, exit.phase ? `in phase ${exit.phase}` : null].filter(Boolean).join(" · ");
 }
 
+/** Whether how the encode ended is on record: an outcome status or a typed rule. A last phase alone is not an end. */
+export function encodeExitKnown(exit: EncodeExit | null | undefined): boolean {
+  return Boolean(exit && (exit.status || exit.rule));
+}
+
+/** A recorded end as a sentence: how the encode ended, or its last phase alone when the end is not on record. */
+export function encodeExitSentence(exit: EncodeExit): string {
+  return encodeExitKnown(exit)
+    ? `The encode ended: ${encodeExitLabel(exit)}`
+    : `The encode's last reported phase was ${exit.phase}; how it ended is not on record`;
+}
+
 /** Whether a row is a dispatch: only dispatches count in run statistics. */
 export function isDispatch(attempt: Pick<PipelineAttempt, "id">): boolean {
   return attemptSource(attempt) === "dispatch";

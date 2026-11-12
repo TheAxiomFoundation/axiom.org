@@ -535,7 +535,8 @@ describe("what a run recorded: typed checks, no encode, and the oracle state", (
     });
     // Before the outcome columns exist the live row gives the last phase alone.
     const phaseOnly = attemptEvents(pipelineAttempt({ id: "31", ...noRecord, encode_last_phase: "generate" }));
-    expect(caseDetail(phaseOnly, "31")!.encode.label).toMatch(/The encode ended: in phase generate$/);
+    expect(caseDetail(phaseOnly, "31")!.encode.label).toMatch(/or cost\. The encode's last reported phase was generate; how it ended is not on record$/);
+    expect(caseDetail(phaseOnly, "31")!.encode.label).not.toContain("The encode ended");
     // No live row, null columns, or rows read before the columns exist: not on record.
     for (const absent of [{}, { encode_exit_status: null, encode_exit_rule: null, encode_last_phase: null }]) {
       const state = caseDetail(attemptEvents(pipelineAttempt({ id: "32", ...noRecord, ...absent })), "32")!.encode;
@@ -573,11 +574,39 @@ describe("what a run recorded: typed checks, no encode, and the oracle state", (
     expect(agentBrief(counted, "https://axiom.org")).toContain(
       "4 ran the encode step with no try record (3 with a recorded end: exited · exit:1 · in phase resolve (2), aborted · exception:TimeoutError · in phase generate (1); 1 not on record). Of"
     );
+    // A last phase alone (a live row that never finished, or one from before the encoder sent its outcome) is not a recorded end.
+    const phases = [
+      pipelineAttempt({ id: "44", citation: "us/e", ...noRecord, encode_last_phase: "generate" }),
+      pipelineAttempt({ id: "45", citation: "us/f", ...noRecord, encode_last_phase: "generate" }),
+      pipelineAttempt({ id: "46", citation: "us/g", ...noRecord, encode_last_phase: "resolve" }),
+    ].flatMap(attemptEvents);
+    const mixed = mineFlow([...some, ...phases], { now: NOW, days: 30 });
+    expect(mixed.trust).toMatchObject({
+      no_try_record: 7,
+      no_try_record_known: 3,
+      no_try_record_phase_only: 3,
+      no_try_record_phases: [
+        { phase: "generate", count: 2 },
+        { phase: "resolve", count: 1 },
+      ],
+    });
+    expect(mixed.trust.no_try_record_reasons).toHaveLength(2);
+    expect(agentBrief(mixed, "https://axiom.org")).toContain(
+      "(1); 3 with the last phase alone: generate (2), resolve (1); 1 not on record). Of"
+    );
+    const onlyPhases = mineFlow(phases, { now: NOW, days: 30 });
+    expect(onlyPhases.trust).toMatchObject({ no_try_record: 3, no_try_record_known: 0, no_try_record_reasons: [], no_try_record_phase_only: 3 });
+    expect(agentBrief(onlyPhases, "https://axiom.org")).toContain(
+      "3 ran the encode step with no try record (3 with the last phase alone: generate (2), resolve (1); 0 not on record). Of"
+    );
+    // A typed rule with no status is a recorded end.
+    const ruleOnly = mineFlow(attemptEvents(pipelineAttempt({ id: "47", ...noRecord, encode_exit_rule: "exit:message" })), { now: NOW, days: 30 });
+    expect(ruleOnly.trust).toMatchObject({ no_try_record_known: 1, no_try_record_phase_only: 0, no_try_record_reasons: [{ reason: "exit:message", count: 1 }] });
     // None on record (today, and before the columns exist): the brief says so.
-    expect(model.trust).toMatchObject({ no_try_record: 1, no_try_record_known: 0, no_try_record_reasons: [] });
+    expect(model.trust).toMatchObject({ no_try_record: 1, no_try_record_known: 0, no_try_record_reasons: [], no_try_record_phase_only: 0, no_try_record_phases: [] });
     expect(agentBrief(model, "https://axiom.org")).toContain("1 ran the encode step with no try record (why they stopped is not on record). Of");
     // No such run: nothing added. A model computed before the counts existed still reads.
-    expect(noTryRecordSentence({ no_try_record: 0, no_try_record_known: 0, no_try_record_reasons: [] })).toBe("");
+    expect(noTryRecordSentence({ no_try_record: 0, no_try_record_known: 0, no_try_record_reasons: [], no_try_record_phase_only: 0, no_try_record_phases: [] })).toBe("");
     expect(noTryRecordSentence({ no_try_record: 2 } as never)).toBe(" (why they stopped is not on record)");
   });
 

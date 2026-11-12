@@ -208,6 +208,8 @@ describe("JourneyView", () => {
       pipelineAttempt({ id: "9", ...noRecord }),
       // Columns present and empty (no live row names the run).
       pipelineAttempt({ id: "10", ...noRecord, encode_exit_status: null, encode_exit_rule: null, encode_last_phase: null }),
+      // A last phase alone: where it was, not how it ended.
+      pipelineAttempt({ id: "11", ...noRecord, encode_last_phase: "generate" }),
     ].flatMap(attemptEvents);
     const panel = (id: string) => {
       cleanup();
@@ -217,6 +219,8 @@ describe("JourneyView", () => {
     };
     expect(panel("8")).toContain("none recorded");
     expect(panel("8")).toContain("The encode ended: exited · exit:1 · in phase resolve.");
+    expect(panel("11")).toContain("The encode's last reported phase was generate; how it ended is not on record.");
+    expect(panel("11")).not.toContain("The encode ended");
     for (const id of ["9", "10"]) {
       expect(panel(id)).toContain("Why it stopped is not on record.");
       expect(panel(id)).not.toContain("The encode ended");
@@ -234,6 +238,9 @@ describe("JourneyView", () => {
       "2 ran the encode step with no try record (1 with a recorded end: exited · exit:1 · in phase resolve (1); 1 not on record);"
     );
     expect(coverage([{}, {}])).toContain("2 ran the encode step with no try record (why they stopped is not on record);");
+    expect(coverage([{ encode_exit_status: "exited" }, { encode_last_phase: "validate" }, {}])).toContain(
+      "3 ran the encode step with no try record (1 with a recorded end: exited (1); 1 with the last phase alone: validate (1); 1 not on record);"
+    );
     cleanup();
   });
 

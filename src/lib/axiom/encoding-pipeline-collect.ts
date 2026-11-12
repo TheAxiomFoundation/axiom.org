@@ -2324,15 +2324,18 @@ export function buildAttempts(inputs: CollectInputs): PipelineAttempt[] {
     if (encoder) applyEncoderRecord(attempt, encoder);
     // A finished run whose encode step ran and left no record: the encoder's
     // live row for the run says how it ended. A live row gone from the table
-    // (or not read this pass) keeps what an earlier pass stored.
+    // (or not read this pass) keeps what an earlier pass stored for the same
+    // run attempt: a row's id is its run id, so after a re-run the stored end
+    // is the earlier attempt's, and is dropped.
     Object.assign(attempt, NO_EXIT);
     if (!encoder && run.status === "completed" && encodeWindow(run, attempt, inputs.nowMs)) {
       const exit = liveIndex && liveRunExit(run, attempt.citation, liveIndex);
-      Object.assign(attempt, exit ?? {
-        encode_exit_status: previous?.encode_exit_status ?? null,
-        encode_exit_rule: previous?.encode_exit_rule ?? null,
-        encode_last_phase: previous?.encode_last_phase ?? null,
-      });
+      if (exit) Object.assign(attempt, exit);
+      else if (previous && previous.run_attempt != null && previous.run_attempt === (run.run_attempt ?? null)) {
+        attempt.encode_exit_status = previous.encode_exit_status ?? null;
+        attempt.encode_exit_rule = previous.encode_exit_rule ?? null;
+        attempt.encode_last_phase = previous.encode_last_phase ?? null;
+      }
     }
 
     if (isFailedRun(run) && !attempt.failure_source) {

@@ -321,7 +321,8 @@ async function readPrevious() {
     if (await columnsExist(SIDE_CARRIED)) columns += `,${SIDE_CARRIED.join(",")},pr_via_number,pr_via_state`;
     if (await columnsExist(GATE_CARRIED)) columns += `,${GATE_CARRIED.join(",")}`;
     if (await columnsExist(DISPATCH_CARRIED)) columns += `,${DISPATCH_CARRIED.join(",")}`;
-    if (await columnsExist(EXIT_CARRIED)) columns += `,${EXIT_CARRIED.join(",")}`;
+    // With the run attempt: a stored end is kept only for the attempt it was read for.
+    if (await columnsExist(EXIT_CARRIED)) columns += `,${EXIT_CARRIED.join(",")},run_attempt`;
     const rows = await read(columns);
     // Rows of modules merged outside the pipeline carry their PR whole (its
     // files are never read again), and dependent rows their stages: read every column.

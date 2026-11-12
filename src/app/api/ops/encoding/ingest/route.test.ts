@@ -297,7 +297,10 @@ describe("POST /api/ops/encoding/ingest", () => {
 
   describe("before the outcome columns exist", () => {
     /** PostgREST refuses a write that names a column the table lacks. */
-    function stubMissingColumns(status = 400) {
+    function stubMissingColumns(
+      status = 400,
+      error: unknown = { code: "PGRST204", message: "Could not find the 'outcome_status' column of 'live_encoding_runs' in the schema cache" }
+    ) {
       const bodies: Array<Record<string, unknown>> = [];
       vi.stubGlobal(
         "fetch",
@@ -305,10 +308,7 @@ describe("POST /api/ops/encoding/ingest", () => {
           const data = JSON.parse(String(init?.body)) as Record<string, unknown>;
           bodies.push(data);
           if ("outcome_status" in data || "error_rule" in data) {
-            return new Response(
-              JSON.stringify({ code: "PGRST204", message: "Could not find the 'outcome_status' column of 'live_encoding_runs' in the schema cache" }),
-              { status }
-            );
+            return new Response(typeof error === "string" ? error : JSON.stringify(error), { status });
           }
           return new Response(JSON.stringify([{}]), { status: 200 });
         })
@@ -335,8 +335,20 @@ describe("POST /api/ops/encoding/ingest", () => {
       expect(bodies).toHaveLength(1);
     });
 
-    it("does not write again after another kind of failure", async () => {
-      const bodies = stubMissingColumns(500);
+    it("writes again on Postgres's own undefined-column error", async () => {
+      const bodies = stubMissingColumns(400, { code: "42703", message: 'column "error_rule" of relation "live_encoding_runs" does not exist' });
+      expect((await POST(post({ ...finish, error_rule: "exit:1" }))).status).toBe(204);
+      expect(bodies).toHaveLength(2);
+    });
+
+    it.each([
+      ["an unrelated 400", 400, { code: "22P02", message: "invalid input syntax" }],
+      ["a 400 that names the column in its message only", 400, { code: "PGRST100", message: "outcome_status" }],
+      ["a 400 with no code", 400, {}],
+      ["a 400 that is not JSON", 400, "Bad Request"],
+      ["a server error", 500, { code: "XX000", message: "internal error" }],
+    ])("does not write again after %s", async (_name, status, error) => {
+      const bodies = stubMissingColumns(status, error);
       const response = await POST(post({ ...finish, outcome_status: "exited" }));
       expect(response.status).toBe(502);
       expect(bodies).toHaveLength(1);
