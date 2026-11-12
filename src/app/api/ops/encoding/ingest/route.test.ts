@@ -220,6 +220,136 @@ describe("POST /api/ops/encoding/ingest", () => {
     expect(data).toMatchObject({ phase: "apply", attempt: 3, model: "final-model" });
   });
 
+  it("finishes with how the run ended: outcome status and typed rule", async () => {
+    const { calls } = stubSupabase();
+    const response = await POST(
+      post({
+        op: "finish",
+        id: "live-abc123def456",
+        status: "failed",
+        phase: "resolve",
+        outcome_status: " exited ",
+        error_rule: "exit:1",
+      })
+    );
+    expect(response.status).toBe(204);
+    const patches = calls.filter((c) => c.init.method === "PATCH");
+    expect(patches).toHaveLength(1);
+    expect(JSON.parse(String(patches[0].init.body))).toMatchObject({
+      status: "failed",
+      phase: "resolve",
+      outcome_status: "exited",
+      error_rule: "exit:1",
+    });
+  });
+
+  it("accepts outcome fields at their bounds and every allowed character", async () => {
+    const { calls } = stubSupabase();
+    const outcome = "apply_blocked_validation".padEnd(64, "x");
+    const rule = `exception:Some.Error/a-b_c:${"x".repeat(160)}`.slice(0, 160);
+    await POST(
+      post({ op: "finish", id: "live-abc123def456", status: "failed", outcome_status: outcome, error_rule: rule })
+    );
+    const data = JSON.parse(String(calls.find((c) => c.init.method === "PATCH")!.init.body));
+    expect(data.outcome_status).toBe(outcome);
+    expect(data.error_rule).toBe(rule);
+  });
+
+  it.each([
+    ["too long", "x".repeat(65), "x".repeat(161)],
+    ["free text", "it broke", "Traceback (most recent call last)"],
+    ["other characters", "exited;drop", "exit:1\nmore"],
+    ["empty", "", "  "],
+    ["not strings", 1, { rule: "exit:1" }],
+  ])("drops invalid outcome fields and still finishes (%s)", async (_name, outcome_status, error_rule) => {
+    const { calls } = stubSupabase();
+    const response = await POST(
+      post({ op: "finish", id: "live-abc123def456", status: "failed", outcome_status, error_rule })
+    );
+    expect(response.status).toBe(204);
+    const data = JSON.parse(String(calls.find((c) => c.init.method === "PATCH")!.init.body));
+    expect(data.status).toBe("failed");
+    expect(data).not.toHaveProperty("outcome_status");
+    expect(data).not.toHaveProperty("error_rule");
+  });
+
+  it("keeps a valid outcome field when the other is invalid", async () => {
+    const { calls } = stubSupabase();
+    await POST(
+      post({ op: "finish", id: "live-abc123def456", status: "failed", outcome_status: "aborted", error_rule: "free text" })
+    );
+    const data = JSON.parse(String(calls.find((c) => c.init.method === "PATCH")!.init.body));
+    expect(data.outcome_status).toBe("aborted");
+    expect(data).not.toHaveProperty("error_rule");
+  });
+
+  it("takes outcome fields on finish only, never on start or heartbeat", async () => {
+    const { calls } = stubSupabase();
+    const outcome = { outcome_status: "aborted", error_rule: "exception:ValueError" };
+    expect((await POST(post(startBody(outcome)))).status).toBe(204);
+    expect((await POST(post({ op: "heartbeat", id: "live-abc123def456", ...outcome }))).status).toBe(204);
+    for (const call of calls.filter((c) => c.init.body)) {
+      const data = JSON.parse(String(call.init.body));
+      expect(data).not.toHaveProperty("outcome_status");
+      expect(data).not.toHaveProperty("error_rule");
+    }
+  });
+
+  describe("before the outcome columns exist", () => {
+    /** PostgREST refuses a write that names a column the table lacks. */
+    function stubMissingColumns(status = 400) {
+      const bodies: Array<Record<string, unknown>> = [];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (_url: string | URL, init?: RequestInit) => {
+          const data = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          bodies.push(data);
+          if ("outcome_status" in data || "error_rule" in data) {
+            return new Response(
+              JSON.stringify({ code: "PGRST204", message: "Could not find the 'outcome_status' column of 'live_encoding_runs' in the schema cache" }),
+              { status }
+            );
+          }
+          return new Response(JSON.stringify([{}]), { status: 200 });
+        })
+      );
+      return bodies;
+    }
+    const finish = { op: "finish", id: "live-abc123def456", status: "failed", phase: "resolve", run_id: "run-777" };
+
+    it("writes the finish again without them, so it is not lost", async () => {
+      const bodies = stubMissingColumns();
+      const response = await POST(post({ ...finish, outcome_status: "exited", error_rule: "exit:1" }));
+      expect(response.status).toBe(204);
+      expect(bodies).toHaveLength(2);
+      expect(bodies[0]).toMatchObject({ outcome_status: "exited", error_rule: "exit:1" });
+      expect(bodies[1]).toMatchObject({ status: "failed", phase: "resolve", run_id: "run-777" });
+      expect(bodies[1].finished_at).toBe(bodies[0].finished_at);
+      expect(bodies[1]).not.toHaveProperty("outcome_status");
+      expect(bodies[1]).not.toHaveProperty("error_rule");
+    });
+
+    it("writes once when the client sends neither field", async () => {
+      const bodies = stubMissingColumns();
+      expect((await POST(post(finish))).status).toBe(204);
+      expect(bodies).toHaveLength(1);
+    });
+
+    it("does not write again after another kind of failure", async () => {
+      const bodies = stubMissingColumns(500);
+      const response = await POST(post({ ...finish, outcome_status: "exited" }));
+      expect(response.status).toBe(502);
+      expect(bodies).toHaveLength(1);
+    });
+
+    it("does not write again when a finish without the fields is refused", async () => {
+      const fetchMock = vi.fn(async () => new Response("{}", { status: 400 }));
+      vi.stubGlobal("fetch", fetchMock);
+      expect((await POST(post(finish))).status).toBe(502);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it.each([0, 1001, 1.5, "2"])(
     "omits invalid finish state with attempt %s",
     async (attempt) => {
