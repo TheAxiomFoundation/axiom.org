@@ -164,6 +164,7 @@ describe("POST /api/ops/encoding/ingest", () => {
     expect(response.status).toBe(204);
     const patch = calls.find((c) => c.init.method === "PATCH");
     expect(patch!.url).toContain("reported_via=eq.public_ingest");
+    expect(new URL(patch!.url).searchParams.get("status")).toBe("eq.running");
     const data = JSON.parse(String(patch!.init.body));
     expect(data.last_heartbeat_at).toBeTruthy();
     expect(data.phase).toBe("validating");
@@ -194,7 +195,135 @@ describe("POST /api/ops/encoding/ingest", () => {
     expect(data.status).toBe("completed");
     expect(data.run_id).toBe("run-777");
     expect(data.finished_at).toBeTruthy();
+    // Older clients omit these fields and keep the last reported state.
+    expect(data).not.toHaveProperty("phase");
+    expect(data).not.toHaveProperty("attempt");
+    expect(data).not.toHaveProperty("model");
   });
+
+  it("finishes with the final phase, attempt, and model", async () => {
+    const { calls } = stubSupabase();
+    const response = await POST(
+      post({
+        op: "finish",
+        id: "live-abc123def456",
+        status: "completed",
+        phase: " apply ",
+        attempt: 3,
+        model: " final-model ",
+      })
+    );
+    expect(response.status).toBe(204);
+    const data = JSON.parse(
+      String(calls.find((c) => c.init.method === "PATCH")!.init.body)
+    );
+    expect(data).toMatchObject({ phase: "apply", attempt: 3, model: "final-model" });
+  });
+
+  it.each([0, 1001, 1.5, "2"])(
+    "omits invalid finish state with attempt %s",
+    async (attempt) => {
+      const { calls } = stubSupabase();
+      const response = await POST(
+        post({
+          op: "finish",
+          id: "live-abc123def456",
+          status: "completed",
+          phase: "x".repeat(121),
+          attempt,
+          model: { name: "not-a-string" },
+        })
+      );
+      expect(response.status).toBe(204);
+      const data = JSON.parse(
+        String(calls.find((c) => c.init.method === "PATCH")!.init.body)
+      );
+      expect(data).not.toHaveProperty("phase");
+      expect(data).not.toHaveProperty("attempt");
+      expect(data).not.toHaveProperty("model");
+    }
+  );
+
+  it.each(["completed", "failed"])(
+    "preserves %s state when a delayed heartbeat writes after finish",
+    async (status) => {
+      const row: Record<string, unknown> = {
+        id: "live-abc123def456",
+        status: "running",
+        phase: "generate",
+        attempt: 1,
+        model: "initial-model",
+        runner: { reported_via: "public_ingest" },
+      };
+      let announceHeartbeat!: () => void;
+      let releaseHeartbeat!: () => void;
+      const heartbeatArrived = new Promise<void>((resolve) => {
+        announceHeartbeat = resolve;
+      });
+      const heartbeatReleased = new Promise<void>((resolve) => {
+        releaseHeartbeat = resolve;
+      });
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string | URL, init?: RequestInit) => {
+          expect(init?.method).toBe("PATCH");
+          const data = JSON.parse(String(init?.body));
+          if (!Object.hasOwn(data, "status")) {
+            announceHeartbeat();
+            await heartbeatReleased;
+          }
+          // Evaluate the REST predicates when the write reaches the row,
+          // after any delay, just as an atomic conditional PATCH does.
+          const matches = [...new URL(String(url)).searchParams].every(
+            ([field, expected]) => {
+              const actual =
+                field === "runner->>reported_via"
+                  ? (row.runner as Record<string, unknown>).reported_via
+                  : row[field];
+              return expected === `eq.${actual}`;
+            }
+          );
+          if (matches) Object.assign(row, data);
+          return new Response(JSON.stringify(matches ? [row] : []), {
+            status: 200,
+          });
+        })
+      );
+
+      const heartbeat = POST(
+        post({
+          op: "heartbeat",
+          id: row.id,
+          phase: "validate",
+          attempt: 2,
+          model: "older-model",
+        })
+      );
+      await heartbeatArrived;
+      const finish = await POST(
+        post({
+          op: "finish",
+          id: row.id,
+          status,
+          phase: "apply",
+          attempt: 3,
+          model: "final-model",
+        })
+      );
+      expect(finish.status).toBe(204);
+      const finishedRow = structuredClone(row);
+      expect(row).toMatchObject({
+        status,
+        phase: "apply",
+        attempt: 3,
+        model: "final-model",
+      });
+      expect(row.finished_at).toBeTruthy();
+      releaseHeartbeat();
+      expect((await heartbeat).status).toBe(404);
+      expect(row).toEqual(finishedRow);
+    }
+  );
 
   it("rejects finish with an unknown status", async () => {
     stubSupabase();
