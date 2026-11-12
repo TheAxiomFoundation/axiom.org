@@ -12,7 +12,7 @@
  * same instant, so the flow mining never needs a hard-coded station order.
  */
 
-import { attemptSource, carriedToMain, failedStepStation, mainMergedAt, type PipelineAttempt, type PipelineTry } from "./encoding-pipeline";
+import { attemptSource, carriedToMain, encodeExit, failedStepStation, mainMergedAt, type PipelineAttempt, type PipelineTry } from "./encoding-pipeline";
 import { compareVersions } from "./encoding-pipeline-insights";
 
 export type EventKind = "enter" | "leave" | "fail" | "cancel" | "wait" | "issue" | "change";
@@ -267,6 +267,7 @@ export function attemptEvents(attempt: PipelineAttempt): PipelineEvent[] {
     // The encode loop: one generate and one validate per try.
     const tries = [...(attempt.tries ?? [])].sort((a, b) => a.attempt - b.attempt);
     let clock = encodeFrom;
+    const exit = tries.length ? null : encodeExit(attempt);
     if (tries.length) {
       for (const t of tries) {
         const start = t.startedAt ?? clock;
@@ -304,12 +305,13 @@ export function attemptEvents(attempt: PipelineAttempt): PipelineEvent[] {
         }
         clock = valEnd;
       }
-    } else if (attempt.encode_seconds != null || failedAt === "validate" || attempt.pr_created_at) {
+    } else if (attempt.encode_seconds != null || failedAt === "validate" || attempt.pr_created_at || exit) {
       // No per-try record (runs before the encoder synced its tries): the
-      // encode step as one generate and one validate.
+      // encode step as one generate and one validate. encode_exit: how the
+      // encoder's live row for the run says the encode ended, when one does.
       const encodeMs = attempt.encode_seconds != null ? attempt.encode_seconds * 1000 : null;
       ev({ station: "generate", kind: "enter", at: encodeFrom, try_no: attempt.generation_attempts ?? null });
-      ev({ station: "generate", kind: "leave", at: encodeFrom, outcome: "ok", try_no: attempt.generation_attempts ?? null, attrs: { untimed: true } });
+      ev({ station: "generate", kind: "leave", at: encodeFrom, outcome: "ok", try_no: attempt.generation_attempts ?? null, attrs: { untimed: true, ...(exit ? { encode_exit: exit } : {}) } });
       ev({ station: "validate", kind: "enter", at: encodeFrom, try_no: attempt.generation_attempts ?? null });
       clock = encodeMs != null ? addMs(encodeFrom, encodeMs) : (attempt.finished_at ?? encodeFrom);
       if (failedAt !== "validate") {

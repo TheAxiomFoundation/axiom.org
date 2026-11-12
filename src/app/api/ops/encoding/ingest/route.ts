@@ -21,6 +21,10 @@ const RUN_STATUSES = new Set(["completed", "failed"]);
 const MAX_CITATION_LENGTH = 300;
 const MAX_FIELD_LENGTH = 120;
 const MAX_ATTEMPT = 1000;
+/** How a run ended, on finish: machine tokens, never free text. */
+const TOKEN_RE = /^[A-Za-z0-9_.:/-]+$/;
+const MAX_OUTCOME_STATUS_LENGTH = 64;
+const MAX_ERROR_RULE_LENGTH = 160;
 /** Hard ceiling on concurrently 'running' self-reported rows — keeps a
  *  spammer from flooding the board even under rotating client keys. */
 const MAX_PUBLIC_RUNNING_ROWS = 200;
@@ -51,6 +55,25 @@ function cleanText(value: unknown, maxLength: number): string | null {
   const trimmed = value.trim();
   if (trimmed.length === 0 || trimmed.length > maxLength) return null;
   return trimmed;
+}
+
+function cleanToken(value: unknown, maxLength: number): string | null {
+  const text = cleanText(value, maxLength);
+  return text && TOKEN_RE.test(text) ? text : null;
+}
+
+/**
+ * How the encode ended: its outcome status (or aborted, exited,
+ * interrupted) and a typed rule (exception:<Class>, exit:<code>, a check
+ * id). Invalid values are dropped, like any other optional field.
+ */
+function cleanOutcome(body: Record<string, unknown>): Record<string, unknown> {
+  const data: Record<string, unknown> = {};
+  const outcome = cleanToken(body.outcome_status, MAX_OUTCOME_STATUS_LENGTH);
+  if (outcome) data.outcome_status = outcome;
+  const rule = cleanToken(body.error_rule, MAX_ERROR_RULE_LENGTH);
+  if (rule) data.error_rule = rule;
+  return data;
 }
 
 function cleanAttempt(value: unknown): number | null {
@@ -115,6 +138,28 @@ async function countPublicRunningRows(config: IngestConfig): Promise<number> {
   return Number.isNaN(count) ? 0 : count;
 }
 
+/** PostgREST's code for a column the table does not have (PGRST204), and Postgres's (42703). */
+const MISSING_COLUMN_CODES = new Set(["PGRST204", "42703"]);
+
+/** A refused write, with the error code of PostgREST's answer when it gave one. */
+class IngestWriteError extends Error {
+  constructor(
+    status: number,
+    readonly code: string | null
+  ) {
+    super(`Supabase returned ${status}`);
+  }
+}
+
+async function errorCode(response: Response): Promise<string | null> {
+  try {
+    const body = (await response.json()) as { code?: unknown } | null;
+    return typeof body?.code === "string" ? body.code : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Update an ingest-stamped row; any status predicate is atomic with the write. */
 async function updateIngestRow(
   config: IngestConfig,
@@ -133,7 +178,7 @@ async function updateIngestRow(
     }
   );
   if (!response.ok) {
-    throw new Error(`Supabase returned ${response.status}`);
+    throw new IngestWriteError(response.status, await errorCode(response));
   }
   const rows = (await response.json()) as unknown[];
   return rows.length > 0;
@@ -224,7 +269,19 @@ export async function POST(request: Request) {
       };
       const runId = cleanText(body.run_id, MAX_FIELD_LENGTH);
       if (runId) data.run_id = runId;
-      const matched = await updateIngestRow(config, id, data);
+      const outcome = cleanOutcome(body);
+      let matched: boolean;
+      try {
+        matched = await updateIngestRow(config, id, { ...data, ...outcome });
+      } catch (error) {
+        // The table does not have the columns yet (outcome_status and
+        // error_rule arrive by migration): write the finish without them,
+        // so it is never lost. Any other refusal fails as before.
+        const missingColumn =
+          error instanceof IngestWriteError && error.code !== null && MISSING_COLUMN_CODES.has(error.code);
+        if (!missingColumn || Object.keys(outcome).length === 0) throw error;
+        matched = await updateIngestRow(config, id, data);
+      }
       if (!matched) {
         return NextResponse.json({ error: "unknown_run" }, { status: 404 });
       }

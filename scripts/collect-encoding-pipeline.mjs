@@ -242,6 +242,33 @@ async function readEncoderRuns(since) {
   }
 }
 
+const LIVE_COLUMNS =
+  "id,citation,status,phase,started_at,github_run_id:runner->>github_run_id,github_run_attempt:runner->>github_run_attempt,reported_via:runner->>reported_via";
+
+/**
+ * The encoder's live rows that name an Actions run (axiom-encode #1750 on),
+ * with how each ended once the outcome columns exist. Null when the table
+ * cannot be read: each attempt then keeps what an earlier pass stored.
+ */
+async function readLiveRuns(since) {
+  const read = (columns) =>
+    readAll("live_encoding_runs", columns, (query) =>
+      query.gte("started_at", since).not("runner->>github_run_id", "is", null).order("started_at").order("id"),
+    );
+  try {
+    try {
+      return await read(`${LIVE_COLUMNS},outcome_status,error_rule`);
+    } catch (error) {
+      if (!/outcome_status|error_rule/.test(error.message)) throw error;
+      console.log("live run outcome columns not read yet (migration not applied)");
+      return await read(LIVE_COLUMNS);
+    }
+  } catch (error) {
+    console.warn(`live encoder rows unavailable: ${error.message}`);
+    return null;
+  }
+}
+
 const ORACLE_CARRIED = ["oracle_status", "oracle_report", "oracle_engine", "oracle_checked_at"];
 const RUN_CARRIED = ["encode_started_at", "cancel_stage", "jobs_checked_at"];
 const VERSION_CARRIED = ["encoder_sha", "encoder_version", "pr_check_error", "pr_check_job_id"];
@@ -263,6 +290,9 @@ const GATE_CARRIED = ["pr_requested"];
 // Added by the 2026-11-11 dispatch-record migration: what a dispatch asked
 // for, read once from the run's "Record dispatch" job.
 const DISPATCH_CARRIED = ["dispatch_record"];
+// Added by the 2026-11-12 terminal-outcome migration: how the encode of a
+// run with no encoder record ended, from the encoder's live row for the run.
+const EXIT_CARRIED = ["encode_exit_status", "encode_exit_rule", "encode_last_phase"];
 
 async function columnsExist(columns) {
   const { error } = await supabase.from("pipeline_attempts").select(columns.join(",")).limit(1);
@@ -291,6 +321,8 @@ async function readPrevious() {
     if (await columnsExist(SIDE_CARRIED)) columns += `,${SIDE_CARRIED.join(",")},pr_via_number,pr_via_state`;
     if (await columnsExist(GATE_CARRIED)) columns += `,${GATE_CARRIED.join(",")}`;
     if (await columnsExist(DISPATCH_CARRIED)) columns += `,${DISPATCH_CARRIED.join(",")}`;
+    // With the run attempt: a stored end is kept only for the attempt it was read for.
+    if (await columnsExist(EXIT_CARRIED)) columns += `,${EXIT_CARRIED.join(",")},run_attempt`;
     const rows = await read(columns);
     // Rows of modules merged outside the pipeline carry their PR whole (its
     // files are never read again), and dependent rows their stages: read every column.
@@ -1136,6 +1168,7 @@ async function upsert(rows) {
     ["side branch", SIDE_COLUMNS],
     ["PR gate", GATE_COLUMNS],
     ["dispatch record", DISPATCH_CARRIED],
+    ["encode exit", EXIT_CARRIED],
   ]) {
     if (await columnsExist(group)) continue;
     console.log(`${name} columns not written yet (migration not applied)`);
@@ -1264,15 +1297,16 @@ async function main() {
   const since = new Date(Date.parse(earliest) - 86_400_000).toISOString();
   console.log(`${runs.length} dispatch runs since ${earliest}`);
 
-  const [encoderRuns, previous, mirror, prs, compile] = await Promise.all([
+  const [encoderRuns, liveRuns, previous, mirror, prs, compile] = await Promise.all([
     readEncoderRuns(since),
+    readLiveRuns(since),
     readPrevious(),
     readMirror(),
     listManifestPrs(since),
     readCompileSweep(),
   ]);
   console.log(
-    `${encoderRuns.length} encoder records, ${prs.length} manifest PRs, ${mirror.length} index rows, ` +
+    `${encoderRuns.length} encoder records, ${liveRuns?.length ?? "no"} live rows that name a run, ${prs.length} manifest PRs, ${mirror.length} index rows, ` +
       `compile sweep ${compile ? compile.generated_at : "unavailable"}, ${previous.size} previous rows`,
   );
 
@@ -1409,6 +1443,7 @@ async function main() {
     runs,
     prs,
     encoderRuns,
+    liveRuns: liveRuns ?? undefined,
     mirror,
     compile,
     failureDetails,

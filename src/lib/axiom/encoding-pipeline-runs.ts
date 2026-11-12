@@ -12,6 +12,8 @@ import {
   durationLabel,
   failedStepStation,
   ENCODE_GATE_LABELS,
+  encodeExit,
+  encodeExitSentence,
   encodeGate,
   errorMessage,
   failureReason,
@@ -215,7 +217,9 @@ export function encodeRecord(attempt: PipelineAttempt): EncodeRecord {
   }
   const ran =
     attempt.encode_seconds != null ? `the encode step ran ${secondsLabel(attempt.encode_seconds)}` : "the encode step ran";
-  return { state: "no_try_record", label: `No try recorded: ${ran}, and the encoder synced no try or cost for it` };
+  const exit = encodeExit(attempt);
+  const ended = exit ? `. ${encodeExitSentence(exit)}` : "";
+  return { state: "no_try_record", label: `No try recorded: ${ran}, and the encoder synced no try or cost for it${ended}` };
 }
 
 const secondsLabel = (seconds: number) => (seconds < 60 ? `${Math.round(seconds)}s` : durationLabel(seconds * 1000));
