@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { attemptEvents, type PipelineEvent } from "./pipeline-events";
-import { agentBrief, caseDetail, caseOracle, encodeState, causeOrigin, causeText, citationLanes, formatDuration, inJurisdiction, mineFlow, quantile, rankStations, retryCutoff, ruleWords, splitMessage, trendSentence, type FlowEdge } from "./pipeline-flow";
+import { agentBrief, caseDetail, caseOracle, encodeState, causeOrigin, causeText, citationLanes, formatDuration, inJurisdiction, mineFlow, noTryRecordSentence, quantile, rankStations, retryCutoff, ruleWords, splitMessage, trendSentence, type FlowEdge } from "./pipeline-flow";
 import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 import { ingestEvents, type IngestInputs } from "./pipeline-ingest";
 
@@ -523,6 +523,62 @@ describe("what a run recorded: typed checks, no encode, and the oracle state", (
     const late = attemptEvents(pipelineAttempt({ id: "20", failed_step: "Queue protected signed RuleSpec re-encode / Sign artifact" }));
     expect(caseDetail(late, "20")!.encode.state).toBe("no_try_record");
     expect(caseDetail(late, "20")!.encode.label).toMatch(/^No try recorded: the run failed at /);
+  });
+
+  it("says how an encode with no try record ended, when the encoder's live row names the run", () => {
+    const noRecord = { encode_started_at: "2026-09-20T10:01:00Z", encode_seconds: 12, failed_step: "encode_apply" };
+    const known = attemptEvents(pipelineAttempt({ id: "30", ...noRecord, encode_exit_status: "exited", encode_exit_rule: "exit:1", encode_last_phase: "resolve" }));
+    expect(caseDetail(known, "30")!.encode).toEqual({
+      state: "no_try_record",
+      label: "No try recorded: the encode step ran, and the encoder synced no try, model, or cost. The encode ended: exited · exit:1 · in phase resolve",
+      exit: { status: "exited", rule: "exit:1", phase: "resolve" },
+    });
+    // Before the outcome columns exist the live row gives the last phase alone.
+    const phaseOnly = attemptEvents(pipelineAttempt({ id: "31", ...noRecord, encode_last_phase: "generate" }));
+    expect(caseDetail(phaseOnly, "31")!.encode.label).toMatch(/The encode ended: in phase generate$/);
+    // No live row, null columns, or rows read before the columns exist: not on record.
+    for (const absent of [{}, { encode_exit_status: null, encode_exit_rule: null, encode_last_phase: null }]) {
+      const state = caseDetail(attemptEvents(pipelineAttempt({ id: "32", ...noRecord, ...absent })), "32")!.encode;
+      expect(state).toEqual({ state: "no_try_record", label: "No try recorded: the encode step ran, and the encoder synced no try, model, or cost. Why it stopped is not on record" });
+    }
+    // A run that stopped after the encode step with no step times still shows its encode, and how it ended.
+    const late = attemptEvents(pipelineAttempt({ id: "33", failed_step: "Queue protected signed RuleSpec re-encode / Sign artifact", encode_exit_status: "apply_blocked_manifest", encode_last_phase: "apply" }));
+    expect(caseDetail(late, "33")!.encode).toMatchObject({ state: "no_try_record", exit: { status: "apply_blocked_manifest", rule: null, phase: "apply" } });
+    // A run with tries says nothing of it.
+    const tried = attemptEvents(pipelineAttempt({ id: "34", failed_step: "encode_apply", tries: [typed], encode_exit_status: "exited" }));
+    expect(caseDetail(tried, "34")!.encode).toEqual({ state: "tries", label: "Tries recorded" });
+    // Another writer's malformed attrs read as not on record.
+    const malformed = known.map((e) => (e.attrs.encode_exit ? { ...e, attrs: { ...e.attrs, encode_exit: "exited" } } : e));
+    expect(caseDetail(malformed, "30")!.encode).not.toHaveProperty("exit");
+  });
+
+  it("counts the no-try-record runs whose end is on record, by reason", () => {
+    const noRecord = { encode_started_at: "2026-09-20T10:01:00Z", encode_seconds: 12, failed_step: "encode_apply" };
+    const exited = { encode_exit_status: "exited", encode_exit_rule: "exit:1", encode_last_phase: "resolve" };
+    const some = [
+      pipelineAttempt({ id: "40", citation: "us/a", ...noRecord, ...exited }),
+      pipelineAttempt({ id: "41", citation: "us/b", ...noRecord, ...exited }),
+      pipelineAttempt({ id: "42", citation: "us/c", ...noRecord, encode_exit_status: "aborted", encode_exit_rule: "exception:TimeoutError", encode_last_phase: "generate" }),
+      pipelineAttempt({ id: "43", citation: "us/d", ...noRecord }),
+    ].flatMap(attemptEvents);
+    const counted = mineFlow(some, { now: NOW, days: 30 });
+    expect(counted.trust).toMatchObject({
+      no_try_record: 4,
+      no_try_record_known: 3,
+      no_try_record_reasons: [
+        { reason: "exited · exit:1 · in phase resolve", count: 2 },
+        { reason: "aborted · exception:TimeoutError · in phase generate", count: 1 },
+      ],
+    });
+    expect(agentBrief(counted, "https://axiom.org")).toContain(
+      "4 ran the encode step with no try record (3 with a recorded end: exited · exit:1 · in phase resolve (2), aborted · exception:TimeoutError · in phase generate (1); 1 not on record). Of"
+    );
+    // None on record (today, and before the columns exist): the brief says so.
+    expect(model.trust).toMatchObject({ no_try_record: 1, no_try_record_known: 0, no_try_record_reasons: [] });
+    expect(agentBrief(model, "https://axiom.org")).toContain("1 ran the encode step with no try record (why they stopped is not on record). Of");
+    // No such run: nothing added. A model computed before the counts existed still reads.
+    expect(noTryRecordSentence({ no_try_record: 0, no_try_record_known: 0, no_try_record_reasons: [] })).toBe("");
+    expect(noTryRecordSentence({ no_try_record: 2 } as never)).toBe(" (why they stopped is not on record)");
   });
 
   it("gives a merged case an oracle state: compared, pending, or none", () => {

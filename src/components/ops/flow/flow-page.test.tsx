@@ -201,6 +201,42 @@ describe("JourneyView", () => {
     expect(panel("7")).toContain("Oracle · Pending: no oracle compares it yet (listed in oracle-coverage-pending.yaml).");
   });
 
+  it("says in the run details how an encode with no try record ended, or that it is not on record", () => {
+    const noRecord = { encode_started_at: "2026-09-20T10:01:00Z", encode_seconds: 12, failed_step: "encode_apply" };
+    const runs = [
+      pipelineAttempt({ id: "8", ...noRecord, encode_exit_status: "exited", encode_exit_rule: "exit:1", encode_last_phase: "resolve" }),
+      pipelineAttempt({ id: "9", ...noRecord }),
+      // Columns present and empty (no live row names the run).
+      pipelineAttempt({ id: "10", ...noRecord, encode_exit_status: null, encode_exit_rule: null, encode_last_phase: null }),
+    ].flatMap(attemptEvents);
+    const panel = (id: string) => {
+      cleanup();
+      const detail = caseDetail(runs, id)!;
+      render(<JourneyView citation={detail.citation} stationOrder={stationOrder} lanes={[]} detail={detail} bundles={[]} error={null} />);
+      return screen.getByRole("complementary", { name: "Run details" }).textContent ?? "";
+    };
+    expect(panel("8")).toContain("none recorded");
+    expect(panel("8")).toContain("The encode ended: exited · exit:1 · in phase resolve.");
+    for (const id of ["9", "10"]) {
+      expect(panel(id)).toContain("Why it stopped is not on record.");
+      expect(panel(id)).not.toContain("The encode ended");
+    }
+  });
+
+  it("counts in the coverage line the no-try-record runs with a recorded end", () => {
+    const noRecord = { encode_started_at: "2026-09-20T10:01:00Z", encode_seconds: 12, failed_step: "encode_apply" };
+    const coverage = (attempts: Parameters<typeof pipelineAttempt>[0][]) => {
+      cleanup();
+      const mined = mineFlow(attempts.map((a, i) => pipelineAttempt({ id: String(50 + i), citation: `us/${i}`, ...noRecord, ...a })).flatMap(attemptEvents), { now: NOW, days: 30 });
+      return render(<FlowLine model={mined} error={null} params={params} jurisdictions={[]} />).container.textContent ?? "";
+    };
+    expect(coverage([{ encode_exit_status: "exited", encode_exit_rule: "exit:1", encode_last_phase: "resolve" }, {}])).toContain(
+      "2 ran the encode step with no try record (1 with a recorded end: exited · exit:1 · in phase resolve (1); 1 not on record);"
+    );
+    expect(coverage([{}, {}])).toContain("2 ran the encode step with no try record (why they stopped is not on record);");
+    cleanup();
+  });
+
   it("shows a plain title with no citation", () => {
     render(<JourneyView citation={null} stationOrder={[]} lanes={[]} detail={null} bundles={[]} error={null} />);
     expect(screen.getByRole("heading", { name: "Encoding journey" })).toBeTruthy();

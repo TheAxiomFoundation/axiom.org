@@ -5,6 +5,8 @@ import {
   TRY_CHECKS_MAX,
   bookkeepingCause,
   buildAttempts,
+  indexLiveRuns,
+  liveRunExit,
   encodeWindow,
   mainMerge,
   carrierIndex,
@@ -57,6 +59,7 @@ import {
   type EncoderRunRow,
   type ManifestPr,
   type PrGateNode,
+  type LiveRunRow,
   type MirrorRow,
   type ShardResult,
   type WorkflowRun,
@@ -1469,6 +1472,83 @@ describe("encoder tries", () => {
     expect(attempt.encode_loop).toMatchObject({ wallMs: 200_000, setupMs: 20_000 });
     const [older] = buildAttempts(inputs({ encoderRuns: [encoderRow()] }));
     expect(older.encode_loop).toBeNull();
+  });
+});
+
+describe("how an encode with no encoder record ended", () => {
+  // The encode step ran (18:04-18:24) and the encoder wrote no record.
+  const reached = {
+    jobs_checked_at: "R",
+    steps_read_at: "R",
+    encode_started_at: "2026-09-29T18:02:00Z",
+    setup_seconds: 120,
+    encode_seconds: 1200,
+    cancel_stage: null,
+  };
+  const live = (overrides: Partial<LiveRunRow> = {}): LiveRunRow => ({
+    id: "live-aaaaaaaa",
+    citation: CITATION,
+    status: "failed",
+    phase: "resolve",
+    started_at: "2026-09-29T18:04:10Z",
+    github_run_id: "501",
+    github_run_attempt: "1",
+    outcome_status: "exited",
+    error_rule: "exit:1",
+    ...overrides,
+  });
+  const exitOf = (overrides: Partial<CollectInputs>) => {
+    const [attempt] = buildAttempts(inputs({ previous: new Map([["501", reached]]), ...overrides }));
+    return [attempt.encode_exit_status, attempt.encode_exit_rule, attempt.encode_last_phase];
+  };
+
+  it("joins the live row that names the run: outcome, typed rule and last phase", () => {
+    expect(exitOf({ liveRuns: [live()] })).toEqual(["exited", "exit:1", "resolve"]);
+    // A live row of another run, or with no run id (every row before axiom-encode #1750), is not the run's.
+    expect(exitOf({ liveRuns: [live({ github_run_id: "777" })] })).toEqual([null, null, null]);
+    expect(exitOf({ liveRuns: [live({ github_run_id: null })] })).toEqual([null, null, null]);
+    expect(exitOf({ liveRuns: [] })).toEqual([null, null, null]);
+  });
+
+  it("matches the run attempt, and takes a row that names none", () => {
+    expect(exitOf({ liveRuns: [live({ github_run_attempt: "2" })] })).toEqual([null, null, null]);
+    expect(exitOf({ runs: [run({ run_attempt: 2 })], liveRuns: [live({ github_run_attempt: 2 })] })).toEqual(["exited", "exit:1", "resolve"]);
+    expect(exitOf({ liveRuns: [live({ github_run_attempt: null })] })).toEqual(["exited", "exit:1", "resolve"]);
+  });
+
+  it("takes the run's own citation first, then the latest invocation", () => {
+    const source = live({ id: "live-bbbbbbbb", citation: "us/statute/42/1396", started_at: "2026-09-29T18:20:00Z", outcome_status: "standalone_validated", error_rule: null, phase: "apply" });
+    const retry = live({ id: "live-cccccccc", started_at: "2026-09-29T18:10:00Z", outcome_status: "aborted", error_rule: "exception:TimeoutError", phase: "generate" });
+    expect(exitOf({ liveRuns: [live(), source, retry] })).toEqual(["aborted", "exception:TimeoutError", "generate"]);
+    expect(liveRunExit(run(), "us/other", indexLiveRuns([live(), source]))).toMatchObject({ encode_exit_status: "standalone_validated", encode_last_phase: "apply" });
+  });
+
+  it("reads rows from before the outcome columns exist: the last phase alone", () => {
+    const { outcome_status: _status, error_rule: _rule, ...before } = live();
+    expect(exitOf({ liveRuns: [before] })).toEqual([null, null, "resolve"]);
+    // A row still running when the step died never finished: its phase is where it stopped.
+    expect(exitOf({ liveRuns: [live({ status: "running", outcome_status: null, error_rule: null, phase: "validate" })] })).toEqual([null, null, "validate"]);
+  });
+
+  it("keeps only bounded machine tokens, and no self-reported row", () => {
+    expect(exitOf({ liveRuns: [live({ outcome_status: "it broke", error_rule: "x".repeat(161), phase: "<b>" })] })).toEqual([null, null, null]);
+    expect(exitOf({ liveRuns: [live({ outcome_status: "x".repeat(65) })] })).toEqual([null, "exit:1", "resolve"]);
+    expect(exitOf({ liveRuns: [live({ reported_via: "public_ingest" })] })).toEqual([null, null, null]);
+  });
+
+  it("leaves a run with an encoder record, an unfinished run, or one whose encode step never ran as it is", () => {
+    expect(exitOf({ liveRuns: [live()], encoderRuns: [encoderRow({ timestamp: "2026-09-29T18:20:00Z" })] })).toEqual([null, null, null]);
+    expect(exitOf({ liveRuns: [live()], runs: [run({ status: "in_progress", conclusion: null })] })).toEqual([null, null, null]);
+    expect(exitOf({ liveRuns: [live()], previous: new Map([["501", { ...reached, encode_seconds: null }]]) })).toEqual([null, null, null]);
+    expect(exitOf({ liveRuns: [live()], previous: new Map([["501", { jobs_checked_at: "R", cancel_stage: "approval" as const }]]) })).toEqual([null, null, null]);
+  });
+
+  it("keeps what an earlier pass stored when the live rows are gone or were not read", () => {
+    const stored = new Map([["501", { ...reached, encode_exit_status: "exited", encode_exit_rule: "exit:1", encode_last_phase: "resolve" }]]);
+    expect(exitOf({ previous: stored })).toEqual(["exited", "exit:1", "resolve"]);
+    expect(exitOf({ previous: stored, liveRuns: [] })).toEqual(["exited", "exit:1", "resolve"]);
+    // A record that arrives later replaces the stored end.
+    expect(exitOf({ previous: stored, encoderRuns: [encoderRow({ timestamp: "2026-09-29T18:20:00Z" })] })).toEqual([null, null, null]);
   });
 });
 
