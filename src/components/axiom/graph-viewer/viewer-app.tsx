@@ -42,11 +42,11 @@ import {
   fetchAllPrograms,
   fetchComposedGraph,
   fetchRootCatalog,
-  fetchRootInputs,
   fetchInputMeta,
   fetchProgramGraph,
   programKey,
   programRefFromSummary,
+  type RootInputSlot,
 } from "./api";
 import type { Country, DashboardSpec, LegalId, ParameterRule, ProgramGraph, ProgramRef, ProgramSummary, RuleNode, TraceNode } from "./types";
 import {
@@ -55,6 +55,8 @@ import {
   focusedComposeRule,
 } from "./compose-filter";
 import { buildRunRequestBody, classifyRunRefusal, mergeRunBatches, runValueMaps, scenarioKey, traceRootIds, TRACE_BATCH_SIZE, type RunPayload } from "./run-request";
+import { AnswerControl } from "./answer-control";
+import { answerKind, catalogAnswerMeta, censusAnswerMeta, fittingAnswers, ownEntry, type AnswerMeta, type ScenarioValue } from "./input-meta";
 import { trackAxiomEvent } from "@/lib/analytics";
 import {
   DEFAULT_LAUNCHER_MODE,
@@ -101,7 +103,7 @@ export function GraphViewerApp({
   // ── The Plane: scenario → run → execution overlay ──
   // Scenario values keyed by input bare name; seeded from the graph's
   // sample values when a program loads, editable in the panel.
-  const [scenario, setScenario] = useState<Record<string, number | boolean>>(
+  const [scenario, setScenario] = useState<Record<string, ScenarioValue>>(
     {},
   );
   // Additional household members (person_2, …) for Person-entity
@@ -111,7 +113,7 @@ export function GraphViewerApp({
   // request as `people`.
   const [extraMembers, setExtraMembers] = useState<string[]>([]);
   const [memberScenario, setMemberScenario] = useState<
-    Record<string, Record<string, number | boolean>>
+    Record<string, Record<string, ScenarioValue>>
   >({});
   // Relation roles, keyed by the declaring rule's legal id: who belongs
   // to each Person–unit relation the composed scope declares. Kept across
@@ -289,6 +291,8 @@ export function GraphViewerApp({
     /** The relation roles this run used, so a stale result is explained by
      *  the roles that produced it, not the ones being edited. */
     submittedRoles?: RoleMembership;
+    /** The answers the calculate proxy did not apply, as it names them. */
+    dropped?: string[];
     outputs: Record<string, number | string | boolean | null>;
     trace: Array<{
       variable: string;
@@ -347,20 +351,19 @@ export function GraphViewerApp({
   const [selectedLevers, setSelectedLevers] = useState<string[] | null>(null);
   // The runtime's input registry: every settable input, its dtype
   // and default — the single source of truth for answer controls.
-  // `options` and labels come from explicit enum metadata.
-  const [inputMeta, setInputMeta] = useState<{
-    dtypes: Record<string, string>;
-    defaults: Record<string, unknown>;
-    options?: Record<string, number[]>;
-    optionLabels?: Record<string, Record<number, string>>;
-    presentation?: Record<string, { category?: string; order?: number; label?: string }>;
-  }>({ dtypes: {}, defaults: {} });
+  // `options` and labels come from explicit enum metadata; a text
+  // slot's `textOptions` are the values its formulas distinguish.
+  const [inputMeta, setInputMeta] = useState<AnswerMeta>({ dtypes: {}, defaults: {} });
   // Bumped by Retry buttons — re-fires the program load effect after
   // a transient graph/registry failure.
   const [reloadNonce, setReloadNonce] = useState(0);
   // Re-reads the root catalog alone (not the graph) when the server's
   // relation set has moved under a roles run.
   const [catalogNonce, setCatalogNonce] = useState(0);
+  // Compose mode: the input slots of the root catalog that gates Run
+  // (null until it arrives). One read serves both, so the questions can
+  // never come from an older or failed read while Run is available.
+  const [rootSlots, setRootSlots] = useState<RootInputSlot[] | null>(null);
 
   const lastRunRequest = useRef<Record<string, unknown> | null>(null);
   // The results sheet's quick-adjust strip pages through answered
@@ -813,13 +816,14 @@ export function GraphViewerApp({
       fileLegalId: string;
       entity: string | null;
       isBool: boolean;
-      sample: number | boolean;
+      sample: ScenarioValue;
     }> = [];
     for (const input of graph?.inputs ?? []) {
       if (seen.has(input.name)) continue;
-      if (!(input.name in inputMeta.dtypes)) continue;
+      if (!Object.hasOwn(inputMeta.dtypes, input.name)) continue;
       seen.add(input.name);
       const isBool = inputMeta.dtypes[input.name] === "bool";
+      const fallback = inputMeta.defaults[input.name];
       catalog.push({
         name: input.name,
         legalId: input.legalId,
@@ -827,11 +831,11 @@ export function GraphViewerApp({
         entity: input.entity ?? null,
         isBool,
         sample: isBool
-          ? Boolean(inputMeta.defaults[input.name])
-          : (CURATED_SAMPLES[input.name] ??
-            (typeof inputMeta.defaults[input.name] === "number"
-              ? (inputMeta.defaults[input.name] as number)
-              : 0)),
+          ? Boolean(fallback)
+          : inputMeta.dtypes[input.name] === "text"
+            ? (typeof fallback === "string" ? fallback : "")
+            : (ownEntry(CURATED_SAMPLES, input.name) ??
+              (typeof fallback === "number" ? fallback : 0)),
       });
     }
     return catalog;
@@ -1149,15 +1153,18 @@ export function GraphViewerApp({
 
   useEffect(() => {
     // No presets: only values the user actually typed survive a
-    // field-list change; samples are placeholders, never answers.
-    setScenario((current) =>
+    // field-list change; samples are placeholders, never answers. An
+    // answer that no longer fits its field's type goes too: a number
+    // typed while the census showed a number field must not reach a
+    // text slot once the catalog retypes it.
+    const names = allScenarioFields.map((field) => field.name);
+    setScenario((current) => fittingAnswers(current, names, inputMeta));
+    setMemberScenario((current) =>
       Object.fromEntries(
-        allScenarioFields
-          .map((field) => [field.name, current[field.name]] as const)
-          .filter(([, value]) => value !== undefined),
+        Object.entries(current).map(([member, answers]) => [member, fittingAnswers(answers, names, inputMeta)]),
       ),
     );
-  }, [allScenarioFields]);
+  }, [allScenarioFields, inputMeta]);
 
   const runScenario = async () => {
     if (!effectiveProgram || running) return;
@@ -1171,6 +1178,12 @@ export function GraphViewerApp({
     // An explicit run consumes the pending edits: the stale flag
     // clears and the edit tracker syncs to what this run computes.
     setResultsStale(false);
+    // Send only answers that fit their fields now. The prune effect drops
+    // a misfit one render after the catalog retypes its field, and a Run
+    // in between must not send it.
+    const fieldNames = allScenarioFields.map((field) => field.name);
+    const facts = fittingAnswers(scenario, fieldNames, inputMeta);
+    const answersOf = (member: string) => fittingAnswers(memberScenario[member] ?? {}, fieldNames, inputMeta);
     const runRoles =
       composeFocus && rootRelations.mode === "explicit"
         ? rolesForRun(rootRelations.relations, relationRoles, ["person_1", ...extraMembers], scopeInstanceKeys)
@@ -1180,12 +1193,13 @@ export function GraphViewerApp({
     const runInstances = composeFocus && scopeInstanceKinds.length > 0
       ? Object.fromEntries(scopeInstanceKinds.map((kind) => [
           kind,
-          Object.fromEntries((scopeInstanceKeys[kind] ?? []).map((key) => [key, { ...memberScenario[key] }])),
+          Object.fromEntries((scopeInstanceKeys[kind] ?? []).map((key) => [key, answersOf(key)])),
         ]))
       : undefined;
+    const answeringMembers = [...extraMembers, ...Object.values(scopeInstanceKeys).flat()];
     ranScenarioKey.current = scenarioKey({
-      ...scenario,
-      ...flattenMemberAnswers([...extraMembers, ...Object.values(scopeInstanceKeys).flat()], memberScenario),
+      ...facts,
+      ...flattenMemberAnswers(answeringMembers, Object.fromEntries(answeringMembers.map((member) => [member, answersOf(member)]))),
       ...flattenRoles(runRoles ?? {}),
     });
     try {
@@ -1216,13 +1230,13 @@ export function GraphViewerApp({
       // Extra household members ride as `people` — empty records
       // still travel: an added person with no answers is a person.
       const people = Object.fromEntries(
-        extraMembers.map((member) => [member, memberScenario[member] ?? {}]),
+        extraMembers.map((member) => [member, answersOf(member)]),
       );
       const requestBody = (variables: string[]): Record<string, unknown> =>
         buildRunRequestBody(
           composeFocus,
           effectiveProgram,
-          scenario,
+          facts,
           variables,
           composeFocus ? people : undefined,
           runRoles,
@@ -1431,12 +1445,23 @@ export function GraphViewerApp({
         ((data as { allocated_instances?: unknown }).allocated_instances ?? {}) as Record<string, Record<string, string>>,
       ).flatMap((byKey) => (byKey && typeof byKey === "object" ? Object.entries(byKey) : []))
         .filter((entry): entry is [string, string] => typeof entry[1] === "string");
+      // The proxy names each answer it did not apply (a text answer its
+      // fresh catalog no longer types as text, say). The result must not
+      // claim those answers, and its sheet says the run went without them.
+      const droppedList = (data as { dropped?: unknown }).dropped;
+      const dropped = new Set(Array.isArray(droppedList) ? droppedList.filter((entry): entry is string => typeof entry === "string") : []);
+      const applied = (answers: Record<string, ScenarioValue>, owner?: string) =>
+        Object.fromEntries(Object.entries(answers).filter(([name]) => !dropped.has(owner ? `${owner}:${name}` : name)));
       setRunResult({
         ...data,
-        submittedFacts: { ...scenario },
-        submittedInstances: runInstances,
+        submittedFacts: applied(facts),
+        submittedInstances: runInstances && Object.fromEntries(Object.entries(runInstances).map(([kind, byKey]) => [
+          kind,
+          Object.fromEntries(Object.entries(byKey).map(([key, answers]) => [key, applied(answers, key)])),
+        ])),
         submittedPersonIds: Object.fromEntries([...["person_1", ...extraMembers].map((id, index) => [id, `person:1:${index + 1}`]), ...allocatedIds]),
         ...(runRoles ? { submittedRoles: runRoles } : {}),
+        dropped: [...dropped],
       });
       setEditingRunInputs(false);
       trackRun("ok");
@@ -1655,55 +1680,6 @@ export function GraphViewerApp({
         setGraph(filteredGraph);
         setComposedFiles(composed.files);
         setComposedTruncated(composed.truncated);
-        // No package registry backs a composed view; the graph's own
-        // input census (name + sample) is the best available registry
-        // for the run panel's controls.
-        const dtypes: Record<string, string> = {};
-        const defaults: Record<string, unknown> = {};
-        for (const input of filteredGraph.inputs) {
-          if (input.name in dtypes) continue;
-          // Until runtime metadata arrives, use only the sample's actual type.
-          dtypes[input.name] = typeof input.sample === "boolean" ? "bool" : "number";
-          defaults[input.name] = input.sample;
-        }
-        setInputMeta({ dtypes, defaults });
-        // Runtime metadata supplies input types, choices and presentation.
-        fetchRootInputs(fileLegalIdOf(composeFocus))
-          .then((slots) => {
-            if (cancelled) return;
-            if (slots.length === 0) return;
-            setInputMeta((current) => {
-              const merged = {
-                dtypes: { ...current.dtypes },
-                defaults: { ...current.defaults },
-                options: { ...current.options },
-                optionLabels: { ...current.optionLabels },
-                presentation: { ...current.presentation },
-              };
-              for (const slot of slots) {
-                merged.presentation[slot.name] = { label: slot.label, category: slot.category, order: slot.order };
-                if (slot.dtype === "bool") {
-                  merged.dtypes[slot.name] = "bool";
-                  merged.defaults[slot.name] = Boolean(slot.default);
-                } else if (slot.dtype === "integer" || slot.dtype === "decimal") {
-                  merged.dtypes[slot.name] =
-                    slot.dtype === "integer" ? "integer" : "number";
-                  merged.defaults[slot.name] = Number(slot.default) || 0;
-                  // Only explicit metadata defines the full set of choices.
-                  delete merged.options[slot.name];
-                  delete merged.optionLabels[slot.name];
-                  if (slot.choices?.length) {
-                    merged.options[slot.name] = slot.choices.map(choice => choice.value);
-                    merged.optionLabels[slot.name] = Object.fromEntries(slot.choices.map(choice => [choice.value, choice.label]));
-                  }
-                }
-                // text/date slots can't travel the run wire (facts are
-                // number|boolean) — leave their heuristic controls be.
-              }
-              return merged;
-            });
-          })
-          .catch(() => { /* The independent readiness probe controls Run. */ });
         const rulesById = new Map(
           filteredGraph.rules.map((rule) => [rule.legalId, rule]),
         );
@@ -1752,7 +1728,18 @@ export function GraphViewerApp({
     return () => {
       cancelled = true;
     };
-  }, [composeFocus]);
+    // Retry after a failed load refetches the graph (reloadNonce).
+  }, [composeFocus, reloadNonce]);
+
+  // No package registry backs a composed view. Until the root catalog
+  // arrives, the graph's own input census (name + sample) stands in for
+  // the controls; then the catalog decides which inputs exist, with their
+  // types, choices and presentation.
+  useEffect(() => {
+    if (!composeFocus || !graph) return;
+    const census = censusAnswerMeta(graph.inputs);
+    setInputMeta(rootSlots ? catalogAnswerMeta(rootSlots, census) : census);
+  }, [composeFocus, graph, rootSlots]);
 
   // Compilation capability is independent of whether an empty household can
   // produce a result. The input catalog compiles without executing a scenario.
@@ -1766,6 +1753,7 @@ export function GraphViewerApp({
     setRunUnavailableReason(null);
     if (focusChanged) {
       setComposeRunReady(null);
+      setRootSlots(null);
       setRootRelations({ relations: [], mode: "convention" });
       // Every scope starts with no roles stated (relation-roles.tsx).
       setRelationRoles({});
@@ -1776,6 +1764,7 @@ export function GraphViewerApp({
     fetchRootCatalog(root)
       .then((catalog) => {
         if (cancelled) return;
+        setRootSlots(catalog.inputs);
         setRootRelations({ relations: catalog.relations, mode: catalog.relationMembership });
         if (!focusChanged) setRelationRoles((current) => reconcileRoles(current, catalog.relations));
         rememberRunCapability(root, true);
@@ -1912,24 +1901,28 @@ export function GraphViewerApp({
     // Every registry input is genuinely settable (grafted onto its
     // owning entity server-side) — so every one gets a live field.
     // Only in run mode: while browsing the law, cards stay read-only.
-    const values: Record<string, number | boolean> = {};
+    // A text question holds a string ("" while unanswered), so the card
+    // knows to offer text rather than a number box.
+    const values: Record<string, ScenarioValue> = {};
     if (!runModeActive) return values;
     for (const input of inputCatalog) {
       if (input.entity && scopeInstanceKinds.includes(input.entity)) continue;
       const fromScenario = scenario[input.name];
+      const text = inputMeta.dtypes[input.name] === "text";
       if (
         typeof fromScenario === "number" ||
-        typeof fromScenario === "boolean"
+        typeof fromScenario === "boolean" ||
+        (text && typeof fromScenario === "string")
       ) {
         values[input.name] = fromScenario;
       } else if (input.isBool) {
         values[input.name] = Boolean(scenario[input.name] ?? false);
       } else {
-        values[input.name] = Number.NaN;
+        values[input.name] = text ? "" : Number.NaN;
       }
     }
     return values;
-  }, [inputCatalog, scenario, runModeActive, scopeInstanceKinds]);
+  }, [inputCatalog, inputMeta.dtypes, scenario, runModeActive, scopeInstanceKinds]);
   const inputEditCtx = useMemo(
     () => ({
       answered: new Set([
@@ -1945,8 +1938,10 @@ export function GraphViewerApp({
       // question was asked.
       defaults: Object.fromEntries(
         Object.entries(inputMeta.defaults).filter(
-          (entry): entry is [string, number | boolean] =>
-            typeof entry[1] === "number" || typeof entry[1] === "boolean",
+          (entry): entry is [string, ScenarioValue] =>
+            typeof entry[1] === "number" ||
+            typeof entry[1] === "boolean" ||
+            (typeof entry[1] === "string" && inputMeta.dtypes[entry[0]] === "text"),
         ),
       ),
       // Person-level cards show every member's answer (read-only
@@ -1976,9 +1971,9 @@ export function GraphViewerApp({
               ] as const),
             ])
           : undefined,
-      onChange: (name: string, value: number | boolean) =>
+      onChange: (name: string, value: ScenarioValue) =>
         setScenario((current) => {
-          if (typeof value === "number" && Number.isNaN(value)) {
+          if ((typeof value === "number" && Number.isNaN(value)) || value === "") {
             // Cleared on the card — stop sending it.
             const { [name]: _dropped, ...rest } = current;
             return rest;
@@ -2412,7 +2407,7 @@ export function GraphViewerApp({
             inputClassName="scenario-field-input"
             plainDefaults
             onChange={next => {
-              const update = (current: Record<string, number | boolean>) => {
+              const update = (current: Record<string, ScenarioValue>) => {
                 const result = { ...current };
                 if (next === undefined) delete result[field.name]; else result[field.name] = next;
                 return result;
@@ -2422,7 +2417,10 @@ export function GraphViewerApp({
             }}
           />}
         />
-        {inputCatalog.length === 0 && (graph?.inputs.length ?? 0) > 0 && <button type="button" className="status-retry" onClick={() => setReloadNonce(n => n + 1)}>Retry loading inputs</button>}
+        {/* A package's registry can fail to load; Run in compose mode
+            exists only once its catalog has loaded, and an empty catalog
+            is an answer, not a failure. */}
+        {!composeFocus && inputCatalog.length === 0 && (graph?.inputs.length ?? 0) > 0 && <button type="button" className="status-retry" onClick={() => setReloadNonce(n => n + 1)}>Retry loading inputs</button>}
         <div className="run-actions">
           <p className="run-assumptions">{Object.keys(scenario).length + Object.values(memberScenario).reduce((count, answers) => count + Object.keys(answers).length, 0)} household inputs answered · unanswered inputs use engine defaults</p>
           <button
@@ -2596,7 +2594,7 @@ export function GraphViewerApp({
             run={runResult}
             renderInput={(id, selectedMember) => {
               const input = graph.inputs.find(item => item.legalId === id);
-              if (!input || !(input.name in inputMeta.dtypes)) return null;
+              if (!input || !Object.hasOwn(inputMeta.dtypes, input.name)) return null;
               const name = input.name;
               const fallback = inputMeta.defaults[name];
               const instanceKind = input.entity && scopeInstanceKinds.includes(input.entity) ? input.entity : null;
@@ -2605,8 +2603,8 @@ export function GraphViewerApp({
               return <div className="relationship-inputs">{members.map(member => {
                 const draft = member ? memberScenario[member]?.[name] : scenario[name];
                 const effective = draft ?? fallback;
-                const change = (next: number | boolean | undefined) => {
-                  const update = (current: Record<string, number | boolean>) => {
+                const change = (next: ScenarioValue | undefined) => {
+                  const update = (current: Record<string, ScenarioValue>) => {
                     const result = { ...current };
                     if (next === undefined) delete result[name]; else result[name] = next;
                     return result;
@@ -2614,12 +2612,14 @@ export function GraphViewerApp({
                   if (member) setMemberScenario(current => ({ ...current, [member]: update(current[member] ?? {}) }));
                   else setScenario(update);
                 };
+                const kind = answerKind(inputMeta, name);
                 return <label key={member ?? "household"}><span>{members.length > 1 ? member ? memberLabel(member) : "Person 1" : humanize(name)}</span>
-                  {inputMeta.dtypes[name] === "bool" ? <select disabled={running} value={effective === true ? "true" : effective === false ? "false" : ""} onChange={event => change(event.target.value === "" ? undefined : event.target.value === "true")}>
+                  {kind === "bool" ? <select disabled={running} value={effective === true ? "true" : effective === false ? "false" : ""} onChange={event => change(event.target.value === "" ? undefined : event.target.value === "true")}>
                     {typeof effective !== "boolean" && <option value="">—</option>}<option value="false">false</option><option value="true">true</option>
-                  </select> : inputMeta.options?.[name] ? <select disabled={running} value={typeof effective === "number" ? effective : ""} onChange={event => change(event.target.value === "" ? undefined : Number(event.target.value))}>
-                    {typeof effective !== "number" && <option value="">—</option>}{inputMeta.options[name]!.map(option => <option key={option} value={option}>{inputMeta.optionLabels?.[name]?.[option] ?? String(option)}</option>)}
-                  </select> : <input disabled={running} type="number" step="any" value={typeof effective === "number" ? effective : ""} onChange={event => change(event.target.value === "" ? undefined : event.target.valueAsNumber)} />}
+                  </select> : kind === "choice" ? <select disabled={running} value={typeof effective === "number" ? effective : ""} onChange={event => change(event.target.value === "" ? undefined : Number(event.target.value))}>
+                    {typeof effective !== "number" && <option value="">—</option>}{inputMeta.options![name]!.map(option => <option key={option} value={option}>{inputMeta.optionLabels?.[name]?.[option] ?? String(option)}</option>)}
+                  </select> : kind === "text-choice" || kind === "text" ? <AnswerControl name={name} value={draft} meta={inputMeta} onChange={change} plainDefaults disabled={running} />
+                  : <input disabled={running} type="number" step="any" value={typeof effective === "number" ? effective : ""} onChange={event => change(event.target.value === "" ? undefined : event.target.valueAsNumber)} />}
                 </label>;
               })}</div>;
             }}
@@ -2759,6 +2759,7 @@ export function GraphViewerApp({
                 ×
               </button>
             </div>
+            {runResult.dropped && runResult.dropped.length > 0 && <p className="results-dropped">{droppedAnswersNote(runResult.dropped)}</p>}
             {workspaceView !== "run" && <div className="results-grid">
               {(() => {
                 // The cell is a door to its node on the canvas.
@@ -2855,7 +2856,7 @@ export function GraphViewerApp({
                     value={scenario[field.name]}
                     meta={inputMeta}
                     selectClassName="results-adjust-select"
-                    placeholder={`e.g. ${field.sample}`}
+                    placeholder={field.sample === "" ? "answer…" : `e.g. ${field.sample}`}
                     onChange={(next) =>
                       setScenario((current) => {
                         if (next === undefined) {
@@ -3128,7 +3129,7 @@ export function GraphViewerApp({
                   </dd>
                 </>
               ) : null}
-              {input && input.name in inputEditValues ? (
+              {input && Object.hasOwn(inputEditValues, input.name) ? (
                 <>
                   <dt>Your answer</dt>
                   <dd>
@@ -3254,16 +3255,18 @@ export function GraphViewerApp({
                     // their registry default, and the run says so.
                     const fromScenario =
                       runResult?.submittedFacts?.[bareName];
-                    const format = (raw: number | boolean) =>
+                    const format = (raw: ScenarioValue) =>
                       typeof raw === "boolean"
                         ? raw
                           ? "✓ true"
                           : "✗ false"
-                        : raw.toLocaleString("en-US", { maximumFractionDigits: 6 });
+                        : typeof raw === "string"
+                          ? raw
+                          : raw.toLocaleString("en-US", { maximumFractionDigits: 6 });
                     const fallback = inputMeta.defaults[bareName];
                     const answered =
                       miniValue(depId) ??
-                      ((typeof fromScenario === "number" || typeof fromScenario === "boolean")
+                      ((typeof fromScenario === "number" || typeof fromScenario === "boolean" || typeof fromScenario === "string")
                         ? format(fromScenario)
                         : null);
                     return {
@@ -3274,7 +3277,8 @@ export function GraphViewerApp({
                       answered ??
                       (runResult
                         ? typeof fallback === "number" ||
-                          typeof fallback === "boolean"
+                          typeof fallback === "boolean" ||
+                          typeof fallback === "string"
                           ? String(fallback)
                           : "Not reported"
                         : null),
@@ -3335,7 +3339,7 @@ export function GraphViewerApp({
             {"kind" in inspected &&
             inspected.kind === "input" &&
             input &&
-            input.name in inputEditValues ? (
+            Object.hasOwn(inputEditValues, input.name) ? (
               <button
                 type="button"
                 className="node-inspector-lens"
@@ -3562,9 +3566,9 @@ function humanize(value: string): string {
  *  answers still changes the household. */
 function flattenMemberAnswers(
   members: string[],
-  memberScenario: Record<string, Record<string, number | boolean>>,
-): Record<string, number | boolean> {
-  const flat: Record<string, number | boolean> = {};
+  memberScenario: Record<string, Record<string, ScenarioValue>>,
+): Record<string, ScenarioValue> {
+  const flat: Record<string, ScenarioValue> = {};
   for (const member of members) {
     flat[`${member}:__present`] = true;
     for (const [name, value] of Object.entries(memberScenario[member] ?? {})) {
@@ -3580,6 +3584,21 @@ function memberLabel(id: string): string {
   return humanize(id);
 }
 
+/** An answer the calculate proxy reports in `dropped`: a fact's bare name,
+ *  or `owner:name` for a member's or an instance's answer
+ *  ("person_2:wcc_supermarket_zone" → "Wcc Supermarket Zone (Person 2)"). */
+function droppedAnswerLabel(entry: string): string {
+  const split = entry.indexOf(":");
+  return split < 0 ? humanize(entry) : `${humanize(entry.slice(split + 1))} (${memberLabel(entry.slice(0, split))})`;
+}
+
+/** The results sheet's note on the answers a run did not use: the engine
+ *  read each one's default instead. */
+function droppedAnswersNote(dropped: string[]): string {
+  const one = dropped.length === 1;
+  return `This run did not use your ${one ? "answer" : "answers"} for ${dropped.map(droppedAnswerLabel).join(", ")}; the result uses ${one ? "its default" : "their defaults"}.`;
+}
+
 // ── Input picker computation outline ──
 // The run panel's input list rendered as the law's own dependency
 // tree. Shared inputs appear under every branch that consumes them —
@@ -3591,7 +3610,7 @@ interface OutlineInputRow {
   fileLegalId: string;
   entity: string | null;
   isBool: boolean;
-  sample: number | boolean;
+  sample: ScenarioValue;
 }
 
 interface OutlineNode {
@@ -3687,113 +3706,6 @@ function InputOutlineBranch({
         </div>
       )}
     </div>
-  );
-}
-
-/**
- * The one control for answering a scenario input, typed by the input
- * registry: bools are a three-way select (default — X / true / false)
- * so the registry default stays visible and an explicit false is
- * distinguishable from "unanswered"; closed domains are selects over
- * the statute's own values; everything else is a number field.
- * `undefined` from onChange means "back to the default" — the caller
- * removes the entry from the scenario.
- */
-function AnswerControl({
-  name,
-  value,
-  meta,
-  onChange,
-  selectClassName,
-  inputClassName,
-  placeholder,
-  plainDefaults = false,
-}: {
-  name: string;
-  value: number | boolean | undefined;
-  meta: {
-    dtypes: Record<string, string>;
-    defaults: Record<string, unknown>;
-    options?: Record<string, number[]>;
-    optionLabels?: Record<string, Record<number, string>>;
-    presentation?: Record<string, { category?: string; order?: number; label?: string }>;
-  };
-  onChange: (value: number | boolean | undefined) => void;
-  selectClassName?: string;
-  inputClassName?: string;
-  placeholder?: string;
-  plainDefaults?: boolean;
-}) {
-  const dtype = meta.dtypes[name];
-  const fallback = meta.defaults[name];
-  if (dtype === "bool") {
-    // Two options only: the default (named) and its opposite — a
-    // separate "false" when the default IS false would be the same
-    // answer twice. Explicitly picking the default value collapses
-    // into "default".
-    const presumed = Boolean(fallback);
-    return (
-      <select
-        className={selectClassName}
-        value={value === undefined || value === presumed ? "" : String(value)}
-        onChange={(event) =>
-          onChange(
-            event.target.value === ""
-              ? undefined
-              : event.target.value === "true",
-          )
-        }
-      >
-        <option value="">{plainDefaults ? String(presumed) : `default — ${String(presumed)}`}</option>
-        <option value={String(!presumed)}>{String(!presumed)}</option>
-      </select>
-    );
-  }
-  const domain = meta.options?.[name];
-  if (domain) {
-    // Same rule for closed domains: the default's own entry folds into
-    // the "default" option instead of appearing twice.
-    const presumed = Number(fallback) || 0;
-    return (
-      <select
-        className={selectClassName}
-        value={
-          value === undefined || value === presumed ? "" : String(value)
-        }
-        onChange={(event) =>
-          onChange(
-            event.target.value === ""
-              ? undefined
-              : Number(event.target.value),
-          )
-        }
-      >
-        <option value="">{plainDefaults ? (meta.optionLabels?.[name]?.[presumed] ?? String(presumed)) : `default — ${(meta.optionLabels?.[name]?.[presumed] ?? String(presumed))}`}</option>
-        {domain
-          .filter((option) => option !== presumed)
-          .map((option) => (
-            <option key={option} value={String(option)}>
-              {(meta.optionLabels?.[name]?.[option] ?? String(option))}
-            </option>
-          ))}
-      </select>
-    );
-  }
-  return (
-    <input
-      type="number"
-      className={inputClassName}
-      step={dtype === "integer" ? 1 : "any"}
-      placeholder={placeholder}
-      value={typeof value === "number" ? String(value) : plainDefaults && typeof fallback === "number" ? String(fallback) : ""}
-      onChange={(event) =>
-        onChange(
-          event.target.value === ""
-            ? undefined
-            : Number(event.target.value),
-        )
-      }
-    />
   );
 }
 
