@@ -3695,11 +3695,13 @@ function InputOutlineBranch({
  * registry: bools are a three-way select (default — X / true / false)
  * so the registry default stays visible and an explicit false is
  * distinguishable from "unanswered"; closed domains are selects over
- * the statute's own values; everything else is a number field.
+ * the statute's own values; everything else is a number field. A number
+ * field names a nonzero default in its placeholder ("default — 1"), so a
+ * presumption the engine applies to a blank field is on screen.
  * `undefined` from onChange means "back to the default" — the caller
  * removes the entry from the scenario.
  */
-function AnswerControl({
+export function AnswerControl({
   name,
   value,
   meta,
@@ -3779,12 +3781,22 @@ function AnswerControl({
       </select>
     );
   }
+  // The runtime presumes 1, not 0, for a rate or wage multiplied inside a
+  // comparison (axiom-api derived-package.ts, collectStructuralDemands):
+  // a blank minimum wage runs as $1 an hour. The selects above name their
+  // default; a number field left blank must too, or the run silently
+  // answers with a value nobody entered. A zero default keeps the
+  // caller's placeholder.
+  const presumedNumber =
+    typeof fallback === "number" && Number.isFinite(fallback) && fallback !== 0
+      ? fallback
+      : null;
   return (
     <input
       type="number"
       className={inputClassName}
       step={dtype === "integer" ? 1 : "any"}
-      placeholder={placeholder}
+      placeholder={presumedNumber !== null && !plainDefaults ? `default — ${presumedNumber}` : placeholder}
       value={typeof value === "number" ? String(value) : plainDefaults && typeof fallback === "number" ? String(fallback) : ""}
       onChange={(event) =>
         onChange(
