@@ -158,6 +158,15 @@ export function GraphViewerApp({
     else url.searchParams.delete("period");
     window.history.replaceState(window.history.state, "", url.toString());
   }, [runPeriod]);
+  // The month field's own text. A browser that renders type="month" as a
+  // plain text box passes each keystroke ("2027-0") through onChange; only
+  // a whole month (or a blank field) becomes the run's month, and the text
+  // follows the run's month only when that changes from elsewhere.
+  const [runPeriodText, setRunPeriodText] = useState<string>(() => parseRunPeriod(initialParam("period")) ?? "");
+  useEffect(() => {
+    setRunPeriodText((text) => (parseRunPeriod(text) === runPeriod ? text : (runPeriod ?? "")));
+  }, [runPeriod]);
+  const runPeriodTextIncomplete = runPeriodText.trim() !== "" && parseRunPeriod(runPeriodText) === null;
   const [inspected, setInspected] = useState<IrgNodeData | null>(null);
   // The inspector shares the exec panel's scroll with the results
   // section — bring it into view when a node is picked, or its card
@@ -758,8 +767,11 @@ export function GraphViewerApp({
     setLensTrail([]);
     setInspected(null);
     setError(null);
+    // The run month belongs to composed runs; the overview has none.
+    setRunPeriod(null);
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
+      url.searchParams.delete("period");
       url.searchParams.delete("compose");
       url.searchParams.delete("program");
       url.searchParams.delete("focus");
@@ -2446,11 +2458,18 @@ export function GraphViewerApp({
                 id="run-period-input"
                 type="month"
                 className="run-period-input"
-                value={runPeriod ?? ""}
+                value={runPeriodText}
+                placeholder="YYYY-MM"
                 aria-describedby="run-period-hint"
-                onChange={(event) => setRunPeriod(parseRunPeriod(event.target.value))}
+                aria-invalid={runPeriodTextIncomplete || undefined}
+                onChange={(event) => {
+                  const text = event.target.value;
+                  setRunPeriodText(text);
+                  const month = parseRunPeriod(text);
+                  if (month || text.trim() === "") setRunPeriod(month);
+                }}
               />
-              <span id="run-period-hint" className="run-period-hint">{runPeriod ? "the month this run computes" : "blank runs the runtime's default month"}</span>
+              <span id="run-period-hint" className="run-period-hint">{runPeriodTextIncomplete ? "type a month as YYYY-MM" : runPeriod ? "the month this run computes" : "blank runs the runtime's default month"}</span>
             </div>
           )}
           <button
