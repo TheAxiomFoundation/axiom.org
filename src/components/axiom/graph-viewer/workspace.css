@@ -169,6 +169,10 @@ body:has(.has-workspace) .nav-bar { display: none; }
 .graph-viewer-root.has-workspace .workspace-run .run-actions { max-width: none; display: flex; justify-content: space-between; align-items: center; gap: 20px; border-top: 1px solid var(--color-rule); padding-top: 16px; }
 .graph-viewer-root.has-workspace .workspace-run .run-button { width: auto; min-width: 180px; }
 .run-assumptions { margin: 0; font-size: 12px; color: var(--color-ink-secondary); }
+.run-period { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--color-ink-secondary); }
+.run-period-label { font-weight: 600; color: var(--color-ink); }
+.run-period-input { font: inherit; font-size: 13px; padding: 4px 6px; border: 1px solid var(--color-rule); border-radius: 4px; background: var(--color-paper); color: var(--color-ink); }
+.run-period-hint { font-size: 11px; }
 .graph-viewer-root.has-workspace[data-workspace-view="run"] .results-panel { margin-top: 16px; }
 @media (max-width: 760px) {
   .workspace-neighborhood { grid-template-columns: 1fr; gap: 24px; }

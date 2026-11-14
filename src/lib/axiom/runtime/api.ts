@@ -396,9 +396,14 @@ export async function runCalculateRoot(request: {
    *  scenario key → answers. Every kind the scope allocates is sent, `{}`
    *  for none, so flat facts never stand in for an instance. */
   instances?: Record<string, Record<string, Record<string, number | boolean>>>;
+  /** The month to compute (`household.period`, "YYYY-MM"). Omitted, the
+   *  runtime picks its own default month, which can predate every
+   *  version of a rule that takes effect later. */
+  period?: string;
 }): Promise<RootCalculateOutcome> {
   if (!isRuntimeApiConfigured()) return { kind: "failed" };
   const key = process.env.AXIOM_RUNTIME_API_KEY;
+  const members = Boolean(request.people || request.relations || request.instances);
   try {
     const response = await fetch(`${apiBase()}/calculate`, {
       method: "POST",
@@ -406,14 +411,17 @@ export async function runCalculateRoot(request: {
         "content-type": "application/json",
         ...(key ? { "x-api-key": key } : {}),
       },
-      body: JSON.stringify(request.people || request.relations || request.instances ? {
+      body: JSON.stringify(members || request.period ? {
         root: request.root,
         facts: request.facts,
         variables: request.variables,
         household: {
-          people: { person_1: {}, ...request.people },
+          // A period alone keeps the flat-facts household: people are
+          // named only when the scenario has members, roles or instances.
+          ...(members ? { people: { person_1: {}, ...request.people } } : {}),
           ...(request.relations ? { relations: request.relations } : {}),
           ...(request.instances ? { instances: request.instances } : {}),
+          ...(request.period ? { period: request.period } : {}),
         },
       } : request),
       redirect: "error",

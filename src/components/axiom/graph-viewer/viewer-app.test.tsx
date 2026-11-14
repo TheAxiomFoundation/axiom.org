@@ -89,3 +89,40 @@ it("shows submitted payment answers in Relationships and retains them until the 
   expect(screen.getByTestId("canvas-evidence")).toHaveTextContent("2000");
   expect(fetcher).toHaveBeenCalledTimes(2);
 });
+
+it("runs the month named by period= and the month field, and keeps the URL in step", async () => {
+  window.history.replaceState({}, "", `/app?compose=${encodeURIComponent(fixture.root)}&period=2027-01&view=structure`);
+  const periods: unknown[] = [];
+  vi.stubGlobal("fetch", (url: string, init?: RequestInit) => {
+    if (url === "/api/axiom/runtime/calculate") {
+      periods.push(JSON.parse(String(init?.body)).period);
+      return Promise.resolve(Response.json({ outputs: { credit: 0 }, trace: [], allocated_instances: { Payment: {} } }));
+    }
+    if (url.startsWith("/api/axiom/rulespec?")) return Promise.resolve(Response.json({ content: "" }));
+    throw new Error(`Unexpected request: ${url}`);
+  });
+  render(<GraphViewerApp />);
+  fireEvent.click(await screen.findByRole("button", { name: "Run" }));
+  const month = screen.getByLabelText("Month") as HTMLInputElement;
+  expect(month.value).toBe("2027-01");
+  fireEvent.click(screen.getByRole("button", { name: "Run scenario" }));
+  await waitFor(() => expect(periods).toEqual(["2027-01"]));
+  fireEvent.change(screen.getByLabelText("Month"), { target: { value: "2027-03" } });
+  await waitFor(() => expect(new URL(window.location.href).searchParams.get("period")).toBe("2027-03"));
+  fireEvent.click(screen.getByRole("button", { name: "Run scenario" }));
+  await waitFor(() => expect(periods).toEqual(["2027-01", "2027-03"]));
+  fireEvent.change(screen.getByLabelText("Month"), { target: { value: "" } });
+  await waitFor(() => expect(new URL(window.location.href).searchParams.has("period")).toBe(false));
+});
+
+it("ignores a period= value that is not a month", async () => {
+  window.history.replaceState({}, "", `/app?compose=${encodeURIComponent(fixture.root)}&period=2027&view=structure`);
+  vi.stubGlobal("fetch", (url: string) => {
+    if (url.startsWith("/api/axiom/rulespec?")) return Promise.resolve(Response.json({ content: "" }));
+    throw new Error(`Unexpected request: ${url}`);
+  });
+  render(<GraphViewerApp />);
+  fireEvent.click(await screen.findByRole("button", { name: "Run" }));
+  expect((screen.getByLabelText("Month") as HTMLInputElement).value).toBe("");
+  await waitFor(() => expect(new URL(window.location.href).searchParams.has("period")).toBe(false));
+});
