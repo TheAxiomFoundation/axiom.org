@@ -20,6 +20,9 @@ import type { LegalId, ProgramGraph } from "./types";
  * `instances` carries the scenario's per-request instances (kind → key →
  * answers, e.g. payments) for scopes that allocate them; every kind
  * travels, an empty object included, since `{}` is the answer "none".
+ *
+ * `period` is the month the run computes ("YYYY-MM"), compose mode only.
+ * Omitted, the runtime uses its own default month.
  */
 export function buildRunRequestBody(
   composeFocus: string | null,
@@ -29,6 +32,7 @@ export function buildRunRequestBody(
   people?: Record<string, Record<string, number | boolean>>,
   relations?: Record<string, string[]>,
   instances?: Record<string, Record<string, Record<string, number | boolean>>>,
+  period?: string | null,
 ): Record<string, unknown> {
   if (composeFocus) {
     return {
@@ -38,6 +42,7 @@ export function buildRunRequestBody(
       // Explicit roles travel whole — an empty list is an answer.
       ...(relations ? { relations } : {}),
       ...(instances && Object.keys(instances).length > 0 ? { instances } : {}),
+      ...(period ? { period } : {}),
       variables,
     };
   }
@@ -57,10 +62,14 @@ export function buildRunRequestBody(
  */
 export function scenarioKey(
   scenario: Record<string, number | boolean>,
+  period?: string | null,
 ): string {
-  return JSON.stringify(
+  const key = JSON.stringify(
     Object.entries(scenario).sort(([a], [b]) => a.localeCompare(b)),
   );
+  // A different month is a different question: changing it marks the
+  // results stale exactly like editing a value.
+  return period ? `${key}@${period}` : key;
 }
 
 /**

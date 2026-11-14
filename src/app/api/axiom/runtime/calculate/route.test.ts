@@ -55,6 +55,28 @@ describe("POST /api/axiom/runtime/calculate (run-by-root)", () => {
     expect(await response.json()).toMatchObject({applied:[name],dropped:["invalid-key"]});
   });
 
+  it("passes the run's month to the runtime and echoes it", async () => {
+    runCalculateRootMock.mockResolvedValue({kind:"ok",result:{outputs:{applicable_individual:true},trace:[]}});
+    const response = await POST(post({root:"us:statutes/42/1396a/xx",facts:{age:30},period:"2027-01",variables:[]}));
+    expect(response.status).toBe(200);
+    expect(runCalculateRootMock).toHaveBeenCalledWith({root:"us:statutes/42/1396a/xx",facts:{age:30},variables:[],period:"2027-01"});
+    expect(await response.json()).toMatchObject({period:"2027-01"});
+  });
+
+  it.each(["2027", "2027-13", "January 2027", 202701])("refuses a malformed period (%s) instead of running another month", async (period) => {
+    const response = await POST(post({root:"us:statutes/42/1396a/xx",facts:{},period,variables:[]}));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({error:"invalid_period"});
+    expect(runCalculateRootMock).not.toHaveBeenCalled();
+  });
+
+  it("reports a null period when the request named none", async () => {
+    runCalculateRootMock.mockResolvedValue({kind:"ok",result:{outputs:{},trace:[]}});
+    const response = await POST(post({root:"us:statutes/42/1396a/xx",facts:{},variables:[]}));
+    expect(runCalculateRootMock.mock.calls[0][0]).not.toHaveProperty("period");
+    expect(await response.json()).toMatchObject({period:null});
+  });
+
   it("passes the root shape through and returns the run envelope", async () => {
     runCalculateRootMock.mockResolvedValue({
       kind: "ok",

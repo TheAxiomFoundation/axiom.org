@@ -216,6 +216,32 @@ describe("runtime api client", () => {
     });
   });
 
+  it("sends the run's month as household.period, with no people for a flat scenario", async () => {
+    vi.stubEnv("AXIOM_RUNTIME_API_KEY", "test-key");
+    const fetchMock = vi.fn().mockResolvedValue(okEnvelope({ outputs: { applicable_individual: true } }));
+    vi.stubGlobal("fetch", fetchMock);
+    await runCalculateRoot({ root: "us:statutes/42/1396a/xx", facts: { age: 30 }, variables: [], period: "2027-01" });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+      root: "us:statutes/42/1396a/xx",
+      facts: { age: 30 },
+      variables: [],
+      household: { period: "2027-01" },
+    });
+  });
+
+  it("keeps household.people beside the period when the scenario has members", async () => {
+    vi.stubEnv("AXIOM_RUNTIME_API_KEY", "test-key");
+    const fetchMock = vi.fn().mockResolvedValue(okEnvelope({ outputs: { count: 1 } }));
+    vi.stubGlobal("fetch", fetchMock);
+    await runCalculateRoot({ root: "us:statutes/26/21", facts: { age: 8 }, people: { person_2: { age: 30 } }, variables: ["count"], period: "2027-01" });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+      root: "us:statutes/26/21",
+      facts: { age: 8 },
+      variables: ["count"],
+      household: { people: { person_1: {}, person_2: { age: 30 } }, period: "2027-01" },
+    });
+  });
+
   it("routes additional people through household.people and reserves the primary person", async () => {
     vi.stubEnv("AXIOM_RUNTIME_API_KEY", "test-key");
     const fetchMock = vi.fn().mockResolvedValue(okEnvelope({ outputs: { count: 1 } }));

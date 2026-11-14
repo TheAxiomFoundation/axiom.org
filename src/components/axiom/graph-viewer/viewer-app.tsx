@@ -5,6 +5,7 @@ import { HouseholdComposer } from "./household-composer";
 import { ConventionNote, RelationRoles } from "./relation-roles";
 import { RelationTuples } from "./relation-tuples";
 import { flattenRoles, instanceKindsOf, kindStem, MAX_KIND_INSTANCES, reconcileRoles, rolesForRun, type InstanceAnswers, type RelationDecl, type RoleMembership } from "@/lib/axiom/runtime/relation-roles";
+import { parseRunPeriod } from "@/lib/axiom/runtime/run-period";
 import { ResultExplanation, inputAwareEvidence, recordedEvidence, recordedTableRow } from "./result-explanation";
 import { ParameterTableView } from "./parameter-table";
 import { GraphLoading } from "./graph-loading";
@@ -145,6 +146,27 @@ export function GraphViewerApp({
   // (edits never fire the engine by themselves).
   const [resultsStale, setResultsStale] = useState(false);
   const ranScenarioKey = useRef<string | null>(null);
+  // The month a composed run computes ("YYYY-MM"), from `period=` in the
+  // URL or the run panel's month field. Null leaves the runtime's own
+  // default month, which predates rules that take effect later.
+  const [runPeriod, setRunPeriod] = useState<string | null>(() => parseRunPeriod(initialParam("period")));
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    if ((url.searchParams.get("period") ?? null) === runPeriod) return;
+    if (runPeriod) url.searchParams.set("period", runPeriod);
+    else url.searchParams.delete("period");
+    window.history.replaceState(window.history.state, "", url.toString());
+  }, [runPeriod]);
+  // The month field's own text. A browser that renders type="month" as a
+  // plain text box passes each keystroke ("2027-0") through onChange; only
+  // a whole month (or a blank field) becomes the run's month, and the text
+  // follows the run's month only when that changes from elsewhere.
+  const [runPeriodText, setRunPeriodText] = useState<string>(() => parseRunPeriod(initialParam("period")) ?? "");
+  useEffect(() => {
+    setRunPeriodText((text) => (parseRunPeriod(text) === runPeriod ? text : (runPeriod ?? "")));
+  }, [runPeriod]);
+  const runPeriodTextIncomplete = runPeriodText.trim() !== "" && parseRunPeriod(runPeriodText) === null;
   const [inspected, setInspected] = useState<IrgNodeData | null>(null);
   // The inspector shares the exec panel's scroll with the results
   // section — bring it into view when a node is picked, or its card
@@ -745,8 +767,11 @@ export function GraphViewerApp({
     setLensTrail([]);
     setInspected(null);
     setError(null);
+    // The run month belongs to composed runs; the overview has none.
+    setRunPeriod(null);
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
+      url.searchParams.delete("period");
       url.searchParams.delete("compose");
       url.searchParams.delete("program");
       url.searchParams.delete("focus");
@@ -1187,7 +1212,7 @@ export function GraphViewerApp({
       ...scenario,
       ...flattenMemberAnswers([...extraMembers, ...Object.values(scopeInstanceKeys).flat()], memberScenario),
       ...flattenRoles(runRoles ?? {}),
-    });
+    }, composeFocus ? runPeriod : null);
     try {
       // Trace the selected outputs plus their reachable rules so the
       // execution lights intermediate nodes, not just the results.
@@ -1227,6 +1252,7 @@ export function GraphViewerApp({
           composeFocus ? people : undefined,
           runRoles,
           runInstances,
+          composeFocus ? runPeriod : null,
         );
       const attempt = async (variables: string[]) => {
         const response = await fetch("/api/axiom/runtime/calculate", {
@@ -2193,10 +2219,10 @@ export function GraphViewerApp({
           ? rolesForRun(rootRelations.relations, relationRoles, ["person_1", ...extraMembers], scopeInstanceKeys)
           : {},
       ),
-    });
+    }, composeFocus ? runPeriod : null);
     if (ranScenarioKey.current === null) return; // nothing ran yet
     setResultsStale(runResult !== null && key !== ranScenarioKey.current);
-  }, [debouncedScenario, extraMembers, memberScenario, runResult, relationRoles, rootRelations, composeFocus, scopeInstanceKeys]);
+  }, [debouncedScenario, extraMembers, memberScenario, runResult, relationRoles, rootRelations, composeFocus, scopeInstanceKeys, runPeriod]);
 
   // Execution overlay: clone the structural traces and light them
   // with the run's computed values (rules by durable id or bare
@@ -2425,6 +2451,27 @@ export function GraphViewerApp({
         {inputCatalog.length === 0 && (graph?.inputs.length ?? 0) > 0 && <button type="button" className="status-retry" onClick={() => setReloadNonce(n => n + 1)}>Retry loading inputs</button>}
         <div className="run-actions">
           <p className="run-assumptions">{Object.keys(scenario).length + Object.values(memberScenario).reduce((count, answers) => count + Object.keys(answers).length, 0)} household inputs answered · unanswered inputs use engine defaults</p>
+          {composeFocus && (
+            <div className="run-period">
+              <label htmlFor="run-period-input" className="run-period-label">Month</label>
+              <input
+                id="run-period-input"
+                type="month"
+                className="run-period-input"
+                value={runPeriodText}
+                placeholder="YYYY-MM"
+                aria-describedby="run-period-hint"
+                aria-invalid={runPeriodTextIncomplete || undefined}
+                onChange={(event) => {
+                  const text = event.target.value;
+                  setRunPeriodText(text);
+                  const month = parseRunPeriod(text);
+                  if (month || text.trim() === "") setRunPeriod(month);
+                }}
+              />
+              <span id="run-period-hint" className="run-period-hint">{runPeriodTextIncomplete ? "type a month as YYYY-MM" : runPeriod ? "the month this run computes" : "blank runs the runtime's default month"}</span>
+            </div>
+          )}
           <button
             type="button"
             className="run-button"
