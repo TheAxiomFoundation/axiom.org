@@ -3118,16 +3118,25 @@ export function GraphViewerApp({
                   </dd>
                 </>
               ) : null}
-              {input && input.sample !== undefined && input.sample !== null ? (
-                <>
-                  <dt>Default</dt>
-                  <dd className="node-inspector-mono">
-                    {typeof input.sample === "object"
-                      ? JSON.stringify(input.sample)
-                      : String(input.sample)}
-                  </dd>
-                </>
-              ) : null}
+              {(() => {
+                const shownDefault = input
+                  ? inspectorDefaultValue(
+                      input.name,
+                      input.sample,
+                      inputMeta.defaults,
+                    )
+                  : undefined;
+                return shownDefault !== undefined && shownDefault !== null ? (
+                  <>
+                    <dt>Default</dt>
+                    <dd className="node-inspector-mono">
+                      {typeof shownDefault === "object"
+                        ? JSON.stringify(shownDefault)
+                        : String(shownDefault)}
+                    </dd>
+                  </>
+                ) : null;
+              })()}
               {input && input.name in inputEditValues ? (
                 <>
                   <dt>Your answer</dt>
@@ -3688,6 +3697,23 @@ function InputOutlineBranch({
       )}
     </div>
   );
+}
+
+/**
+ * The value the inspector's "Default" row names. It prefers the default
+ * the engine applies to a blank field (`meta.defaults`, which the runtime
+ * catalog overwrites once it loads) and falls back to the compose census
+ * sample only when no default is known. AnswerControl's "default — N"
+ * placeholder reads the same `meta.defaults`, so the row and the field
+ * below it cannot name two different defaults.
+ */
+export function inspectorDefaultValue(
+  name: string,
+  sample: unknown,
+  defaults: Record<string, unknown>,
+): unknown {
+  const known = defaults[name];
+  return known !== undefined && known !== null ? known : sample;
 }
 
 /**
