@@ -18,3 +18,12 @@ export function parseRunPeriod(raw: string | null | undefined): string | null {
   const value = raw?.trim() ?? "";
   return RUN_PERIOD_RE.test(value) ? value : null;
 }
+
+/** Whether a runtime refusal says a rule has no version at the month the
+ *  run asked for (the engine's "derived `…` has no formula version at …").
+ *  The user fixes that by choosing another month, so the viewer shows it as
+ *  a run error and keeps the run panel, Month field included, rather than
+ *  probing output names or blocking the run. */
+export function isRunPeriodCoverageRefusal(message: string | null | undefined): boolean {
+  return /has no formula version at /.test(message ?? "");
+}

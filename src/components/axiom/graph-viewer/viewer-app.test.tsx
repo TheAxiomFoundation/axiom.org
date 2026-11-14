@@ -137,13 +137,50 @@ it("keeps a partly typed month in the field and runs only a whole month", async 
   month.setAttribute("type", "text");
   fireEvent.change(month, { target: { value: "2027-0" } });
   expect(month).toHaveAttribute("aria-invalid", "true");
-  expect(screen.getByText("type a month as YYYY-MM")).toBeInTheDocument();
+  expect(screen.getByText("type a whole month as YYYY-MM to run")).toBeInTheDocument();
   expect(new URL(window.location.href).searchParams.get("period")).toBe("2027-01");
+  // Run would compute 2027-01, a month the field no longer shows: it waits
+  // for a whole month.
+  expect(screen.getByRole("button", { name: "Run scenario" })).toBeDisabled();
+  fireEvent.change(month, { target: { value: "2027-02" } });
+  expect(screen.getByRole("button", { name: "Run scenario" })).toBeEnabled();
   fireEvent.click(screen.getByRole("button", { name: "Run scenario" }));
-  await waitFor(() => expect(periods).toEqual(["2027-01"]));
+  await waitFor(() => expect(periods).toEqual(["2027-02"]));
   fireEvent.change(month, { target: { value: "2027-03" } });
   await waitFor(() => expect(new URL(window.location.href).searchParams.get("period")).toBe("2027-03"));
   expect(month.value).toBe("2027-03");
+});
+
+it("shows a month the rule does not cover as a run error and keeps the Month field", async () => {
+  window.history.replaceState({}, "", `/app?compose=${encodeURIComponent(fixture.root)}&period=2026-11&view=structure`);
+  const periods: unknown[] = [];
+  vi.stubGlobal("fetch", (url: string, init?: RequestInit) => {
+    if (url === "/api/axiom/runtime/calculate") {
+      const period = JSON.parse(String(init?.body)).period;
+      periods.push(period);
+      if (period === "2026-11") {
+        return Promise.resolve(Response.json(
+          { error: "runtime_error", message: "derived `credit` has no formula version at 2026-11-01" },
+          { status: 422 },
+        ));
+      }
+      return Promise.resolve(Response.json({ outputs: { credit: 0 }, trace: [], allocated_instances: { Payment: {} } }));
+    }
+    if (url.startsWith("/api/axiom/rulespec?")) return Promise.resolve(Response.json({ content: "" }));
+    throw new Error(`Unexpected request: ${url}`);
+  });
+  render(<GraphViewerApp />);
+  fireEvent.click(await screen.findByRole("button", { name: "Run" }));
+  fireEvent.click(screen.getByRole("button", { name: "Run scenario" }));
+  expect((await screen.findAllByText(/has no formula version at 2026-11-01\. Set the Month field/)).length).toBeGreaterThan(0);
+  // One request: no output-name probing, and the run panel stays open.
+  expect(periods).toEqual(["2026-11"]);
+  const month = screen.getByLabelText("Month") as HTMLInputElement;
+  expect(screen.getByRole("button", { name: "Run scenario" })).toBeEnabled();
+  fireEvent.change(month, { target: { value: "2027-01" } });
+  fireEvent.click(screen.getByRole("button", { name: "Run scenario" }));
+  await waitFor(() => expect(periods).toEqual(["2026-11", "2027-01"]));
+  await waitFor(() => expect(screen.queryByText(/has no formula version/)).not.toBeInTheDocument());
 });
 
 it("ignores a period= value that is not a month", async () => {

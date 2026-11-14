@@ -5,7 +5,7 @@ import { HouseholdComposer } from "./household-composer";
 import { ConventionNote, RelationRoles } from "./relation-roles";
 import { RelationTuples } from "./relation-tuples";
 import { flattenRoles, instanceKindsOf, kindStem, MAX_KIND_INSTANCES, reconcileRoles, rolesForRun, type InstanceAnswers, type RelationDecl, type RoleMembership } from "@/lib/axiom/runtime/relation-roles";
-import { parseRunPeriod } from "@/lib/axiom/runtime/run-period";
+import { isRunPeriodCoverageRefusal, parseRunPeriod } from "@/lib/axiom/runtime/run-period";
 import { ResultExplanation, inputAwareEvidence, recordedEvidence, recordedTableRow } from "./result-explanation";
 import { ParameterTableView } from "./parameter-table";
 import { GraphLoading } from "./graph-loading";
@@ -660,6 +660,11 @@ export function GraphViewerApp({
   // closure_incomplete): the API's own message, surfaced as a styled
   // state in the run panel — never a silent failure.
   const [runBlocked, setRunBlocked] = useState<string | null>(null);
+  // A different month asks a different question: a refusal at the old
+  // month no longer stands.
+  useEffect(() => {
+    setRunBlocked(null);
+  }, [runPeriod]);
   // The capability probe's refusal, in the gate's or runtime's own words.
   const [runUnavailableReason, setRunUnavailableReason] = useState<string | null>(null);
 
@@ -760,6 +765,7 @@ export function GraphViewerApp({
     setComposedTruncated(false);
     setComposeRunReady(null);
     setRunBlocked(null);
+    setRunPeriodText("");
     setRunResult(null);
     setRunError(null);
     setRunPanelOpen(false);
@@ -1318,6 +1324,14 @@ export function GraphViewerApp({
             // shed — return non-ok instead of blocking the whole run.
             // If even the bare run refuses, the caller styles the
             // blocked state from this same payload.
+            // A rule with no version at the run's month: the user fixes it
+            // with the Month field, so it is a run error (Run and the field
+            // stay), and probing output names cannot help.
+            if (payload.error === "runtime_error" && isRunPeriodCoverageRefusal(payload.message)) {
+              throw new Error(
+                `${(payload.message ?? "").replace(/\.$/, "")}. Set the Month field to a month the rule covers and run again.`,
+              );
+            }
             // A refusal the user can fix by editing the household or its
             // roles is a run error, not a blocked scope: Run stays.
             if (classifyRunRefusal(payload.error) === "user_fixable") {
@@ -2469,13 +2483,13 @@ export function GraphViewerApp({
                   if (month || text.trim() === "") setRunPeriod(month);
                 }}
               />
-              <span id="run-period-hint" className="run-period-hint">{runPeriodTextIncomplete ? "type a month as YYYY-MM" : runPeriod ? "the month this run computes" : "blank runs the runtime's default month"}</span>
+              <span id="run-period-hint" className="run-period-hint">{runPeriodTextIncomplete ? "type a whole month as YYYY-MM to run" : runPeriod ? "the month this run computes" : "blank runs the runtime's default month"}</span>
             </div>
           )}
           <button
             type="button"
             className="run-button"
-            disabled={running}
+            disabled={running || (composeFocus !== null && runPeriodTextIncomplete)}
             onClick={() => launchRun()}
           >
             {running ? "Running…" : "Run scenario"}
