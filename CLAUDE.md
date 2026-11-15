@@ -104,6 +104,13 @@ generate `/axiom/v2/...` hrefs. The app root and marketing pages stay on v1.
   page, `?tab=bundles&bundle=<jurisdiction>/<program>`) reads only the tables,
   and the ledger and journey name each encoding's bundle and tier from them
   and link into that tab. The old `/ops/bundles/<id>` address only redirects.
+  Each document row's `in_flight` (a hand-applied migration,
+  `20261115120000_program_bundle_documents_in_flight.sql`) lists the open
+  rulespec-us PRs that add a module for one of its provisions, from one
+  GraphQL query per pass (`program-bundles-in-flight.ts`): candidate,
+  candidate-reviewed, changes-requested, signed or in-train. They give no
+  credit; the page shows "K in review" beside the count. Null means the PRs
+  were not read that pass, never that there are none.
 - **Everything executable** (packages, graphs, calculate): the hosted
   axiom-api via `src/lib/axiom/runtime/api.ts`, server-side only.
 

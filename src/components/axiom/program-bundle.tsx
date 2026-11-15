@@ -10,6 +10,8 @@ import {
   documentType,
   DOCUMENT_STATUSES,
   formatShare,
+  IN_FLIGHT_LABELS,
+  inReview,
   measured,
   measuredByPart,
   PROVISION_LABELS,
@@ -24,6 +26,7 @@ import {
   type BundleSnapshotRow,
   type BundleTierId,
   type DocumentStatus,
+  type InFlightEncoding,
   type ParityUnit,
   type ProvisionState,
   type UnitState,
@@ -38,6 +41,11 @@ const issueName = (url: string) => url.replace(/^https:\/\/github\.com\/[^/]+\//
 const day = (iso: string | null) =>
   iso ? new Date(iso).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }) : "—";
 const plural = (n: number, one: string, many: string) => `${number(n)} ${n === 1 ? one : many}`;
+/** " · 3 in review" after a document's count, when an open PR covers a provision not yet encoded; nothing otherwise. */
+const inReviewWords = (row: Pick<BundleDocumentRow, "in_flight">) => {
+  const k = inReview(row);
+  return k ? ` · ${number(k)} in review` : "";
+};
 
 /** Households with a mismatched output; a row stored before the field had it as the households that do not match. */
 function mismatchedHouseholds(parity: ScreenerParity): number | null {
@@ -817,7 +825,7 @@ function CellDetail({
                 <span>{row.name}</span>
                 <span className={styles.muted}>
                   {row.in_corpus
-                    ? `${number(measured(row).byState.encoded + measured(row).byState.unvalidated)} of ${number(measured(row).total)} encoded`
+                    ? `${number(measured(row).byState.encoded + measured(row).byState.unvalidated)} of ${number(measured(row).total)} encoded${inReviewWords(row)}`
                     : "not in the corpus"}
                 </span>
               </button>
@@ -1090,6 +1098,18 @@ function UnitDetail({
             </button>
           </dd>
         </div>
+        {unit.path && Array.isArray(document.in_flight) && (
+          <div>
+            <dt>In review</dt>
+            <dd>
+              <InFlightLinks
+                entries={document.in_flight.filter(
+                  (e) => e.citation === unit.path || e.citation.startsWith(`${unit.path}/`) || unit.path!.startsWith(`${e.citation}/`)
+                )}
+              />
+            </dd>
+          </div>
+        )}
         <div>
           <dt>Newest run</dt>
           <dd>
@@ -1187,6 +1207,8 @@ function DocumentDetail({
         )
       )}
 
+      {row.scope === "in" && row.in_corpus && <InFlightBlock row={row} />}
+
       {row.open_provisions.length > 0 && (
         <div className={styles.detailBlock}>
           <p className={styles.detailLabel}>
@@ -1254,6 +1276,80 @@ function DocumentDetail({
         Part: {row.part}. In the tier from {sourceWords(row.sources, row.manifest)}.
       </p>
     </aside>
+  );
+}
+
+/** An open PR's link and state: "#2266 · Candidate, draft". */
+function InFlightPr({ entry }: { entry: InFlightEncoding }) {
+  return (
+    <>
+      <a href={entry.url} target="_blank" rel="noreferrer">
+        #{entry.pr}
+      </a>{" "}
+      · {IN_FLIGHT_LABELS[entry.state]}
+      {entry.draft ? ", draft" : ""}
+      {entry.manifest_pr && (
+        <>
+          {" "}
+          by{" "}
+          <a href={entry.manifest_pr.url} target="_blank" rel="noreferrer">
+            #{entry.manifest_pr.number}
+          </a>
+        </>
+      )}
+      {entry.encoded ? " · already encoded" : ""}
+    </>
+  );
+}
+
+/** A provision's open PRs, one after another; "—" with none. */
+function InFlightLinks({ entries }: { entries: InFlightEncoding[] }) {
+  if (!entries.length) return <>—</>;
+  return (
+    <>
+      {entries.map((entry, i) => (
+        <span key={`${entry.citation}:${entry.pr}`}>
+          {i > 0 && "; "}
+          <InFlightPr entry={entry} />
+        </span>
+      ))}
+    </>
+  );
+}
+
+/**
+ * A document's encodings in flight: per provision, each open rulespec-us PR
+ * that adds a module for it, and the PR's state. They do not count as encoded
+ * until the module merges. Nothing when the rows have no such field (before
+ * its migration) or no PR covers the document; a note when the PRs were not read.
+ */
+function InFlightBlock({ row }: { row: BundleDocumentRow }) {
+  if (row.in_flight === null) {
+    return <p className={styles.detailNote}>Open RuleSpec PRs were not read in this pass.</p>;
+  }
+  if (!row.in_flight?.length) return null;
+  return (
+    <div className={styles.detailBlock}>
+      <p className={styles.detailLabel}>
+        In review<span>{number(inReview(row) ?? 0)}</span>
+      </p>
+      <ul className={styles.openList} aria-label="Open RuleSpec PRs">
+        {row.in_flight.map((entry) => (
+          <li key={`${entry.citation}:${entry.pr}`}>
+            <i className={styles.swatch} data-shade={entry.encoded ? "encoded" : "in_progress"} aria-hidden />
+            <a href={`/${entry.citation}`} className={styles.mono}>
+              {entry.citation.slice((row.citation_path ?? "").length) || entry.citation}
+            </a>
+            <span className={styles.muted}>
+              <InFlightPr entry={entry} />
+            </span>
+          </li>
+        ))}
+      </ul>
+      <p className={styles.detailNote}>
+        Open rulespec-us PRs that add a module for these provisions. They count as encoded only once the module merges.
+      </p>
+    </div>
   );
 }
 
@@ -1350,7 +1446,8 @@ function Provenance({
       <p className={styles.detailSources}>
         Membership: {bundle?.source ?? "the bundle file"}, built from its config in axiom-corpus. Progress: the served
         corpus, every RuleSpec module&apos;s rules and deferrals, the validation waivers, and the encode runs, read by the
-        collector every 30 minutes.
+        collector every 30 minutes. In review: the open rulespec-us PRs that add a module, read in the same pass; they give no
+        credit.
       </p>
     </section>
   );
@@ -1588,6 +1685,7 @@ function DocumentTable({
                               {STATUS_LABELS[row.status]}
                               {cited && tier1Source(row) ? ` · ${tier1Source(row)}` : ""}
                               {row.also_in?.length ? ` · also in ${row.also_in.join(", ")}` : ""}
+                              {inReviewWords(row)}
                             </span>
                           )}
                         </th>

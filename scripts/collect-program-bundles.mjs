@@ -5,7 +5,9 @@
  * program with a federal layer and a layer per state), whether the corpus
  * serves it, how many of its provisions a RuleSpec rule cites (read from each
  * module's YAML, with its deferrals and validation waivers), which of the
- * provisions PolicyEngine cites are covered, and its newest encode run; and
+ * provisions PolicyEngine cites are covered, its newest encode run, and the
+ * open rulespec-us PRs that add a module for one of its provisions (one
+ * GraphQL query, program-bundles-in-flight.ts; they give no credit); and
  * each state bundle's screener-level parity, from the axiom-oracles
  * comparison its program names, with the newest policyengine-us release. The
  * /ops pages read only the tables this writes.
@@ -47,6 +49,13 @@ import { createClient } from "@supabase/supabase-js";
 import yaml from "js-yaml";
 import { distinctByDocument, measureDocument, tierCounts } from "../src/lib/axiom/program-bundles.ts";
 import { moduleFacts, sectionWideFromCorpus, waivedModules } from "../src/lib/axiom/program-bundles-modules.ts";
+import {
+  IN_FLIGHT_OWNER,
+  IN_FLIGHT_REPO,
+  inFlightModules,
+  OPEN_PRS_QUERY,
+  readOpenPrs,
+} from "../src/lib/axiom/program-bundles-in-flight.ts";
 import { screenerParity } from "../src/lib/axiom/screener-parity.ts";
 import { JURISDICTIONS_SEED } from "../src/lib/axiom/jurisdictions-seed.ts";
 import { resolveOracleDataRef } from "./lib/oracle-data-ref.mjs";
@@ -563,6 +572,37 @@ async function lastCommitDate(repo, path, oracleRef) {
   }
 }
 
+/**
+ * The modules open rulespec-us PRs add, each with its state
+ * (program-bundles-in-flight.ts), from one GraphQL query, paged and capped.
+ * Null when they cannot be read (no token, an error, the cap): the pages then
+ * say the PRs were not read, never that there are none.
+ */
+async function readInFlight() {
+  if (!process.env.GITHUB_TOKEN) {
+    console.warn("open RuleSpec PRs not read: GITHUB_TOKEN is not set (GraphQL needs one)");
+    return null;
+  }
+  const fetchPage = async (cursor) => {
+    const res = await fetch("https://api.github.com/graphql", {
+      method: "POST",
+      headers: githubHeaders,
+      body: JSON.stringify({ query: OPEN_PRS_QUERY, variables: { owner: IN_FLIGHT_OWNER, name: IN_FLIGHT_REPO, cursor } }),
+    });
+    if (!res.ok) throw new Error(`GraphQL: HTTP ${res.status}`);
+    const body = await res.json();
+    if (body?.errors?.length) throw new Error(`GraphQL: ${body.errors[0].message}`);
+    return body.data;
+  };
+  const read = await readOpenPrs(fetchPage, (line) => console.warn(line));
+  if (!read) return null;
+  const modules = inFlightModules(read.prs, { defaultBranch: read.defaultBranch }, (line) => console.log(line));
+  const states = {};
+  for (const m of modules) states[m.state] = (states[m.state] ?? 0) + 1;
+  console.log(`${IN_FLIGHT_REPO}: ${read.prs.length} open PRs, ${modules.length} modules in flight ${JSON.stringify(states)}`);
+  return modules;
+}
+
 async function main() {
   if (everyHours > 0 && !dryRun) {
     const { data, error } = await supabase
@@ -586,14 +626,18 @@ async function main() {
   // Resolve once, before any report reads or writes. Only a missing branch
   // permits main fallback; every other resolution error aborts the collection.
   const oracleRef = await resolveOracleDataRef({ headers: githubHeaders });
-  const [attempts, moduleRows, policyengineLatest, reports] = await Promise.all([
+  const [attempts, moduleRows, policyengineLatest, reports, inFlight] = await Promise.all([
     pages(() => supabase.from("pipeline_attempts").select("*").order("id")),
     readModuleRows(),
     newestPolicyEngine(),
     oracleReports(oracleRef),
+    readInFlight(),
   ]);
   console.log(`read ${attempts.length} pipeline attempts; newest policyengine-us release: ${policyengineLatest ?? "unknown"}`);
   const attemptsUnder = (root) => attempts.filter((a) => a.citation && under(a.citation, root));
+  // The modules in flight in or above a document, in any spelling of their citation; null when not read.
+  const inFlightUnder = (root) =>
+    inFlight === null ? null : inFlight.filter((m) => m.citations.some((c) => under(c, root) || under(root, c)));
 
   await matchSections(bundles);
   // A document a layer's tier holds twice (a web page found in the corpus, or
@@ -632,7 +676,12 @@ async function main() {
   const telemetry = new Map();
   const telemetryFor = (root) => {
     if (!telemetry.has(root)) {
-      telemetry.set(root, { nodes: trees.get(root) ?? [], modules: touching(root), attempts: attemptsUnder(root) });
+      telemetry.set(root, {
+        nodes: trees.get(root) ?? [],
+        modules: touching(root),
+        attempts: attemptsUnder(root),
+        inFlight: inFlightUnder(root),
+      });
     }
     return telemetry.get(root);
   };
@@ -765,6 +814,10 @@ async function main() {
     );
   }
   console.log(`${bundleRows.length} bundles, ${documentRows.length} document rows, ${snapshotRows.length} snapshots`);
+  if (inFlight !== null) {
+    const held = documentRows.filter((r) => r.in_flight?.length);
+    console.log(`in flight: ${held.length} document rows list an open PR (${held.reduce((n, r) => n + r.in_flight.length, 0)} entries)`);
+  }
 
   if (dryRun) {
     writeFileSync(outPath, JSON.stringify({ bundles: bundleRows, documents: documentRows, snapshots: snapshotRows }));
@@ -780,6 +833,14 @@ async function write(bundleRows, documentRows, snapshotRows) {
   if (missing) {
     console.log(`program bundle tables not readable (${missing.message}); apply the migration to store results`);
     return;
+  }
+  // in_flight arrives with a hand-applied migration
+  // (20261115120000_program_bundle_documents_in_flight.sql); until then the
+  // rows are written without it.
+  const { error: noInFlight } = await supabase.from("program_bundle_documents").select("in_flight").limit(1);
+  if (noInFlight) {
+    console.log(`program_bundle_documents.in_flight unavailable, not stored: ${noInFlight.message}`);
+    for (const row of documentRows) delete row.in_flight;
   }
   for (let i = 0; i < bundleRows.length; i += 200) {
     const { error } = await supabase.from("program_bundles").upsert(bundleRows.slice(i, i + 200), { onConflict: "id" });

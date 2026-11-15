@@ -3,8 +3,11 @@ import { describe, expect, it } from "vitest";
 import { ProgramBundle } from "./program-bundle";
 import {
   measureDocument,
+  type BundleDocumentRow,
   type BundleFileDocument,
   type BundleRow,
+  type InFlightModule,
+  type InFlightState,
   type ModuleFacts,
   type TierCounts,
 } from "@/lib/axiom/program-bundles";
@@ -400,6 +403,109 @@ describe("ProgramBundle", () => {
     expect(within(panel).getByRole("button", { name: "7 USC 2014" }).closest("th")).toHaveTextContent(
       "7 USC 2014Partly encoded · by the plan"
     );
+  });
+
+  describe("encodings in flight", () => {
+    // Arizona FAA5's medical section in Tier 1, cited whole: four blocks, a rule cites block 7.
+    const root = "us-az/manual/des/faa5/na-medical-expenses-and-deduction";
+    const open = (pr: number, block: number, state: InFlightState, extra: Partial<InFlightModule> = {}): InFlightModule => ({
+      module: `us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-${block}.yaml`,
+      citations: [`${root.replace("/manual/", "/policy/")}/block-${block}`, `${root}/block-${block}`],
+      pr,
+      url: `https://github.com/TheAxiomFoundation/rulespec-us/pull/${pr}`,
+      state,
+      review_decision: null,
+      draft: true,
+      manifest_pr: null,
+      ...extra,
+    });
+    const faa5 = (inFlight: InFlightModule[] | null) =>
+      measureDocument(
+        "us-az/snap",
+        "screener",
+        doc({ key: root, name: "FAA5 medical", layer: "state", part: "Deductions", citation_path: root }),
+        {
+          nodes: [
+            { path: root, child_count: 4 },
+            ...[1, 4, 7, 13].map((n) => ({ path: `${root}/block-${n}`, child_count: 0 })),
+          ],
+          modules: [module(`${root}/block-7`)],
+          attempts: [],
+          inFlight,
+        },
+        AT
+      );
+    const inFlight = [
+      open(2266, 4, "candidate"),
+      open(2197, 13, "changes-requested", { draft: false, review_decision: "CHANGES_REQUESTED" }),
+      open(2046, 7, "signed", {
+        draft: false,
+        manifest_pr: { number: 2204, url: "https://github.com/TheAxiomFoundation/rulespec-us/pull/2204" },
+      }),
+    ];
+    const openDocument = (rows: BundleDocumentRow[]) => {
+      render(<ProgramBundle bundle={withParts} documents={rows} available referenceMs={NOW} />);
+      const panel = screen.getByRole("region", { name: "Documents" });
+      fireEvent.click(within(panel).getByRole("button", { name: /^State policy manual/ }));
+      const name = within(panel).getByRole("button", { name: "FAA5 medical" });
+      const status = name.closest("th")!;
+      fireEvent.click(name);
+      return { status, drawer: screen.getByRole("complementary", { name: "Document" }) };
+    };
+
+    it("says how many provisions are in review beside each count, and lists each provision's PRs and states", () => {
+      const { status, drawer } = openDocument([...documents, faa5(inFlight)]);
+      // Block 7 is encoded already, so blocks 4 and 13 are the two in review; they count as not encoded.
+      expect(status).toHaveTextContent("FAA5 medicalPartly encoded · by the plan · 2 in review");
+      expect(within(drawer).getByText("Encoded").parentElement).toHaveTextContent("Encoded1");
+      expect(within(drawer).getByText("Not started").parentElement).toHaveTextContent("Not started3");
+      expect(drawer).toHaveTextContent("In review2");
+      const list = within(drawer).getByRole("list", { name: "Open RuleSpec PRs" });
+      expect(within(list).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
+        "/block-4#2266 · Candidate, draft",
+        "/block-7#2046 · Signed by #2204 · already encoded",
+        "/block-13#2197 · Changes requested",
+      ]);
+      expect(within(list).getByRole("link", { name: "/block-4" })).toHaveAttribute("href", `/${root}/block-4`);
+      expect(within(list).getByRole("link", { name: "#2266" })).toHaveAttribute(
+        "href",
+        "https://github.com/TheAxiomFoundation/rulespec-us/pull/2266"
+      );
+      expect(within(list).getByRole("link", { name: "#2204" })).toHaveAttribute(
+        "href",
+        "https://github.com/TheAxiomFoundation/rulespec-us/pull/2204"
+      );
+      // The document's Tier 1 provision (the whole section) names its PRs too.
+      fireEvent.click(within(drawer).getByRole("button", { name: /the whole document/ }));
+      const unit = screen.getByRole("complementary", { name: "Tier 1 provision" });
+      expect(unit).toHaveTextContent("In review#2266 · Candidate, draft; #2046 · Signed by #2204 · already encoded; #2197 · Changes requested");
+      // A cell's document list puts it beside the count.
+      fireEvent.click(screen.getByRole("button", { name: /^Deductions, Screener-level parity/ }));
+      const cell = screen.getByRole("complementary", { name: "Part of the program" });
+      expect(within(cell).getByRole("button", { name: /FAA5 medical/ })).toHaveTextContent("1 of 4 encoded · 2 in review");
+    });
+
+    it("shows no PRs on rows stored before the field existed, and none where no PR is open", () => {
+      // Rows read before the migration have no in_flight at all.
+      const { in_flight: _dropped, ...stored } = faa5(inFlight);
+      void _dropped;
+      const { status, drawer } = openDocument([...documents, stored]);
+      expect(status).toHaveTextContent(/^FAA5 medicalPartly encoded · by the plan$/);
+      expect(drawer).not.toHaveTextContent("In review");
+      expect(drawer).not.toHaveTextContent("not read");
+      expect(within(drawer).queryByRole("list", { name: "Open RuleSpec PRs" })).toBeNull();
+      cleanup();
+      const none = openDocument([...documents, faa5([])]);
+      expect(none.status).toHaveTextContent(/^FAA5 medicalPartly encoded · by the plan$/);
+      expect(none.drawer).not.toHaveTextContent("In review");
+    });
+
+    it("says the PRs were not read, never that there are none, when the collector could not read them", () => {
+      const { status, drawer } = openDocument([...documents, faa5(null)]);
+      expect(status).toHaveTextContent(/^FAA5 medicalPartly encoded · by the plan$/);
+      expect(drawer).toHaveTextContent("Open RuleSpec PRs were not read in this pass.");
+      expect(within(drawer).queryByRole("list", { name: "Open RuleSpec PRs" })).toBeNull();
+    });
   });
 
   it("says when the bundle tables are not there yet", () => {
