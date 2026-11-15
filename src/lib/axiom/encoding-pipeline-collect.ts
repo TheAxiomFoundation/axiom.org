@@ -265,6 +265,9 @@ export interface MirrorRow {
   raw_yaml_sha256: string | null;
   /** The commit the sync read (once the commit_sha column exists). */
   commit_sha?: string | null;
+  /** The provisions the module's rules are grounded in, with its singular
+   *  source (`source_verification.corpus_citation_path`), when read. */
+  value_citation_paths?: string[] | null;
 }
 
 export interface CompileSweepRow {
@@ -470,6 +473,40 @@ export function rulespecModulePaths(files: string[]): string[] {
     .sort();
 }
 
+const MANIFEST_RE = /^(?:([^/.][^/]*)\/)?\.axiom\/encoding-manifests\/(.+)\.json$/;
+
+/**
+ * The modules a PR's signed manifests stand for. A manifest sits at
+ * `.axiom/encoding-manifests/<module path>.json`, at the repo root or under
+ * a jurisdiction folder (`us-az/.axiom/encoding-manifests/<rest>.json` is
+ * `us-az/<rest>.yaml`). A promotion lane's signed PR into a candidate's
+ * branch holds only the manifest: its module is in the branch.
+ */
+export function manifestModulePaths(files: string[]): string[] {
+  const modules = new Set<string>();
+  for (const path of files) {
+    const match = MANIFEST_RE.exec(path);
+    if (match) modules.add(`${match[1] ? `${match[1]}/` : ""}${match[2]}.yaml`);
+  }
+  return [...modules].sort();
+}
+
+/** A PR's modules: its own module files, else (a PR of signed manifests only) the modules they stand for. */
+function ownOrSignedModules(files: string[]): string[] {
+  const own = rulespecModulePaths(files);
+  return own.length ? own : manifestModulePaths(files);
+}
+
+/**
+ * The modules a PR's change brought to the default branch. A PR that holds
+ * only signed manifests and reached the default branch through another PR
+ * (its side branch's own PR, or a merge train that replaced it) brought the
+ * modules those manifests stand for: that PR merged them, at its merge commit.
+ */
+export function landedModulePaths(pr: Pick<ManifestPr, "files" | "via">): string[] {
+  return pr.via?.state === "MERGED" ? ownOrSignedModules(pr.files) : rulespecModulePaths(pr.files);
+}
+
 /** The first day a PR merged outside the pipeline is collected from. */
 export const OUTSIDE_SINCE = "2026-07-22T00:00:00Z";
 /** How far before the previous pass a pass lists merged PRs again: a pass that failed to write loses nothing. */
@@ -536,6 +573,21 @@ export function derivedCitation(repo: string, path: string): string {
   return [jurisdiction, CITATION_BUCKETS[bucket] ?? bucket, ...tail].join("/");
 }
 
+/**
+ * The provision an index row's module encodes: its one grounding citation
+ * (`value_citation_paths`, which holds the module's singular source), as a
+ * dispatch and the bundle documents name it (rulespec-us
+ * `us-az/policies/des/faa5/.../block-7.yaml` encodes
+ * `us-az/manual/des/faa5/.../block-7`). A module grounded in several
+ * provisions, or a row read without the column, keeps its own citation.
+ */
+export function moduleCitation(row: Pick<MirrorRow, "citation_path" | "value_citation_paths">): string {
+  const values = row.value_citation_paths;
+  return Array.isArray(values) && values.length === 1 && typeof values[0] === "string" && values[0]
+    ? values[0]
+    : row.citation_path;
+}
+
 /** A module's citation: from the index, else what an earlier pass stored, else its path. */
 function outsideCitation(
   repo: string,
@@ -544,7 +596,7 @@ function outsideCitation(
   stored: string | null | undefined
 ): Pick<OutsideModule, "citation" | "citationFrom"> {
   const row = index.byPath.get(`${repo}:${path}`);
-  if (row) return { citation: row.citation_path, citationFrom: "index" };
+  if (row) return { citation: moduleCitation(row), citationFrom: "index" };
   if (stored) return { citation: stored, citationFrom: "stored" };
   return { citation: derivedCitation(repo, path), citationFrom: "path" };
 }
@@ -684,7 +736,8 @@ export function outsideModules(
     if (!pr.via) continue;
     const key = prKey(pr.repo, pr.via.number);
     const paths = carried.get(key) ?? new Set<string>();
-    for (const path of rulespecModulePaths(pr.files)) paths.add(path);
+    // A manifest-only PR's module is the one its side branch's PR or merge train merged.
+    for (const path of ownOrSignedModules(pr.files)) paths.add(path);
     carried.set(key, paths);
   }
   const stored = storedOutside(previous);
@@ -857,10 +910,12 @@ export function carrierIndex(merged: MergedPr[], previous: Map<string, Partial<P
  * pass's read, from the train's stored outside rows, or from the link an
  * earlier pass recorded (its outside rows are dropped once linked). A
  * mention alone is not enough: a PR can name another without replacing it.
+ * A promotion lane's signed PR holds only the manifest: the train must hold
+ * the module it stands for (rulespec-us#2204's block-7, carried by #2205).
  */
 export function carrierPrFor(pr: ManifestPr, index: CarrierIndex): BranchPr | null {
   if (pr.state !== "CLOSED" || !pr.crossRefs?.length) return null;
-  const modules = rulespecModulePaths(pr.files);
+  const modules = ownOrSignedModules(pr.files);
   if (modules.length === 0) return null;
   const recorded = index.recorded.get(prKey(pr.repo, pr.number));
   const carriers = pr.crossRefs
@@ -1301,7 +1356,7 @@ export function containmentQueries(
     const main = mainMerge(pr);
     const mergeCommit = main?.mergeCommit;
     if (!main || !mergeCommit) continue;
-    const modules = rulespecModulePaths(pr.files);
+    const modules = landedModulePaths(pr);
     const indexed = modules.every((path) => index.byPath.has(`${pr.repo}:${path}`));
     const key = prKey(pr.repo, pr.number);
     const synced = stored.has(key) && !unsynced.has(key);
@@ -1989,7 +2044,7 @@ function withPr(
   const { mirror, compile, compileAt: compileGeneratedAt, contains, validation, waivers, oracle } =
     context;
   const state = prState(pr);
-  const modules = rulespecModulePaths(pr.files);
+  const modules = landedModulePaths(pr);
   const targetsDefault = pr.defaultBranch ? pr.baseRefName === pr.defaultBranch : null;
   const attempt: PipelineAttempt = {
     ...base,

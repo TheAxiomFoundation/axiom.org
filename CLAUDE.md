@@ -52,13 +52,20 @@ generate `/axiom/v2/...` hrefs. The app root and marketing pages stay on v1.
   column): `pr:<repo>#<n>:<module path>`, one module file a PR merged into a
   rulespec-* default branch with no dispatch behind it (from 2026-07-22; each
   pass lists PRs merged since a day before the last pass and reads only new
-  PRs' files, older ones are carried in their rows), and
+  PRs' files, older ones are carried in their rows; its citation is the
+  provision the module encodes, its one `value_citation_paths` entry, else
+  the index's `citation_path`), and
   `dep:<encoding_runs id>`, a module the encoder wrote inside another
   citation's run (a source or dependent lane), with `queue_ref`
   `dependent:<run id>`. Encoder records share no session with their run, so
   the host is the same repo family's run whose encode window holds the
   record, then the encoder version. Both go through the same joins after the
-  merge. Citation views (stages, ledger, journey, bundles' latest stage)
+  merge. A signed PR that holds only its manifest
+  (`.axiom/encoding-manifests/<module>.json`, the promotion lane's PR into a
+  candidate's branch) stands for that module once its side branch's PR or a
+  merge train that replaced it carried the module to main, at that PR's merge
+  commit; that PR then has no row of its own for the module.
+  Citation views (stages, ledger, journey, bundles' latest stage)
   include them; run statistics (flow, attempts, versions, the weekly runs,
   approvals) count dispatches only, and cost adds the dependent records.
   `scripts/collect-encoding-pipeline.mjs` rebuilds it every 30 minutes from

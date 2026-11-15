@@ -1,0 +1,1370 @@
+{
+  "_recorded": "2026-11-15, read-only, with the collector's own queries (scripts/collect-encoding-pipeline.mjs): manifestPrs are PR_QUERY search nodes, mergedPrs are listMergedPrs nodes with readPrFiles' files, sideBranchPrs the REST listing readBranchPrs reads, runs the dispatch runs listDispatchRuns keeps, mirror encodings.rulespec_files rows. rulespec-us#2202-#2204: the promotion lane's signed PRs (manifest only) into candidate branches, closed when merge train #2205 merged; #2192 into #2045's branch; #1347 a one-PR landing.",
+  "repo": "rulespec-us",
+  "defaultBranch": "main",
+  "runs": [
+    {
+      "id": 43376624427,
+      "display_title": "Targeted signed RuleSpec re-encode [adhoc:adhoc:adhoc] us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-11",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-11-13T06:08:29Z",
+      "run_started_at": "2026-11-13T06:08:29Z",
+      "updated_at": "2026-11-13T06:15:23Z",
+      "html_url": "https://github.com/TheAxiomFoundation/axiom-encode/actions/runs/43376624427",
+      "run_attempt": 1,
+      "triggering_actor": "PavelMakarchuk",
+      "head_sha": "f6d314a85a1a366e0753df485d25aeedb114b184"
+    },
+    {
+      "id": 43376652240,
+      "display_title": "Targeted signed RuleSpec re-encode [adhoc:adhoc:adhoc] us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-12",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-11-13T06:08:43Z",
+      "run_started_at": "2026-11-13T06:08:43Z",
+      "updated_at": "2026-11-13T06:15:45Z",
+      "html_url": "https://github.com/TheAxiomFoundation/axiom-encode/actions/runs/43376652240",
+      "run_attempt": 1,
+      "triggering_actor": "PavelMakarchuk",
+      "head_sha": "f6d314a85a1a366e0753df485d25aeedb114b184"
+    },
+    {
+      "id": 43376596010,
+      "display_title": "Targeted signed RuleSpec re-encode [adhoc:adhoc:adhoc] us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-7",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-11-13T06:08:14Z",
+      "run_started_at": "2026-11-13T06:08:14Z",
+      "updated_at": "2026-11-13T06:16:07Z",
+      "html_url": "https://github.com/TheAxiomFoundation/axiom-encode/actions/runs/43376596010",
+      "run_attempt": 1,
+      "triggering_actor": "PavelMakarchuk",
+      "head_sha": "f6d314a85a1a366e0753df485d25aeedb114b184"
+    },
+    {
+      "id": 43290017621,
+      "display_title": "Targeted signed RuleSpec re-encode [adhoc:adhoc:adhoc] us-az/manual/des/faa5/na-utility-expenses-and-allowances/block-13",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-11-12T19:25:30Z",
+      "run_started_at": "2026-11-12T19:25:30Z",
+      "updated_at": "2026-11-12T19:44:29Z",
+      "html_url": "https://github.com/TheAxiomFoundation/axiom-encode/actions/runs/43290017621",
+      "run_attempt": 1,
+      "triggering_actor": "PavelMakarchuk",
+      "head_sha": "2046572f51310d63b700a40c982bdf89fe9dfbd5"
+    },
+    {
+      "id": 34204901922,
+      "display_title": "Targeted signed RuleSpec re-encode [adhoc:adhoc:adhoc] us/statute/7/2015/f",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-09-08T08:30:50Z",
+      "run_started_at": "2026-09-08T08:30:50Z",
+      "updated_at": "2026-09-08T08:56:46Z",
+      "html_url": "https://github.com/TheAxiomFoundation/axiom-encode/actions/runs/34204901922",
+      "run_attempt": 1,
+      "triggering_actor": "PavelMakarchuk",
+      "head_sha": "1daadad265dc9eaa1ab737df87b453a5e5e0cb46"
+    }
+  ],
+  "manifestPrs": [
+    {
+      "number": 2202,
+      "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2202",
+      "title": "Add signed encoding manifest for us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-11",
+      "body": "## Signed apply manifest\n\nCitation: `us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-11`\nIndependent canonical refresh bundle: `[]`\nAtomic source bundle: `[]`\nExisting signed imports: `[]`\nDirect dependent: `n/a`\nSecond direct dependent: `n/a`\nExact legacy dependent: `n/a`\nSecond exact legacy dependent: `n/a`\nRetained successor legacy paths: `[]`\nRepair candidate run: `n/a`\nBase commit: `c7ad6bc45bd5f811cd9cd14c4807976d68644ca8`\nBase branch: `codex/az-medicare-premiums-reviewed`\nQueue item: `ad-hoc/ad-hoc`\nQueue generation SHA-256: `n/a`\nQueue manifest SHA-256: `n/a`\nAxiom Encode run: https://github.com/TheAxiomFoundation/axiom-encode/actions/runs/43376624427\n\nThis draft PR was produced by the protected country-general signed-apply workflow. Review all RuleSpec and manifest changes before marking it ready.",
+      "isDraft": true,
+      "state": "CLOSED",
+      "createdAt": "2026-11-13T06:15:15Z",
+      "mergedAt": null,
+      "closedAt": "2026-11-15T07:54:25Z",
+      "baseRefName": "codex/az-medicare-premiums-reviewed",
+      "headRefOid": "0af42960165a1eb7e7995b435a0130dc8d4864ab",
+      "mergeStateStatus": "CLEAN",
+      "repository": {
+        "name": "rulespec-us",
+        "defaultBranchRef": {
+          "name": "main"
+        }
+      },
+      "reviewDecision": null,
+      "mergeCommit": null,
+      "reviewRequests": {
+        "nodes": []
+      },
+      "reviews": {
+        "nodes": []
+      },
+      "timelineItems": {
+        "nodes": [
+          {
+            "source": {
+              "__typename": "PullRequest",
+              "number": 2205,
+              "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2205",
+              "state": "MERGED",
+              "isDraft": false,
+              "createdAt": "2026-11-13T06:20:36Z",
+              "mergedAt": "2026-11-15T07:53:48Z",
+              "baseRefName": "main",
+              "mergeCommit": {
+                "oid": "ccdfdcf7ceaba602065eb3a1d8da3a56d66bfbf7"
+              },
+              "repository": {
+                "name": "rulespec-us",
+                "defaultBranchRef": {
+                  "name": "main"
+                }
+              }
+            }
+          },
+          {
+            "source": {
+              "__typename": "PullRequest",
+              "number": 2046,
+              "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2046",
+              "state": "MERGED",
+              "isDraft": false,
+              "createdAt": "2026-11-05T23:43:08Z",
+              "mergedAt": "2026-11-15T07:53:50Z",
+              "baseRefName": "main",
+              "mergeCommit": {
+                "oid": "d5c3c4e2abe096fd1293b3a2e8e59b81a25e498e"
+              },
+              "repository": {
+                "name": "rulespec-us",
+                "defaultBranchRef": {
+                  "name": "main"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "commits": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "commit": {
+              "statusCheckRollup": null
+            }
+          }
+        ]
+      },
+      "files": {
+        "nodes": [
+          {
+            "path": ".axiom/encoding-manifests/us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-11.json"
+          }
+        ]
+      }
+    },
+    {
+      "number": 2203,
+      "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2203",
+      "title": "Add signed encoding manifest for us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-12",
+      "body": "## Signed apply manifest\n\nCitation: `us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-12`\nIndependent canonical refresh bundle: `[]`\nAtomic source bundle: `[]`\nExisting signed imports: `[]`\nDirect dependent: `n/a`\nSecond direct dependent: `n/a`\nExact legacy dependent: `n/a`\nSecond exact legacy dependent: `n/a`\nRetained successor legacy paths: `[]`\nRepair candidate run: `n/a`\nBase commit: `503386bc52e727e4ed01b285ff10373f3e8b7326`\nBase branch: `codex/az-medication-prescriptions-reviewed`\nQueue item: `ad-hoc/ad-hoc`\nQueue generation SHA-256: `n/a`\nQueue manifest SHA-256: `n/a`\nAxiom Encode run: https://github.com/TheAxiomFoundation/axiom-encode/actions/runs/43376652240\n\nThis draft PR was produced by the protected country-general signed-apply workflow. Review all RuleSpec and manifest changes before marking it ready.",
+      "isDraft": true,
+      "state": "CLOSED",
+      "createdAt": "2026-11-13T06:15:37Z",
+      "mergedAt": null,
+      "closedAt": "2026-11-15T07:54:28Z",
+      "baseRefName": "codex/az-medication-prescriptions-reviewed",
+      "headRefOid": "4e288ddb6423684d27384662af702a4778ac5e12",
+      "mergeStateStatus": "CLEAN",
+      "repository": {
+        "name": "rulespec-us",
+        "defaultBranchRef": {
+          "name": "main"
+        }
+      },
+      "reviewDecision": null,
+      "mergeCommit": null,
+      "reviewRequests": {
+        "nodes": []
+      },
+      "reviews": {
+        "nodes": []
+      },
+      "timelineItems": {
+        "nodes": [
+          {
+            "source": {
+              "__typename": "PullRequest",
+              "number": 2205,
+              "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2205",
+              "state": "MERGED",
+              "isDraft": false,
+              "createdAt": "2026-11-13T06:20:36Z",
+              "mergedAt": "2026-11-15T07:53:48Z",
+              "baseRefName": "main",
+              "mergeCommit": {
+                "oid": "ccdfdcf7ceaba602065eb3a1d8da3a56d66bfbf7"
+              },
+              "repository": {
+                "name": "rulespec-us",
+                "defaultBranchRef": {
+                  "name": "main"
+                }
+              }
+            }
+          },
+          {
+            "source": {
+              "__typename": "PullRequest",
+              "number": 2046,
+              "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2046",
+              "state": "MERGED",
+              "isDraft": false,
+              "createdAt": "2026-11-05T23:43:08Z",
+              "mergedAt": "2026-11-15T07:53:50Z",
+              "baseRefName": "main",
+              "mergeCommit": {
+                "oid": "d5c3c4e2abe096fd1293b3a2e8e59b81a25e498e"
+              },
+              "repository": {
+                "name": "rulespec-us",
+                "defaultBranchRef": {
+                  "name": "main"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "commits": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "commit": {
+              "statusCheckRollup": null
+            }
+          }
+        ]
+      },
+      "files": {
+        "nodes": [
+          {
+            "path": ".axiom/encoding-manifests/us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-12.json"
+          }
+        ]
+      }
+    },
+    {
+      "number": 2204,
+      "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2204",
+      "title": "Add signed encoding manifest for us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-7",
+      "body": "## Signed apply manifest\n\nCitation: `us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-7`\nIndependent canonical refresh bundle: `[]`\nAtomic source bundle: `[]`\nExisting signed imports: `[]`\nDirect dependent: `n/a`\nSecond direct dependent: `n/a`\nExact legacy dependent: `n/a`\nSecond exact legacy dependent: `n/a`\nRetained successor legacy paths: `[]`\nRepair candidate run: `n/a`\nBase commit: `d5c3c4e2abe096fd1293b3a2e8e59b81a25e498e`\nBase branch: `codex/az-medical-premiums-reviewed`\nQueue item: `ad-hoc/ad-hoc`\nQueue generation SHA-256: `n/a`\nQueue manifest SHA-256: `n/a`\nAxiom Encode run: https://github.com/TheAxiomFoundation/axiom-encode/actions/runs/43376596010\n\nThis draft PR was produced by the protected country-general signed-apply workflow. Review all RuleSpec and manifest changes before marking it ready.",
+      "isDraft": true,
+      "state": "CLOSED",
+      "createdAt": "2026-11-13T06:15:57Z",
+      "mergedAt": null,
+      "closedAt": "2026-11-15T07:54:30Z",
+      "baseRefName": "codex/az-medical-premiums-reviewed",
+      "headRefOid": "3e91d19f61d5312dfe6883afd8a1af35f144a450",
+      "mergeStateStatus": "CLEAN",
+      "repository": {
+        "name": "rulespec-us",
+        "defaultBranchRef": {
+          "name": "main"
+        }
+      },
+      "reviewDecision": null,
+      "mergeCommit": null,
+      "reviewRequests": {
+        "nodes": []
+      },
+      "reviews": {
+        "nodes": []
+      },
+      "timelineItems": {
+        "nodes": [
+          {
+            "source": {
+              "__typename": "PullRequest",
+              "number": 2205,
+              "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2205",
+              "state": "MERGED",
+              "isDraft": false,
+              "createdAt": "2026-11-13T06:20:36Z",
+              "mergedAt": "2026-11-15T07:53:48Z",
+              "baseRefName": "main",
+              "mergeCommit": {
+                "oid": "ccdfdcf7ceaba602065eb3a1d8da3a56d66bfbf7"
+              },
+              "repository": {
+                "name": "rulespec-us",
+                "defaultBranchRef": {
+                  "name": "main"
+                }
+              }
+            }
+          },
+          {
+            "source": {
+              "__typename": "PullRequest",
+              "number": 2046,
+              "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2046",
+              "state": "MERGED",
+              "isDraft": false,
+              "createdAt": "2026-11-05T23:43:08Z",
+              "mergedAt": "2026-11-15T07:53:50Z",
+              "baseRefName": "main",
+              "mergeCommit": {
+                "oid": "d5c3c4e2abe096fd1293b3a2e8e59b81a25e498e"
+              },
+              "repository": {
+                "name": "rulespec-us",
+                "defaultBranchRef": {
+                  "name": "main"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "commits": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "commit": {
+              "statusCheckRollup": null
+            }
+          }
+        ]
+      },
+      "files": {
+        "nodes": [
+          {
+            "path": ".axiom/encoding-manifests/us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-7.json"
+          }
+        ]
+      }
+    },
+    {
+      "number": 2192,
+      "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2192",
+      "title": "Add signed encoding manifest for us-az/manual/des/faa5/na-utility-expenses-and-allowances/block-13",
+      "body": "## Protected signed-manifest promotion\n\nCitation: `us-az/manual/des/faa5/na-utility-expenses-and-allowances/block-13`.\nProtected model-free promotion run: https://github.com/TheAxiomFoundation/axiom-encode/actions/runs/43290017621\nSigned head: `9a936d9b02d8dfe165ac4448c966c5bf5928e2da`.\nReviewed candidate base: `2b5d733287b4fbd3b2954f256e234296512323b9` on `codex/az-utility-installation-reviewed`.\n\nThis manifest-only PR was merged by PavelMakarchuk into the candidate branch at `9be9d91e55d4f717e4a272d31478bdaef3108929`. It was NOT retargeted to main. A concurrent retarget request was rejected after that merge; this description corrects the partially applied update. Final signed candidate review and CI now belong to #2045. This merge is not a merge into main or completion of Arizona SNAP.\n\nArtifact checksums verified. Committed manifest SHA-256 matches the artifact inventory: `b3ff5884ebdf58bdbe39193ba76eff58a9f3d1f24ec5e734142d4bac5c71c4f8`. Rule and companion bytes are unchanged. This is model-free promotion, not new generation or retrospective authentication of historical local generation.\n\nManual non-default-branch CI run 43293469002 was rejected by protected input policy before validation; it is not a validation pass. No gate was disabled or retry dispatched. Full program behavior and matched oracle parity remain separate requirements.",
+      "isDraft": false,
+      "state": "MERGED",
+      "createdAt": "2026-11-12T19:44:21Z",
+      "mergedAt": "2026-11-12T19:47:35Z",
+      "closedAt": "2026-11-12T19:47:35Z",
+      "baseRefName": "codex/az-utility-installation-reviewed",
+      "headRefOid": "9a936d9b02d8dfe165ac4448c966c5bf5928e2da",
+      "mergeStateStatus": "UNKNOWN",
+      "repository": {
+        "name": "rulespec-us",
+        "defaultBranchRef": {
+          "name": "main"
+        }
+      },
+      "reviewDecision": null,
+      "mergeCommit": {
+        "oid": "9be9d91e55d4f717e4a272d31478bdaef3108929"
+      },
+      "reviewRequests": {
+        "nodes": [
+          {
+            "requestedReviewer": {
+              "__typename": "User",
+              "login": "MaxGhenis"
+            }
+          }
+        ]
+      },
+      "reviews": {
+        "nodes": []
+      },
+      "timelineItems": {
+        "nodes": []
+      },
+      "commits": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "commit": {
+              "statusCheckRollup": null
+            }
+          }
+        ]
+      },
+      "files": {
+        "nodes": [
+          {
+            "path": ".axiom/encoding-manifests/us-az/policies/des/faa5/na-utility-expenses-and-allowances/block-13.json"
+          }
+        ]
+      }
+    },
+    {
+      "number": 1347,
+      "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/1347",
+      "title": "Add signed encoding manifest for us/statute/7/2015/f",
+      "body": "## Signed apply manifest\n\nCitation: `us/statute/7/2015/f`\nIndependent canonical refresh bundle: `[]`\nAtomic source bundle: `[]`\nExisting signed imports: `[]`\nDirect dependent: `n/a`\nSecond direct dependent: `n/a`\nExact legacy dependent: `n/a`\nSecond exact legacy dependent: `n/a`\nRetained successor legacy paths: `[]`\nRepair candidate run: `n/a`\nBase commit: `adc9fbaa8a6e61244b8f00295c7cde3d58858adb`\nBase branch: `main`\nQueue item: `ad-hoc/ad-hoc`\nQueue generation SHA-256: `n/a`\nQueue manifest SHA-256: `n/a`\nAxiom Encode run: https://github.com/TheAxiomFoundation/axiom-encode/actions/runs/34204901922\n\nThis draft PR was produced by the protected country-general signed-apply workflow. Review all RuleSpec and manifest changes before marking it ready.",
+      "isDraft": false,
+      "state": "MERGED",
+      "createdAt": "2026-09-08T08:56:38Z",
+      "mergedAt": "2026-09-08T12:29:01Z",
+      "closedAt": "2026-09-08T12:29:01Z",
+      "baseRefName": "main",
+      "headRefOid": "dc92e7bbed4373412b1452199500ea919641e116",
+      "mergeStateStatus": "UNKNOWN",
+      "repository": {
+        "name": "rulespec-us",
+        "defaultBranchRef": {
+          "name": "main"
+        }
+      },
+      "reviewDecision": null,
+      "mergeCommit": {
+        "oid": "38d5c8c516f9243cedf8e07a22f96dde9ac66fe3"
+      },
+      "reviewRequests": {
+        "nodes": []
+      },
+      "reviews": {
+        "nodes": []
+      },
+      "timelineItems": {
+        "nodes": [
+          {
+            "source": {
+              "__typename": "PullRequest",
+              "number": 1329,
+              "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/1329",
+              "state": "CLOSED",
+              "isDraft": true,
+              "createdAt": "2026-09-04T07:32:23Z",
+              "mergedAt": null,
+              "baseRefName": "main",
+              "mergeCommit": null,
+              "repository": {
+                "name": "rulespec-us",
+                "defaultBranchRef": {
+                  "name": "main"
+                }
+              }
+            }
+          },
+          {
+            "source": {
+              "__typename": "PullRequest",
+              "number": 1346,
+              "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/1346",
+              "state": "CLOSED",
+              "isDraft": true,
+              "createdAt": "2026-09-08T08:26:06Z",
+              "mergedAt": null,
+              "baseRefName": "main",
+              "mergeCommit": null,
+              "repository": {
+                "name": "rulespec-us",
+                "defaultBranchRef": {
+                  "name": "main"
+                }
+              }
+            }
+          },
+          {
+            "source": {
+              "__typename": "PullRequest",
+              "number": 1345,
+              "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/1345",
+              "state": "CLOSED",
+              "isDraft": true,
+              "createdAt": "2026-09-07T21:50:53Z",
+              "mergedAt": null,
+              "baseRefName": "main",
+              "mergeCommit": null,
+              "repository": {
+                "name": "rulespec-us",
+                "defaultBranchRef": {
+                  "name": "main"
+                }
+              }
+            }
+          },
+          {
+            "source": {
+              "__typename": "PullRequest",
+              "number": 1331,
+              "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/1331",
+              "state": "CLOSED",
+              "isDraft": true,
+              "createdAt": "2026-09-04T13:30:10Z",
+              "mergedAt": null,
+              "baseRefName": "main",
+              "mergeCommit": null,
+              "repository": {
+                "name": "rulespec-us",
+                "defaultBranchRef": {
+                  "name": "main"
+                }
+              }
+            }
+          },
+          {
+            "source": {
+              "__typename": "PullRequest",
+              "number": 1330,
+              "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/1330",
+              "state": "CLOSED",
+              "isDraft": true,
+              "createdAt": "2026-09-04T11:00:05Z",
+              "mergedAt": null,
+              "baseRefName": "main",
+              "mergeCommit": null,
+              "repository": {
+                "name": "rulespec-us",
+                "defaultBranchRef": {
+                  "name": "main"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "commits": {
+        "totalCount": 2,
+        "nodes": [
+          {
+            "commit": {
+              "statusCheckRollup": {
+                "state": "SUCCESS",
+                "contexts": {
+                  "nodes": [
+                    {
+                      "__typename": "CheckRun",
+                      "name": "workflow-toolchain",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102000561429,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:01:16Z",
+                      "completedAt": "2026-09-08T09:01:23Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "reverse-index",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102000558461,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:00:05Z",
+                      "completedAt": "2026-09-08T09:01:15Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "build",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102000558829,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:00:05Z",
+                      "completedAt": "2026-09-08T12:28:37Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "publish",
+                      "conclusion": "SKIPPED",
+                      "databaseId": 102061110372,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T12:28:38Z",
+                      "completedAt": "2026-09-08T12:28:37Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / shards",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102000976320,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:01:25Z",
+                      "completedAt": "2026-09-08T09:01:35Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "source-staleness (report-only)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102000558661,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:00:04Z",
+                      "completedAt": "2026-09-08T09:02:45Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-ak)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033454,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:02:20Z",
+                      "completedAt": "2026-09-08T10:16:29Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-al)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033419,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:10:26Z",
+                      "completedAt": "2026-09-08T09:27:39Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-ar)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033414,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:12:48Z",
+                      "completedAt": "2026-09-08T09:31:10Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-az)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033500,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:17:40Z",
+                      "completedAt": "2026-09-08T09:33:05Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-ca)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033395,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:01:37Z",
+                      "completedAt": "2026-09-08T09:19:16Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-co)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033452,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:10:22Z",
+                      "completedAt": "2026-09-08T09:28:31Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-ct)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033536,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:12:51Z",
+                      "completedAt": "2026-09-08T09:31:47Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-dc)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033551,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:15:30Z",
+                      "completedAt": "2026-09-08T09:31:21Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-de)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033481,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:11:43Z",
+                      "completedAt": "2026-09-08T09:29:56Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-fl)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033517,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:02:46Z",
+                      "completedAt": "2026-09-08T09:19:50Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-ga)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033407,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:08:34Z",
+                      "completedAt": "2026-09-08T09:24:42Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-hi)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033460,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:12:32Z",
+                      "completedAt": "2026-09-08T09:29:16Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-ia)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033532,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:14:07Z",
+                      "completedAt": "2026-09-08T09:29:41Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-id)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033553,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:16:08Z",
+                      "completedAt": "2026-09-08T09:34:42Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-il)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033594,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:14:26Z",
+                      "completedAt": "2026-09-08T09:32:02Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-in)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033647,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:15:34Z",
+                      "completedAt": "2026-09-08T09:33:46Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-ks)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033837,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:19:18Z",
+                      "completedAt": "2026-09-08T09:32:23Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-ky)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033684,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:15:30Z",
+                      "completedAt": "2026-09-08T09:40:51Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-la)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033638,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:18:45Z",
+                      "completedAt": "2026-09-08T09:34:36Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-ma)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033506,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:12:58Z",
+                      "completedAt": "2026-09-08T09:31:46Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-md)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033571,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:14:01Z",
+                      "completedAt": "2026-09-08T09:31:20Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-me)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033743,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:15:44Z",
+                      "completedAt": "2026-09-08T09:34:45Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-mi)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033616,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:12:02Z",
+                      "completedAt": "2026-09-08T09:29:23Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-mn)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033681,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:17:12Z",
+                      "completedAt": "2026-09-08T09:33:49Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-mo)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033586,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:14:56Z",
+                      "completedAt": "2026-09-08T09:32:48Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-ms)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033611,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:13:10Z",
+                      "completedAt": "2026-09-08T09:32:01Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-mt)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033807,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:15:00Z",
+                      "completedAt": "2026-09-08T09:29:07Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-nc)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033650,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:12:14Z",
+                      "completedAt": "2026-09-08T09:26:18Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-nd)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033771,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:15:53Z",
+                      "completedAt": "2026-09-08T09:35:10Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-ne)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033778,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:18:01Z",
+                      "completedAt": "2026-09-08T09:35:11Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-nh)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033733,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:13:07Z",
+                      "completedAt": "2026-09-08T09:29:23Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-nj)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033822,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:14:45Z",
+                      "completedAt": "2026-09-08T11:11:24Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-nm)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033806,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:15:54Z",
+                      "completedAt": "2026-09-08T09:41:59Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-nv)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033717,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:13:06Z",
+                      "completedAt": "2026-09-08T09:29:39Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-ny)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033766,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:16:22Z",
+                      "completedAt": "2026-09-08T09:35:12Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-oh)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033772,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:14:22Z",
+                      "completedAt": "2026-09-08T09:30:13Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-ok)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033725,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:10:53Z",
+                      "completedAt": "2026-09-08T09:27:29Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-or)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033699,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:14:24Z",
+                      "completedAt": "2026-09-08T09:34:10Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-pa)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033777,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:14:19Z",
+                      "completedAt": "2026-09-08T09:33:23Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-ri)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033846,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:14:50Z",
+                      "completedAt": "2026-09-08T09:33:00Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-sc)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001034003,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:16:12Z",
+                      "completedAt": "2026-09-08T09:35:09Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-sd)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033696,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:10:32Z",
+                      "completedAt": "2026-09-08T09:27:59Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-tn)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033756,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:15:02Z",
+                      "completedAt": "2026-09-08T09:33:10Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-tx)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001034023,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:17:47Z",
+                      "completedAt": "2026-09-08T09:35:11Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-ut)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033813,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:12:59Z",
+                      "completedAt": "2026-09-08T09:29:47Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-va)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033801,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:14:43Z",
+                      "completedAt": "2026-09-08T09:30:50Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-vt)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033935,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:16:16Z",
+                      "completedAt": "2026-09-08T09:33:19Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-wa)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033868,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:16:04Z",
+                      "completedAt": "2026-09-08T09:29:16Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-wi)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033852,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:14:07Z",
+                      "completedAt": "2026-09-08T09:31:49Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-wv)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033820,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:13:07Z",
+                      "completedAt": "2026-09-08T09:25:26Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-wy)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033898,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:14:27Z",
+                      "completedAt": "2026-09-08T09:32:34Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033917,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:14:14Z",
+                      "completedAt": "2026-09-08T09:31:41Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102038608386,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T11:11:27Z",
+                      "completedAt": "2026-09-08T11:11:29Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "drift-alarm",
+                      "conclusion": "SKIPPED",
+                      "databaseId": 102038631398,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T11:11:29Z",
+                      "completedAt": "2026-09-08T11:11:29Z"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      },
+      "files": {
+        "nodes": [
+          {
+            "path": ".axiom/encoding-manifests/us/statutes/7/2015/f.json"
+          },
+          {
+            "path": ".axiom/index/provisions_to_rules.json"
+          },
+          {
+            "path": "us/statutes/7/2015/f.test.yaml"
+          },
+          {
+            "path": "us/statutes/7/2015/f.yaml"
+          }
+        ]
+      }
+    }
+  ],
+  "mergedPrs": [
+    {
+      "number": 2205,
+      "title": "Merge train: 3 signed Arizona SNAP medical modules (FAA5 medical expenses blocks 7, 11, 12)",
+      "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2205",
+      "createdAt": "2026-11-13T06:20:36Z",
+      "mergedAt": "2026-11-15T07:53:48Z",
+      "updatedAt": "2026-11-15T07:53:48Z",
+      "baseRefName": "main",
+      "author": {
+        "login": "PavelMakarchuk"
+      },
+      "mergeCommit": {
+        "oid": "ccdfdcf7ceaba602065eb3a1d8da3a56d66bfbf7"
+      },
+      "files": {
+        "pageInfo": {
+          "hasNextPage": false,
+          "endCursor": "OQ"
+        },
+        "nodes": [
+          {
+            "path": ".axiom/encoding-manifests/us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-11.json",
+            "changeType": "ADDED"
+          },
+          {
+            "path": ".axiom/encoding-manifests/us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-12.json",
+            "changeType": "ADDED"
+          },
+          {
+            "path": ".axiom/encoding-manifests/us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-7.json",
+            "changeType": "ADDED"
+          },
+          {
+            "path": "us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-11.test.yaml",
+            "changeType": "ADDED"
+          },
+          {
+            "path": "us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-11.yaml",
+            "changeType": "ADDED"
+          },
+          {
+            "path": "us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-12.test.yaml",
+            "changeType": "ADDED"
+          },
+          {
+            "path": "us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-12.yaml",
+            "changeType": "ADDED"
+          },
+          {
+            "path": "us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-7.test.yaml",
+            "changeType": "ADDED"
+          },
+          {
+            "path": "us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-7.yaml",
+            "changeType": "ADDED"
+          }
+        ]
+      }
+    },
+    {
+      "number": 2045,
+      "title": "Stage protected-generated Arizona SNAP utility installation fees",
+      "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2045",
+      "createdAt": "2026-11-05T22:36:18Z",
+      "mergedAt": "2026-11-13T01:41:55Z",
+      "updatedAt": "2026-11-13T01:41:55Z",
+      "baseRefName": "main",
+      "author": {
+        "login": "PavelMakarchuk"
+      },
+      "mergeCommit": {
+        "oid": "8081f0cc69a7c5a566325061b7e210f765809a96"
+      },
+      "files": {
+        "pageInfo": {
+          "hasNextPage": false,
+          "endCursor": "Mw"
+        },
+        "nodes": [
+          {
+            "path": ".axiom/encoding-manifests/us-az/policies/des/faa5/na-utility-expenses-and-allowances/block-13.json",
+            "changeType": "ADDED"
+          },
+          {
+            "path": "us-az/policies/des/faa5/na-utility-expenses-and-allowances/block-13.test.yaml",
+            "changeType": "ADDED"
+          },
+          {
+            "path": "us-az/policies/des/faa5/na-utility-expenses-and-allowances/block-13.yaml",
+            "changeType": "ADDED"
+          }
+        ]
+      }
+    },
+    {
+      "number": 2046,
+      "title": "Arizona SNAP medical insurance premiums: protected reviewed candidate",
+      "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2046",
+      "createdAt": "2026-11-05T23:43:08Z",
+      "mergedAt": "2026-11-15T07:53:50Z",
+      "updatedAt": "2026-11-15T07:53:50Z",
+      "baseRefName": "main",
+      "author": {
+        "login": "PavelMakarchuk"
+      },
+      "mergeCommit": {
+        "oid": "d5c3c4e2abe096fd1293b3a2e8e59b81a25e498e"
+      },
+      "files": {
+        "pageInfo": {
+          "hasNextPage": false,
+          "endCursor": "Mg"
+        },
+        "nodes": [
+          {
+            "path": "us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-7.test.yaml",
+            "changeType": "ADDED"
+          },
+          {
+            "path": "us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-7.yaml",
+            "changeType": "ADDED"
+          }
+        ]
+      }
+    },
+    {
+      "number": 2047,
+      "title": "Arizona SNAP Medicare premiums: protected reviewed candidate",
+      "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2047",
+      "createdAt": "2026-11-05T23:51:24Z",
+      "mergedAt": "2026-11-15T07:53:50Z",
+      "updatedAt": "2026-11-15T07:53:50Z",
+      "baseRefName": "main",
+      "author": {
+        "login": "PavelMakarchuk"
+      },
+      "mergeCommit": {
+        "oid": "c7ad6bc45bd5f811cd9cd14c4807976d68644ca8"
+      },
+      "files": {
+        "pageInfo": {
+          "hasNextPage": false,
+          "endCursor": "Mg"
+        },
+        "nodes": [
+          {
+            "path": "us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-11.test.yaml",
+            "changeType": "ADDED"
+          },
+          {
+            "path": "us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-11.yaml",
+            "changeType": "ADDED"
+          }
+        ]
+      }
+    },
+    {
+      "number": 2048,
+      "title": "Arizona SNAP medication expenses: protected reviewed candidate",
+      "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2048",
+      "createdAt": "2026-11-06T02:23:59Z",
+      "mergedAt": "2026-11-15T07:53:50Z",
+      "updatedAt": "2026-11-15T07:53:50Z",
+      "baseRefName": "main",
+      "author": {
+        "login": "PavelMakarchuk"
+      },
+      "mergeCommit": {
+        "oid": "503386bc52e727e4ed01b285ff10373f3e8b7326"
+      },
+      "files": {
+        "pageInfo": {
+          "hasNextPage": false,
+          "endCursor": "Mg"
+        },
+        "nodes": [
+          {
+            "path": "us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-12.test.yaml",
+            "changeType": "ADDED"
+          },
+          {
+            "path": "us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-12.yaml",
+            "changeType": "ADDED"
+          }
+        ]
+      }
+    }
+  ],
+  "sideBranchPrs": {
+    "codex/az-utility-installation-reviewed": [
+      {
+        "number": 2045,
+        "html_url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2045",
+        "state": "closed",
+        "draft": false,
+        "created_at": "2026-11-05T22:36:18Z",
+        "merged_at": "2026-11-13T01:41:55Z",
+        "merge_commit_sha": "8081f0cc69a7c5a566325061b7e210f765809a96"
+      }
+    ]
+  },
+  "mirror": [
+    {
+      "repo": "rulespec-us",
+      "jurisdiction": "us-az",
+      "file_path": "policies/des/faa5/na-medical-expenses-and-deduction/block-11.yaml",
+      "citation_path": "us-az/policy/des/faa5/na-medical-expenses-and-deduction/block-11",
+      "synced_at": "2026-11-15T18:20:23.921+00:00",
+      "raw_yaml_sha256": "2b06c1a2eca9dc5d9620bbc71c4fe63d7c0ddcba295ba0790f85567b4fb18836",
+      "commit_sha": "ccdfdcf7ceaba602065eb3a1d8da3a56d66bfbf7",
+      "value_citation_paths": [
+        "us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-11"
+      ]
+    },
+    {
+      "repo": "rulespec-us",
+      "jurisdiction": "us-az",
+      "file_path": "policies/des/faa5/na-medical-expenses-and-deduction/block-12.yaml",
+      "citation_path": "us-az/policy/des/faa5/na-medical-expenses-and-deduction/block-12",
+      "synced_at": "2026-11-15T18:20:23.942+00:00",
+      "raw_yaml_sha256": "69362b8386a0b18e6f4d2c31f3aa76902db85342a049502f6433b3cfb6200911",
+      "commit_sha": "ccdfdcf7ceaba602065eb3a1d8da3a56d66bfbf7",
+      "value_citation_paths": [
+        "us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-12"
+      ]
+    },
+    {
+      "repo": "rulespec-us",
+      "jurisdiction": "us-az",
+      "file_path": "policies/des/faa5/na-medical-expenses-and-deduction/block-7.yaml",
+      "citation_path": "us-az/policy/des/faa5/na-medical-expenses-and-deduction/block-7",
+      "synced_at": "2026-11-15T18:20:23.928+00:00",
+      "raw_yaml_sha256": "45e68dc15e3a797f19b894d4a9c01efdaa25758edaa51f0b133f71f8d2d518e9",
+      "commit_sha": "ccdfdcf7ceaba602065eb3a1d8da3a56d66bfbf7",
+      "value_citation_paths": [
+        "us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-7"
+      ]
+    },
+    {
+      "repo": "rulespec-us",
+      "jurisdiction": "us-az",
+      "file_path": "policies/des/faa5/na-utility-expenses-and-allowances/block-13.yaml",
+      "citation_path": "us-az/policy/des/faa5/na-utility-expenses-and-allowances/block-13",
+      "synced_at": "2026-11-15T18:20:23.974+00:00",
+      "raw_yaml_sha256": "fdc77ab91cf52ea7e0ac9fab8f72bfff5116dc84a41cd8b6bad3eced05486580",
+      "commit_sha": "ccdfdcf7ceaba602065eb3a1d8da3a56d66bfbf7",
+      "value_citation_paths": [
+        "us-az/manual/des/faa5/na-utility-expenses-and-allowances/block-13"
+      ]
+    },
+    {
+      "repo": "rulespec-us",
+      "jurisdiction": "us",
+      "file_path": "statutes/7/2015/f.yaml",
+      "citation_path": "us/statute/7/2015/f",
+      "synced_at": "2026-11-15T18:22:11.393+00:00",
+      "raw_yaml_sha256": "a2d4205551c6e79f7e7ed62e4fdd349faaf265811d69bc04686674555195b5aa",
+      "commit_sha": "ccdfdcf7ceaba602065eb3a1d8da3a56d66bfbf7",
+      "value_citation_paths": [
+        "us/statute/7/2015/f",
+        "us/guidance/usda/fns/snap-obbb-alien-eligibility-implementation-memo/page-3"
+      ]
+    }
+  ]
+}

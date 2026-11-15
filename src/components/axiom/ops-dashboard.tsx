@@ -506,6 +506,8 @@ function DocketBand({
           <Activity size={15} aria-hidden />
           Fleet activity
         </span>
+        {/* The board reads only synced telemetry (live_encoding_runs, encoding_runs). */}
+        <span>Synced runs only; local runs with --no-sync are not shown.</span>
       </div>
       {status == null ? (
         <p className="font-mono text-sm text-[var(--color-code-comment)]">

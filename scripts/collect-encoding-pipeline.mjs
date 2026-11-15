@@ -339,16 +339,24 @@ async function readPrevious() {
 }
 
 const MIRROR_COLUMNS = "repo,jurisdiction,file_path,citation_path,synced_at,raw_yaml_sha256";
+// Read where the columns exist: the commit each row was read from, and the
+// provisions its module is grounded in (an outside merge's citation, see
+// moduleCitation).
+const MIRROR_OPTIONAL = ["commit_sha", "value_citation_paths"];
 
-/** Index rows, with the commit each was read from once that column exists. */
+/** Index rows, with each optional column that exists. */
 async function readMirror() {
-  const read = (columns) =>
-    readAll("rulespec_files", columns, (query) => query.order("repo").order("file_path"));
-  try {
-    return await read(`${MIRROR_COLUMNS},commit_sha`);
-  } catch (error) {
-    if (!/commit_sha/.test(error.message)) throw error;
-    return read(MIRROR_COLUMNS);
+  let optional = [...MIRROR_OPTIONAL];
+  for (;;) {
+    try {
+      return await readAll("rulespec_files", [MIRROR_COLUMNS, ...optional].join(","), (query) =>
+        query.order("repo").order("file_path"),
+      );
+    } catch (error) {
+      const missing = optional.find((column) => error.message.includes(column));
+      if (!missing) throw error;
+      optional = optional.filter((column) => column !== missing);
+    }
   }
 }
 
