@@ -103,6 +103,8 @@ import {
   outsideFileLookups,
   outsideListingSince,
   outsideModules,
+  moduleSourceLookups,
+  moduleSourceOf,
   parseDiagnostics,
   parseRunJobs,
   DISPATCH_RECORD_JOB_RE,
@@ -358,6 +360,45 @@ async function readMirror() {
       optional = optional.filter((column) => column !== missing);
     }
   }
+}
+
+const SOURCE_PATHS_PER_QUERY = 50;
+
+/**
+ * Set each index row's `module_source` from its YAML (moduleSourceOf), 50
+ * files to a request. A row that cannot be read keeps no source, so its
+ * module keeps its own citation this pass.
+ */
+async function readModuleSources(rows) {
+  const groups = new Map();
+  for (const row of rows) {
+    const key = `${row.repo}:${row.jurisdiction}`;
+    groups.set(key, [...(groups.get(key) ?? []), row]);
+  }
+  let read = 0;
+  for (const group of groups.values()) {
+    for (let i = 0; i < group.length; i += SOURCE_PATHS_PER_QUERY) {
+      const chunk = group.slice(i, i + SOURCE_PATHS_PER_QUERY);
+      const byPath = new Map(chunk.map((row) => [row.file_path, row]));
+      try {
+        const found = await readAll("rulespec_files", "file_path,raw_yaml", (query) =>
+          query
+            .eq("repo", chunk[0].repo)
+            .eq("jurisdiction", chunk[0].jurisdiction)
+            .in("file_path", [...byPath.keys()]),
+        );
+        for (const { file_path, raw_yaml } of found) {
+          const row = byPath.get(file_path);
+          if (!row) continue;
+          row.module_source = moduleSourceOf(raw_yaml);
+          read += 1;
+        }
+      } catch (error) {
+        console.warn(`declared sources of ${chunk.length} modules in ${chunk[0].repo}: ${error.message}`);
+      }
+    }
+  }
+  return read;
 }
 
 // 20 per page: with each PR's check runs and review requests, a 50-PR page
@@ -1358,7 +1399,15 @@ async function main() {
     }
     console.log(`${trains} closed PRs carried to main by another PR (merge trains)`);
   }
-  const outside = outsideModules(mergedPrs, previous, prs, mirror);
+  let outside = outsideModules(mergedPrs, previous, prs, mirror);
+  // A module whose one grounding citation is not its own path takes it only
+  // when the module declares it as its singular source: read those YAMLs.
+  const sourceRows = moduleSourceLookups(outside, mirror);
+  if (sourceRows.length) {
+    const read = await readModuleSources(sourceRows);
+    console.log(`read the declared source of ${read} of ${sourceRows.length} modules merged outside the pipeline`);
+    outside = outsideModules(mergedPrs, previous, prs, mirror);
+  }
   const outsidePrs = outside.map((module) => module.pr);
   const from = (kind) => outside.filter((module) => module.citationFrom === kind).length;
   console.log(

@@ -3,7 +3,9 @@
  * PRs that hold only their manifest, on recorded rulespec-us payloads
  * (src/test/rulespec-merge-train-prs.json, no network): the promotion
  * lane's #2202-#2204 into candidate branches, closed when train #2205
- * merged; #2192 into #2045's branch; and #1347, a one-PR landing.
+ * merged; #2192 into #2045's branch; and #1347, a one-PR landing. Also the
+ * citation a module merged outside the pipeline takes, and the status of a
+ * provision two modules merged at once encode (#1112, us-nd 57-38-30.3).
  */
 import { describe, expect, it } from "vitest";
 import recorded from "@/test/rulespec-merge-train-prs.json";
@@ -11,10 +13,13 @@ import {
   buildAttempts,
   carrierIndex,
   carrierPrFor,
+  containmentQueries,
   landedModulePaths,
   mainMerge,
   manifestModulePaths,
   moduleCitation,
+  moduleSourceLookups,
+  moduleSourceOf,
   outsideModules,
   prGate,
   rulespecModulePaths,
@@ -26,7 +31,14 @@ import {
   type PrGateNode,
   type WorkflowRun,
 } from "./encoding-pipeline-collect";
-import { attemptStage, citationStates, mergeDetail, outsideAttemptId, type PipelineAttempt } from "./encoding-pipeline";
+import {
+  attemptStage,
+  citationStates,
+  mergeDetail,
+  outsideAttemptId,
+  statusAttempt,
+  type PipelineAttempt,
+} from "./encoding-pipeline";
 
 const NOW = Date.parse("2026-11-15T23:00:00Z");
 const REPO = recorded.repo;
@@ -94,10 +106,20 @@ const branchPrs = new Map<string, BranchPr[]>(
 );
 
 const runs = recorded.runs as WorkflowRun[];
-const mirror = recorded.mirror as MirrorRow[];
+const rawYaml = recorded.rawYaml as Record<string, string>;
+/** A fresh copy of the recorded index rows: the collector sets each one's declared source. */
+const mirrorRows = () => structuredClone(recorded.mirror) as MirrorRow[];
+const mirrorRow = (jurisdiction: string, filePath: string) =>
+  mirrorRows().find((row) => row.jurisdiction === jurisdiction && row.file_path === filePath)!;
+/** What the collector's readModuleSources sets on a row from its YAML. */
+const readSource = (row: MirrorRow) => {
+  row.module_source = moduleSourceOf(rawYaml[`${row.repo}:${row.jurisdiction}/${row.file_path}`]);
+  return row;
+};
 
-/** The collector's order: side branches, merged PRs, merge trains, outside modules, then the rows. */
+/** The collector's order: side branches, merged PRs, merge trains, outside modules (their sources read), then the rows. */
 function collect(previous: Map<string, Partial<PipelineAttempt>> = new Map(), filesRead = true) {
+  const mirror = mirrorRows();
   const prs = recorded.manifestPrs.map(manifestPr);
   for (const pr of prs) {
     const listed = branchPrs.get(pr.baseRefName);
@@ -109,7 +131,12 @@ function collect(previous: Map<string, Partial<PipelineAttempt>> = new Map(), fi
     const carrier = carrierPrFor(pr, carriers);
     if (carrier) pr.via = carrier;
   }
-  const outside = outsideModules(merged, previous, prs, mirror);
+  let outside = outsideModules(merged, previous, prs, mirror);
+  const sourceRows = moduleSourceLookups(outside, mirror);
+  if (sourceRows.length) {
+    sourceRows.forEach(readSource);
+    outside = outsideModules(merged, previous, prs, mirror);
+  }
   const attempts = buildAttempts({
     runs,
     prs,
@@ -121,7 +148,7 @@ function collect(previous: Map<string, Partial<PipelineAttempt>> = new Map(), fi
     nowMs: NOW,
     outside,
   });
-  return { prs, outside, attempts };
+  return { prs, outside, attempts, mirror, sourceRows };
 }
 
 const byPr = (prs: ManifestPr[], number: number) => prs.find((pr) => pr.number === number)!;
@@ -262,10 +289,152 @@ describe("a one-PR landing (#1347)", () => {
   });
 
   it("keeps a module grounded in several provisions under its own citation", () => {
-    const row = mirror.find((r) => r.file_path === "statutes/7/2015/f.yaml")!;
+    const row = mirrorRow("us", "statutes/7/2015/f.yaml");
     expect(row.value_citation_paths).toHaveLength(2);
     expect(moduleCitation(row)).toBe("us/statute/7/2015/f");
     expect(moduleCitation({ citation_path: "us/statute/7/2015/f" })).toBe("us/statute/7/2015/f");
     expect(moduleCitation({ citation_path: "us/statute/7/2015/f", value_citation_paths: [] })).toBe("us/statute/7/2015/f");
+    // Two grounding citations, the first not its own: still its own, even with that one as its source.
+    expect(
+      moduleCitation({
+        citation_path: "us/policy/income_tax/x",
+        value_citation_paths: ["us/statute/26/164", "us/statute/26/911"],
+        module_source: "us/statute/26/164",
+      })
+    ).toBe("us/policy/income_tax/x");
+  });
+});
+
+describe("the citation of a module merged outside the pipeline", () => {
+  it("stays the exact provision when that sits under the module's source (26 USC 63(c), NC 105-153.5(a), (a1), (b), 7 CFR 273.11(c))", () => {
+    for (const [jurisdiction, filePath, citation] of [
+      ["us", "statutes/26/63/c.yaml", "us/statute/26/63/c"],
+      ["us-nc", "statutes/105/105-153.5/a.yaml", "us-nc/statute/105/105-153.5/a"],
+      ["us-nc", "statutes/105/105-153.5/a1.yaml", "us-nc/statute/105/105-153.5/a1"],
+      ["us-nc", "statutes/105/105-153.5/b.yaml", "us-nc/statute/105/105-153.5/b"],
+      ["us", "regulations/7-cfr/273/11/c.yaml", "us/regulation/7/273/11/c"],
+    ]) {
+      const row = mirrorRow(jurisdiction, filePath);
+      // Its one grounding citation is the section above it, which is also its declared source.
+      expect(row.value_citation_paths).toHaveLength(1);
+      expect(citation.startsWith(`${row.value_citation_paths![0]}/`)).toBe(true);
+      expect(moduleCitation({ ...row, module_source: row.value_citation_paths![0] })).toBe(citation);
+      // No YAML read is needed for it.
+      expect(moduleSourceLookups([{ pr: { repo: row.repo } as ManifestPr, path: `${jurisdiction}/${filePath}`, citation, citationFrom: "index" }], [row])).toEqual([]);
+    }
+  });
+
+  it("stays the module's own for a legacy plural list of sources (salt_deduction_pipeline: six sections)", () => {
+    const row = readSource(mirrorRow("us", "policies/income_tax/salt_deduction_pipeline.yaml"));
+    expect(row.value_citation_paths).toEqual(["us/statute/26/164"]);
+    expect(row.module_source).toBeNull();
+    expect(moduleCitation(row)).toBe("us/policy/income_tax/salt_deduction_pipeline");
+  });
+
+  it("moves to the singular source only once that is read, and reads only rows whose citation depends on it", () => {
+    const { mirror, sourceRows } = collect();
+    // #2205's and #2045's modules are carried: only the candidates' rows (#2046-#2048) are read.
+    expect(sourceRows.map((row) => row.file_path)).toEqual([
+      "policies/des/faa5/na-medical-expenses-and-deduction/block-11.yaml",
+      "policies/des/faa5/na-medical-expenses-and-deduction/block-12.yaml",
+      "policies/des/faa5/na-medical-expenses-and-deduction/block-7.yaml",
+    ]);
+    const block7 = mirror.find((row) => row.file_path.endsWith("na-medical-expenses-and-deduction/block-7.yaml"))!;
+    expect(block7.module_source).toBe("us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-7");
+    expect(moduleCitation({ ...block7, module_source: undefined })).toBe(block7.citation_path);
+    expect(moduleCitation({ ...block7, module_source: null })).toBe(block7.citation_path);
+    expect(moduleSourceOf("not: [valid")).toBeNull();
+    expect(moduleSourceOf(undefined)).toBeNull();
+  });
+});
+
+describe("a provision two modules merged at once encode (#1112, us-nd 57-38-30.3)", () => {
+  const [schedule, core] = recorded.ndAttempts as unknown as PipelineAttempt[];
+
+  it("takes its status from the less advanced module, whichever order the rows come in", () => {
+    expect(schedule.citation).toBe(core.citation);
+    expect(schedule.finished_at).toBe(core.finished_at);
+    expect(attemptStage(schedule)).toBe("verified");
+    expect(core.tests_status).toBe("waived");
+    expect(attemptStage(core)).toBe("indexed");
+    for (const rows of [
+      [schedule, core],
+      [core, schedule],
+    ]) {
+      expect(statusAttempt(rows)?.id).toBe(core.id);
+      expect(citationStates(rows)[0]).toMatchObject({ stage: "indexed", latest: { id: core.id } });
+    }
+    // A newer attempt still wins over an older, less advanced one.
+    const later = {
+      ...schedule,
+      id: outsideAttemptId(REPO, 1113, "us-nd/policies/income_tax/2026_nd1es_estimated_schedule.yaml"),
+      finished_at: "2026-08-01T00:00:00+00:00",
+      pr_merged_at: "2026-08-01T00:00:00+00:00",
+    };
+    expect(statusAttempt([core, later])?.id).toBe(later.id);
+  });
+});
+
+describe("what a carrier must hold", () => {
+  const prs = () => recorded.manifestPrs.map(manifestPr);
+  const merged = () => recorded.mergedPrs.map((node) => mergedPr(node));
+
+  it("a train read this pass holds the signed manifest too, not only the module (#2046 holds block 7 unsigned)", () => {
+    const pr = byPr(prs(), 2204);
+    const candidateOnly = { ...pr, crossRefs: pr.crossRefs!.filter((ref) => ref.number === 2046) };
+    expect(carrierPrFor(candidateOnly, carrierIndex(merged(), new Map()))).toBeNull();
+    // Known from stored rows alone (modules only), the module is what can be checked.
+    const stored = new Map<string, Partial<PipelineAttempt>>([
+      [outsideAttemptId(REPO, 2046, `${MEDICAL}/block-7.yaml`), { id: outsideAttemptId(REPO, 2046, `${MEDICAL}/block-7.yaml`) }],
+    ]);
+    expect(carrierPrFor(candidateOnly, carrierIndex([], stored))?.number).toBe(2046);
+    expect(carrierPrFor(pr, carrierIndex(merged(), new Map()))?.number).toBe(2205);
+  });
+
+  it("holds every module the closed PR's manifests name, not some", () => {
+    const pr = byPr(prs(), 2204);
+    const both = { ...pr, files: [...pr.files, ...byPr(prs(), 2202).files] };
+    const partial = merged().map((m) =>
+      m.number === 2205 ? { ...m, files: m.files!.filter((path) => path.includes("/block-7.")) } : m
+    );
+    expect(carrierPrFor(both, carrierIndex(partial, new Map()))).toBeNull();
+    expect(carrierPrFor(both, carrierIndex(merged(), new Map()))?.number).toBe(2205);
+    // From stored rows (modules only, no manifest to check): one of the two modules is not enough.
+    const row = (path: string) => [outsideAttemptId(REPO, 2205, path), { id: outsideAttemptId(REPO, 2205, path) }] as const;
+    const one = new Map<string, Partial<PipelineAttempt>>([row(`${MEDICAL}/block-7.yaml`)]);
+    expect(carrierPrFor(both, carrierIndex([], one))).toBeNull();
+    const two = new Map<string, Partial<PipelineAttempt>>([row(`${MEDICAL}/block-7.yaml`), row(`${MEDICAL}/block-11.yaml`)]);
+    expect(carrierPrFor(both, carrierIndex([], two))?.number).toBe(2205);
+  });
+});
+
+describe("modules a manifest-only PR landed", () => {
+  it("decide the tests ancestry check: none while the index lacks the module", () => {
+    const { prs, mirror } = collect();
+    const pr = byPr(prs, 2204);
+    const shard = { conclusion: "success" as const, headSha: "h1", runUrl: "u", completedAt: "2026-11-15T09:00:00Z" };
+    const validation = new Map([[REPO, new Map([["us-az", shard]])]]);
+    const toHead = (queries: Array<{ descendant: string }>) => queries.filter((query) => query.descendant === "h1");
+    expect(toHead(containmentQueries([pr], mirror, validation))).toEqual([{ repo: REPO, ancestor: TRAIN_COMMIT, descendant: "h1" }]);
+    const without = mirror.filter((row) => !row.file_path.endsWith("na-medical-expenses-and-deduction/block-7.yaml"));
+    expect(toHead(containmentQueries([pr], without, validation))).toEqual([]);
+  });
+
+  it("are none while the PR that would carry it is still open", () => {
+    const pr = byPr(recorded.manifestPrs.map(manifestPr), 2192);
+    const open: BranchPr = { number: 2045, url: "u", state: "OPEN", isDraft: false, createdAt: pr.createdAt, mergedAt: null, mergeCommit: null };
+    expect(landedModulePaths({ ...pr, via: open })).toEqual([]);
+    expect(landedModulePaths({ ...pr, via: null })).toEqual([]);
+    const [attempt] = buildAttempts({
+      runs: runs.filter((run) => run.id === 43290017621),
+      prs: [{ ...pr, via: open }],
+      encoderRuns: [],
+      mirror: mirrorRows(),
+      compile: null,
+      failureDetails: new Map(),
+      previous: new Map(),
+      nowMs: NOW,
+    });
+    expect(attempt).toMatchObject({ pr_via_number: 2045, pr_via_state: "open", module_paths: [] });
   });
 });

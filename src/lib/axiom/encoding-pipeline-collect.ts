@@ -38,6 +38,8 @@ import {
   isInfraRule,
   type PipelineTryPhase,
 } from "./encoding-pipeline";
+import { parseRuleSpec } from "./rulespec/doc";
+import { moduleSourcePaths } from "./rulespec/source-citations";
 
 export interface WorkflowRun {
   id: number;
@@ -268,6 +270,10 @@ export interface MirrorRow {
   /** The provisions the module's rules are grounded in, with its singular
    *  source (`source_verification.corpus_citation_path`), when read. */
   value_citation_paths?: string[] | null;
+  /** The module's singular `source_verification.corpus_citation_path`, once
+   *  read from its YAML (see moduleSourceLookups): null when it declares none
+   *  (a legacy plural list, or no source); absent until read. */
+  module_source?: string | null;
 }
 
 export interface CompileSweepRow {
@@ -574,18 +580,56 @@ export function derivedCitation(repo: string, path: string): string {
 }
 
 /**
- * The provision an index row's module encodes: its one grounding citation
- * (`value_citation_paths`, which holds the module's singular source), as a
- * dispatch and the bundle documents name it (rulespec-us
+ * The provision an index row's module encodes, as a dispatch and the bundle
+ * documents name it: its singular source (`source_verification
+ * .corpus_citation_path`) when that is its one grounding citation
+ * (`value_citation_paths`). rulespec-us
  * `us-az/policies/des/faa5/.../block-7.yaml` encodes
- * `us-az/manual/des/faa5/.../block-7`). A module grounded in several
- * provisions, or a row read without the column, keeps its own citation.
+ * `us-az/manual/des/faa5/.../block-7`. A module keeps its own citation when
+ * that is the source or a provision under it (`us/statutes/26/63/c.yaml`
+ * stays `us/statute/26/63/c`, not section 63), when it is grounded in
+ * several provisions, when it declares a legacy plural list of sources
+ * (`salt_deduction_pipeline`: six sections), and until its source is read.
  */
-export function moduleCitation(row: Pick<MirrorRow, "citation_path" | "value_citation_paths">): string {
+export function moduleCitation(
+  row: Pick<MirrorRow, "citation_path" | "value_citation_paths" | "module_source">
+): string {
+  const source = moveTarget(row);
+  return source !== null && row.module_source === source ? source : row.citation_path;
+}
+
+/** The one grounding citation a row's module might move to, or null when its own citation stays. */
+function moveTarget(row: Pick<MirrorRow, "citation_path" | "value_citation_paths">): string | null {
   const values = row.value_citation_paths;
-  return Array.isArray(values) && values.length === 1 && typeof values[0] === "string" && values[0]
-    ? values[0]
-    : row.citation_path;
+  if (!Array.isArray(values) || values.length !== 1 || typeof values[0] !== "string" || !values[0]) return null;
+  const [source] = values;
+  if (row.citation_path === source || row.citation_path.startsWith(`${source}/`)) return null;
+  return source;
+}
+
+/**
+ * Index rows of modules merged outside the pipeline whose citation depends on
+ * the module's declared source, not read yet: the collector reads their YAML
+ * (moduleSourceOf) and sets `module_source`, then builds the modules again.
+ */
+export function moduleSourceLookups(modules: OutsideModule[], mirror: MirrorRow[] | MirrorIndex): MirrorRow[] {
+  const index = Array.isArray(mirror) ? buildMirrorIndex(mirror) : mirror;
+  const rows = new Set<MirrorRow>();
+  for (const module of modules) {
+    const row = index.byPath.get(`${module.pr.repo}:${module.path}`);
+    if (row && row.module_source === undefined && moveTarget(row) !== null) rows.add(row);
+  }
+  return [...rows];
+}
+
+/** A module's singular `source_verification.corpus_citation_path`, or null (none, a plural list, or YAML that does not parse). */
+export function moduleSourceOf(rawYaml: string | null | undefined): string | null {
+  if (typeof rawYaml !== "string") return null;
+  try {
+    return moduleSourcePaths(parseRuleSpec(rawYaml)).singular;
+  } catch {
+    return null;
+  }
 }
 
 /** A module's citation: from the index, else what an earlier pass stored, else its path. */
@@ -885,12 +929,19 @@ export interface CarrierIndex {
   files: Map<string, Set<string>>;
   /** The carrier an earlier pass recorded per closed PR ("repo#number"). */
   recorded: Map<string, number>;
+  /** Merged PRs whose whole file list this pass read (manifests too); stored rows name modules only. */
+  read?: Set<string>;
 }
 
 export function carrierIndex(merged: MergedPr[], previous: Map<string, Partial<PipelineAttempt>>): CarrierIndex {
   const files = new Map<string, Set<string>>();
   const add = (key: string, path: string) => files.set(key, (files.get(key) ?? new Set<string>()).add(path));
-  for (const pr of merged) for (const path of pr.files ?? []) add(prKey(pr.repo, pr.number), path);
+  const read = new Set<string>();
+  for (const pr of merged) {
+    if (pr.files === undefined) continue;
+    read.add(prKey(pr.repo, pr.number));
+    for (const path of pr.files) add(prKey(pr.repo, pr.number), path);
+  }
   const recorded = new Map<string, number>();
   for (const row of previous.values()) {
     const parts = row.id ? outsideIdParts(row.id) : null;
@@ -899,7 +950,7 @@ export function carrierIndex(merged: MergedPr[], previous: Map<string, Partial<P
       recorded.set(prKey(row.pr_repo, Number(row.pr_number)), Number(row.pr_via_number));
     }
   }
-  return { files, recorded };
+  return { files, recorded, read };
 }
 
 /**
@@ -912,11 +963,15 @@ export function carrierIndex(merged: MergedPr[], previous: Map<string, Partial<P
  * mention alone is not enough: a PR can name another without replacing it.
  * A promotion lane's signed PR holds only the manifest: the train must hold
  * the module it stands for (rulespec-us#2204's block-7, carried by #2205).
+ * A train whose whole file list this pass read must hold the PR's signed
+ * manifests too: a candidate PR that holds the module unsigned (#2046)
+ * did not carry the signed encoding.
  */
 export function carrierPrFor(pr: ManifestPr, index: CarrierIndex): BranchPr | null {
   if (pr.state !== "CLOSED" || !pr.crossRefs?.length) return null;
   const modules = ownOrSignedModules(pr.files);
   if (modules.length === 0) return null;
+  const manifests = pr.files.filter((path) => MANIFEST_RE.test(path));
   const recorded = index.recorded.get(prKey(pr.repo, pr.number));
   const carriers = pr.crossRefs
     .filter(
@@ -930,8 +985,10 @@ export function carrierPrFor(pr: ManifestPr, index: CarrierIndex): BranchPr | nu
     )
     .filter((ref) => {
       if (ref.number === recorded) return true;
-      const held = index.files.get(prKey(ref.repo, ref.number));
-      return !!held && modules.every((path) => held.has(path));
+      const key = prKey(ref.repo, ref.number);
+      const held = index.files.get(key);
+      if (!held || !modules.every((path) => held.has(path))) return false;
+      return !index.read?.has(key) || manifests.every((path) => held.has(path));
     })
     .sort((a, b) => a.mergedAt!.localeCompare(b.mergedAt!));
   const carrier = carriers[0];

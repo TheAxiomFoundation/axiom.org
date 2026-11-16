@@ -2032,6 +2032,7 @@ describe("what stands between a PR and its merge", () => {
 
 describe("a merge train that replaces closed PRs", () => {
   const MODULE = "us/regulations/42-cfr/457/800.yaml";
+  const MANIFEST = ".axiom/encoding-manifests/us/regulations/42-cfr/457/800.json";
   const train = (override: Record<string, unknown> = {}) => ({
     repo: "rulespec-us",
     number: 2154,
@@ -2064,9 +2065,11 @@ describe("a merge train that replaces closed PRs", () => {
 
   it("knows a train's files from this pass, from its stored outside rows, or from an earlier link", () => {
     const merged = [
-      { repo: "rulespec-us", number: 2154, url: "u", author: "x", createdAt: "2026-09-29T20:00:00Z", mergedAt: "2026-09-30T02:00:00Z", baseRefName: "main", defaultBranch: "main", mergeCommit: "train1", files: [MODULE] },
+      { repo: "rulespec-us", number: 2154, url: "u", author: "x", createdAt: "2026-09-29T20:00:00Z", mergedAt: "2026-09-30T02:00:00Z", baseRefName: "main", defaultBranch: "main", mergeCommit: "train1", files: [MANIFEST, MODULE] },
     ];
     expect(carrierPrFor(closed(), carrierIndex(merged, new Map()))?.number).toBe(2154);
+    // Read this pass, a train must hold the signed manifest too: the module alone may be an unsigned copy.
+    expect(carrierPrFor(closed(), carrierIndex([{ ...merged[0], files: [MODULE] }], new Map()))).toBeNull();
     const stored = new Map([[`pr:rulespec-us#2154:${MODULE}`, { id: `pr:rulespec-us#2154:${MODULE}` }]]);
     expect(carrierPrFor(closed(), carrierIndex([], stored))?.number).toBe(2154);
     // Once linked, the outside rows are gone: the recorded link keeps it.
