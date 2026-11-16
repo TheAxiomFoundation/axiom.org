@@ -53,8 +53,9 @@ generate `/axiom/v2/...` hrefs. The app root and marketing pages stay on v1.
   rulespec-* default branch with no dispatch behind it (from 2026-07-22; each
   pass lists PRs merged since a day before the last pass and reads only new
   PRs' files, older ones are carried in their rows; its citation is the
-  provision the module encodes, its one `value_citation_paths` entry, else
-  the index's `citation_path`), and
+  module's declared singular source when that is its one
+  `value_citation_paths` entry and not the module's own citation or one
+  above it, else the index's `citation_path`), and
   `dep:<encoding_runs id>`, a module the encoder wrote inside another
   citation's run (a source or dependent lane), with `queue_ref`
   `dependent:<run id>`. Encoder records share no session with their run, so
@@ -64,7 +65,9 @@ generate `/axiom/v2/...` hrefs. The app root and marketing pages stay on v1.
   (`.axiom/encoding-manifests/<module>.json`, the promotion lane's PR into a
   candidate's branch) stands for that module once its side branch's PR or a
   merge train that replaced it carried the module to main, at that PR's merge
-  commit; that PR then has no row of its own for the module.
+  commit; that PR then has no row of its own for the module. A citation's
+  status comes from its newest attempt; attempts at the same time (modules
+  of one PR) give the least advanced stage.
   Citation views (stages, ledger, journey, bundles' latest stage)
   include them; run statistics (flow, attempts, versions, the weekly runs,
   approvals) count dispatches only, and cost adds the dependent records.
