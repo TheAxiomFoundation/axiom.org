@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import recorded from "@/test/rulespec-merge-train-prs.json";
 import {
   buildAttempts,
+  carrierFileLookups,
   carrierIndex,
   carrierPrFor,
   containmentQueries,
@@ -20,6 +21,7 @@ import {
   moduleCitation,
   moduleSourceLookups,
   moduleSourceOf,
+  outsideFileLookups,
   outsideModules,
   prGate,
   rulespecModulePaths,
@@ -117,16 +119,44 @@ const readSource = (row: MirrorRow) => {
   return row;
 };
 
-/** The collector's order: side branches, merged PRs, merge trains, outside modules (their sources read), then the rows. */
-function collect(previous: Map<string, Partial<PipelineAttempt>> = new Map(), filesRead = true) {
+/** The files readPrFiles reads for a merged PR (deletions left out). */
+const filesOf = (number: number) =>
+  recorded.mergedPrs
+    .find((node) => node.number === number)!
+    .files.nodes.filter((file) => file.changeType !== "DELETED")
+    .map((file) => file.path);
+
+interface CollectOptions {
+  /** Keep only these cross-references on the manifest PRs (all when absent). */
+  crossRefs?: number[];
+  /** List only these merged PRs (all when absent). */
+  merged?: number[];
+  /** Whether the read of the files of PRs that may have carried a closed signed PR succeeds. */
+  carrierRead?: boolean;
+}
+
+/**
+ * The collector's order: side branches, merged PRs (files read only for
+ * those outsideFileLookups names), merge trains (files read for those
+ * carrierFileLookups names), outside modules (their sources read), then the
+ * rows.
+ */
+function collect(previous: Map<string, Partial<PipelineAttempt>> = new Map(), options: CollectOptions = {}) {
   const mirror = mirrorRows();
   const prs = recorded.manifestPrs.map(manifestPr);
   for (const pr of prs) {
     const listed = branchPrs.get(pr.baseRefName);
     pr.via = listed ? viaPrFor(pr, listed) : null;
+    if (options.crossRefs) pr.crossRefs = pr.crossRefs?.filter((ref) => options.crossRefs!.includes(ref.number));
   }
-  const merged = recorded.mergedPrs.map((node) => mergedPr(node, filesRead));
-  const carriers = carrierIndex(merged, previous);
+  const merged = recorded.mergedPrs
+    .filter((node) => !options.merged || options.merged.includes(node.number))
+    .map((node) => mergedPr(node, false));
+  const fileLookups = outsideFileLookups(merged, previous, prs);
+  for (const pr of fileLookups) pr.files = filesOf(pr.number);
+  const carrierLookups = carrierFileLookups(prs, merged, previous);
+  if (options.carrierRead !== false) for (const pr of carrierLookups) pr.files = filesOf(pr.number);
+  const carriers = carrierIndex(merged, previous, carrierLookups);
   for (const pr of prs) {
     const carrier = carrierPrFor(pr, carriers);
     if (carrier) pr.via = carrier;
@@ -148,8 +178,20 @@ function collect(previous: Map<string, Partial<PipelineAttempt>> = new Map(), fi
     nowMs: NOW,
     outside,
   });
-  return { prs, outside, attempts, mirror, sourceRows };
+  return {
+    prs,
+    outside,
+    attempts,
+    mirror,
+    sourceRows,
+    filesRead: fileLookups.map((pr) => pr.number).sort(),
+    carriersRead: carrierLookups.map((pr) => pr.number).sort(),
+  };
 }
+
+/** A pass's rows as the next pass reads them back from the table. */
+const asPrevious = (attempts: PipelineAttempt[]) =>
+  new Map<string, Partial<PipelineAttempt>>(attempts.map((attempt) => [attempt.id, attempt]));
 
 const byPr = (prs: ManifestPr[], number: number) => prs.find((pr) => pr.number === number)!;
 const byRun = (attempts: PipelineAttempt[], id: number) => attempts.find((attempt) => attempt.id === String(id))!;
@@ -237,7 +279,7 @@ describe("signed PRs that hold only their manifest", () => {
     ]);
   });
 
-  it("do the same from the train's stored rows when its files are not read again (the pass after it merged)", () => {
+  it("do the same when the train is known from its stored rows: its files are read again to check the manifests", () => {
     // What the table held before this change: #2205's and #2045's rows under the module's own path.
     const stored = new Map<string, Partial<PipelineAttempt>>();
     for (const node of recorded.mergedPrs) {
@@ -260,13 +302,121 @@ describe("signed PRs that hold only their manifest", () => {
         });
       }
     }
-    const { prs, outside } = collect(stored, false);
+    const { prs, outside, filesRead, carriersRead } = collect(stored);
+    // A stored PR's files are not read for its rows; they are read to check a new link.
+    expect(filesRead).toEqual([]);
+    expect(carriersRead).toEqual([2046, 2205]);
     for (const number of [2202, 2203, 2204]) expect(byPr(prs, number).via?.number).toBe(2205);
     expect(outside.map((module) => [module.pr.number, module.citation])).toEqual([
       [2047, "us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-11"],
       [2048, "us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-12"],
       [2046, "us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-7"],
     ]);
+    // A read that fails links nothing this pass: stored rows name modules, not manifests.
+    const unread = collect(stored, { carrierRead: false });
+    expect(unread.carriersRead).toEqual([2046, 2205]);
+    for (const number of [2202, 2203, 2204]) expect(byPr(unread.prs, number).via ?? null).toBeNull();
+    for (const run of [43376624427, 43376652240, 43376596010]) {
+      expect(attemptStage(byRun(unread.attempts, run))).toBe("closed");
+    }
+  });
+
+  it("keep the link an earlier pass made once the train's rows are gone, with no file read", () => {
+    const first = collect();
+    expect(first.filesRead).toEqual([2045, 2046, 2047, 2048, 2205]);
+    expect(first.carriersRead).toEqual([]);
+    const second = collect(asPrevious(first.attempts));
+    // #2205 has no row of its own and is not read again; #2046-#2048 are carried in their rows.
+    expect(second.filesRead).toEqual([2045, 2205]);
+    const again = collect(asPrevious(first.attempts), { merged: [2046, 2047, 2048] });
+    expect(again.filesRead).toEqual([]);
+    expect(again.carriersRead).toEqual([]);
+    for (const number of [2202, 2203, 2204]) {
+      expect(byPr(again.prs, number).via).toMatchObject({ number: 2205, mergeCommit: TRAIN_COMMIT });
+    }
+    expect(byRun(again.attempts, 43376596010)).toMatchObject({ pr_via_number: 2205, index_status: "indexed" });
+  });
+});
+
+describe("an unsigned candidate PR (#2046 holds block 7, not its manifest)", () => {
+  const RUN = 43376596010;
+  const only = { crossRefs: [2046], merged: [2046] };
+  const rejected = (pass: ReturnType<typeof collect>) => {
+    expect(byPr(pass.prs, 2204).via ?? null).toBeNull();
+    const attempt = byRun(pass.attempts, RUN);
+    expect(attempt).toMatchObject({ pr_number: 2204, pr_state: "closed", module_paths: [] });
+    expect(attempt.pr_via_number ?? null).toBeNull();
+    expect(attempt.pr_via_merge_commit ?? null).toBeNull();
+    expect(attemptStage(attempt)).toBe("closed");
+    // The candidate keeps its own row for the module: it is not the signed PR's.
+    expect(pass.outside.map((module) => [module.pr.number, module.path])).toEqual([[2046, `${MEDICAL}/block-7.yaml`]]);
+  };
+
+  it("stays rejected on the next pass, when it is known only from the row the first pass stored", () => {
+    const first = collect(new Map(), only);
+    expect(first.filesRead).toEqual([2046]);
+    rejected(first);
+    // Nothing changed at the source: the second pass has the first one's rows.
+    const second = collect(asPrevious(first.attempts), only);
+    // Its files are not read for its row, and are read again to check the manifest.
+    expect(second.filesRead).toEqual([]);
+    expect(second.carriersRead).toEqual([2046]);
+    rejected(second);
+    // And on the pass after that.
+    rejected(collect(asPrevious(second.attempts), only));
+  });
+
+  it("stays rejected when the read of its files fails", () => {
+    const first = collect(new Map(), only);
+    const second = collect(asPrevious(first.attempts), { ...only, carrierRead: false });
+    expect(second.carriersRead).toEqual([2046]);
+    rejected(second);
+  });
+
+  it("stays rejected when it is no longer listed (merged before the listing window)", () => {
+    const first = collect(new Map(), only);
+    const later = collect(asPrevious(first.attempts), { crossRefs: [2046], merged: [] });
+    expect(later.carriersRead).toEqual([2046]);
+    rejected(later);
+  });
+});
+
+describe("the files to read before a new link (carrierFileLookups)", () => {
+  const prs = () => recorded.manifestPrs.map(manifestPr);
+  const row = (number: number, block: number) => {
+    const id = outsideAttemptId(REPO, number, `${MEDICAL}/block-${block}.yaml`);
+    return [id, { id }] as const;
+  };
+  const numbers = (list: Array<{ number: number }>) => list.map((pr) => pr.number).sort();
+
+  it("are those of a mentioned PR whose stored rows name every module, not read this pass", () => {
+    const stored = new Map<string, Partial<PipelineAttempt>>([row(2046, 7), row(2205, 7), row(2205, 11)]);
+    // #2204 (block 7): both; #2202 (block 11): the train; #2203 (block 12): no stored row names it.
+    expect(numbers(carrierFileLookups(prs(), [], stored))).toEqual([2046, 2205]);
+    expect(numbers(carrierFileLookups([byPr(prs(), 2203)], [], stored))).toEqual([]);
+    expect(carrierFileLookups(prs(), [], new Map())).toEqual([]);
+    // Read this pass already: no second read.
+    const merged = recorded.mergedPrs.map((node) => mergedPr(node));
+    expect(carrierFileLookups(prs(), merged, stored)).toEqual([]);
+  });
+
+  it("are none for a PR an earlier pass linked, an open or merged PR, or one that holds no manifest", () => {
+    const stored = new Map<string, Partial<PipelineAttempt>>([row(2046, 7), row(2205, 7)]);
+    const pr = byPr(prs(), 2204);
+    expect(numbers(carrierFileLookups([pr], [], stored))).toEqual([2046, 2205]);
+    const linked = new Map(stored).set("43376596010", {
+      id: "43376596010",
+      pr_repo: REPO,
+      pr_number: 2204,
+      pr_via_number: 2205,
+      pr_via_state: "merged",
+    });
+    expect(carrierFileLookups([pr], [], linked)).toEqual([]);
+    expect(carrierFileLookups([{ ...pr, state: "OPEN" }], [], stored)).toEqual([]);
+    expect(carrierFileLookups([{ ...pr, state: "MERGED" }], [], stored)).toEqual([]);
+    expect(carrierFileLookups([{ ...pr, files: [`${MEDICAL}/block-7.yaml`] }], [], stored)).toEqual([]);
+    expect(carrierFileLookups([{ ...pr, files: [] }], [], stored)).toEqual([]);
+    expect(carrierFileLookups([{ ...pr, crossRefs: undefined }], [], stored)).toEqual([]);
   });
 });
 
@@ -379,16 +529,31 @@ describe("what a carrier must hold", () => {
   const prs = () => recorded.manifestPrs.map(manifestPr);
   const merged = () => recorded.mergedPrs.map((node) => mergedPr(node));
 
-  it("a train read this pass holds the signed manifest too, not only the module (#2046 holds block 7 unsigned)", () => {
+  it("a train holds the signed manifest too, in files read this pass, not only the module (#2046 holds block 7 unsigned)", () => {
     const pr = byPr(prs(), 2204);
     const candidateOnly = { ...pr, crossRefs: pr.crossRefs!.filter((ref) => ref.number === 2046) };
     expect(carrierPrFor(candidateOnly, carrierIndex(merged(), new Map()))).toBeNull();
-    // Known from stored rows alone (modules only), the module is what can be checked.
-    const stored = new Map<string, Partial<PipelineAttempt>>([
-      [outsideAttemptId(REPO, 2046, `${MEDICAL}/block-7.yaml`), { id: outsideAttemptId(REPO, 2046, `${MEDICAL}/block-7.yaml`) }],
-    ]);
-    expect(carrierPrFor(candidateOnly, carrierIndex([], stored))?.number).toBe(2046);
+    // Stored rows name modules only: they cannot show the manifest, so they make no new link.
+    const id = outsideAttemptId(REPO, 2046, `${MEDICAL}/block-7.yaml`);
+    const stored = new Map<string, Partial<PipelineAttempt>>([[id, { id }]]);
+    expect(carrierPrFor(candidateOnly, carrierIndex([], stored))).toBeNull();
+    // Read to check: the stored row does not stand in for the manifest the read did not find.
+    const read = [{ repo: REPO, number: 2046, files: filesOf(2046) }];
+    expect(carrierPrFor(candidateOnly, carrierIndex([], stored, read))).toBeNull();
+    expect(carrierPrFor(candidateOnly, carrierIndex([], stored, [{ repo: REPO, number: 2046 }]))).toBeNull();
     expect(carrierPrFor(pr, carrierIndex(merged(), new Map()))?.number).toBe(2205);
+    // The same holds for the train: its stored rows alone do not link, its files do.
+    const trainRow = outsideAttemptId(REPO, 2205, `${MEDICAL}/block-7.yaml`);
+    const trainStored = new Map<string, Partial<PipelineAttempt>>([[trainRow, { id: trainRow }]]);
+    expect(carrierPrFor(pr, carrierIndex([], trainStored))).toBeNull();
+    expect(carrierPrFor(pr, carrierIndex([], trainStored, [{ repo: REPO, number: 2205, files: filesOf(2205) }]))?.number).toBe(2205);
+    // A read replaces what was stored: a module the read no longer finds is not held.
+    expect(carrierPrFor(pr, carrierIndex([], trainStored, [{ repo: REPO, number: 2205, files: [] }]))).toBeNull();
+    // A closed PR with no manifest has nothing signed to check: the stored module decides.
+    const unsigned = { ...candidateOnly, files: [`${MEDICAL}/block-7.yaml`] };
+    expect(carrierPrFor(unsigned, carrierIndex([], stored))?.number).toBe(2046);
+    // Unless a read this pass no longer finds the module.
+    expect(carrierPrFor(unsigned, carrierIndex([], stored, [{ repo: REPO, number: 2046, files: [] }]))).toBeNull();
   });
 
   it("holds every module the closed PR's manifests name, not some", () => {
@@ -399,12 +564,22 @@ describe("what a carrier must hold", () => {
     );
     expect(carrierPrFor(both, carrierIndex(partial, new Map()))).toBeNull();
     expect(carrierPrFor(both, carrierIndex(merged(), new Map()))?.number).toBe(2205);
-    // From stored rows (modules only, no manifest to check): one of the two modules is not enough.
+    // And every signed manifest, not some: both modules with one of the two manifests is not enough.
+    const oneManifest = merged().map((m) =>
+      m.number === 2205 ? { ...m, files: m.files!.filter((path) => !path.endsWith("/block-11.json")) } : m
+    );
+    expect(carrierPrFor(both, carrierIndex(oneManifest, new Map()))).toBeNull();
+    // Stored rows that name one of the two modules ask for no read; rows that name both do.
     const row = (path: string) => [outsideAttemptId(REPO, 2205, path), { id: outsideAttemptId(REPO, 2205, path) }] as const;
     const one = new Map<string, Partial<PipelineAttempt>>([row(`${MEDICAL}/block-7.yaml`)]);
+    expect(carrierFileLookups([both], [], one)).toEqual([]);
     expect(carrierPrFor(both, carrierIndex([], one))).toBeNull();
     const two = new Map<string, Partial<PipelineAttempt>>([row(`${MEDICAL}/block-7.yaml`), row(`${MEDICAL}/block-11.yaml`)]);
-    expect(carrierPrFor(both, carrierIndex([], two))?.number).toBe(2205);
+    const lookups = carrierFileLookups([both], [], two);
+    expect(lookups).toEqual([{ repo: REPO, number: 2205 }]);
+    expect(carrierPrFor(both, carrierIndex([], two, lookups))).toBeNull();
+    lookups[0].files = filesOf(2205);
+    expect(carrierPrFor(both, carrierIndex([], two, lookups))?.number).toBe(2205);
   });
 });
 

@@ -506,7 +506,10 @@ function DocketBand({
           <Activity size={15} aria-hidden />
           Fleet activity
         </span>
-        {/* The board reads only synced telemetry (live_encoding_runs, encoding_runs). */}
+        {/* The board reads only synced telemetry (live_encoding_runs, encoding_runs).
+            axiom-encode's `encode --no-sync` writes neither (cli.py at c8e2f8097:
+            LiveRunTelemetry enabled only when args.sync, and the encoding_runs
+            sync is called only then). */}
         <span>Synced runs only; local runs with --no-sync are not shown.</span>
       </div>
       {status == null ? (

@@ -65,7 +65,11 @@ generate `/axiom/v2/...` hrefs. The app root and marketing pages stay on v1.
   (`.axiom/encoding-manifests/<module>.json`, the promotion lane's PR into a
   candidate's branch) stands for that module once its side branch's PR or a
   merge train that replaced it carried the module to main, at that PR's merge
-  commit; that PR then has no row of its own for the module. A citation's
+  commit; that PR then has no row of its own for the module. A new link to
+  a merge train needs the train's file list, read in that pass, to hold the
+  module and the signed manifest (`carrierFileLookups` names the trains to
+  read); stored rows name modules only and make no new link, and a link an
+  earlier pass recorded is kept. A citation's
   status comes from its newest attempt; attempts at the same time (modules
   of one PR) give the least advanced stage.
   Citation views (stages, ledger, journey, bundles' latest stage)

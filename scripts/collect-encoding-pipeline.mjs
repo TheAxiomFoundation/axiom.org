@@ -86,6 +86,7 @@ import {
   activeWaivers,
   pendingOracleModules,
   buildAttempts,
+  carrierFileLookups,
   carrierIndex,
   carrierPrFor,
   checkErrorFromLog,
@@ -1389,7 +1390,14 @@ async function main() {
   // A closed PR whose module a merge train carried to main counts as merged
   // there, through that train: recorded in the side-branch columns.
   if (sideTracked) {
-    const carriers = carrierIndex(mergedPrs, previous);
+    // A new link needs the train's whole file list (the signed manifests
+    // too): read the files of trains known only from their stored rows.
+    const carrierLookups = carrierFileLookups(prs, mergedPrs, previous);
+    const carriersRead = await readPrFiles(carrierLookups);
+    if (carrierLookups.length) {
+      console.log(`files read for ${carriersRead} of ${carrierLookups.length} PRs that may have carried a closed signed PR`);
+    }
+    const carriers = carrierIndex(mergedPrs, previous, carrierLookups);
     let trains = 0;
     for (const pr of prs) {
       const carrier = carrierPrFor(pr, carriers);
