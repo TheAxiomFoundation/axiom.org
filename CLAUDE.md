@@ -14,8 +14,11 @@ generate `/axiom/v2/...` hrefs. The app root and marketing pages stay on v1.
 
 ## Data sources
 
-- **Corpus text** (`corpus.current_provisions`, `navigation_nodes`): Supabase,
-  read server-side. The DB is _release-pointer-based_ — it projects the single
+- **Corpus text** (`corpus.current_provisions`, `current_navigation_nodes`):
+  Supabase, read server-side. Tree reads name the view through
+  `NAVIGATION_NODES_VIEW` (`src/lib/axiom/navigation-index/table.ts`), never
+  the `navigation_nodes` table, and `src/test/navigation-view-reads.test.ts`
+  fails on a new read of the table. The DB is _release-pointer-based_ — it projects the single
   active signed corpus release, so contents change wholesale when a release is
   activated upstream (axiom-corpus).
 - **RuleSpec encodings**: `encodings.rulespec_files` mirror first (live-synced
