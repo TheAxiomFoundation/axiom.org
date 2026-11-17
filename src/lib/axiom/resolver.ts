@@ -75,12 +75,23 @@ export function citationPathPrefixes(path: string): string[] {
  * (``enDashCitationSegments``, the swap the section page retries with):
  * the typed prefixes deepest-first, then the en-dash prefixes not
  * already listed. The deeper match wins; at equal depth the path as
- * typed wins. A path with no such hyphen queries its own prefixes only.
+ * typed wins. A path with no such hyphen queries its own prefixes only,
+ * and so does a path whose en-dash prefixes would add more than
+ * ``DASH_PREFIX_BUDGET`` URL-encoded bytes to the query.
  *
  * This is the load-bearing primitive for the command palette and
  * direct-URL entry: every wayfinding path ultimately resolves an
  * input to an atomic ``rules`` row here.
  */
+/**
+ * The most URL-encoded bytes the en-dash prefixes may add to the
+ * resolver's query. An en dash encodes as nine bytes (``%E2%80%93``),
+ * so without a cap a path of many hyphens would multiply the query's
+ * length and could fail where the typed query alone succeeds. A real
+ * citation adds a few hundred bytes.
+ */
+export const DASH_PREFIX_BUDGET = 2048;
+
 export async function resolveCitationPath(
   input: string
 ): Promise<ResolveResult> {
@@ -103,12 +114,18 @@ export async function resolveCitationPath(
   // line up depth for depth: ``dashPrefixes[i]`` is ``prefixes[i]``
   // respelled.
   const dashPath = enDashCitationSegments(citationPath.split("/")).join("/");
-  const dashPrefixes =
+  let dashPrefixes =
     dashPath === citationPath ? [] : citationPathPrefixes(dashPath);
-  const queried = [
-    ...prefixes,
-    ...dashPrefixes.filter((prefix) => !prefixes.includes(prefix)),
-  ];
+  let added = dashPrefixes.filter((prefix) => !prefixes.includes(prefix));
+  const addedBytes = added.reduce(
+    (total, prefix) => total + encodeURIComponent(prefix).length + 1,
+    0
+  );
+  if (addedBytes > DASH_PREFIX_BUDGET) {
+    dashPrefixes = [];
+    added = [];
+  }
+  const queried = [...prefixes, ...added];
 
   const { data, error } = await supabaseCorpus
     .from("current_provisions")

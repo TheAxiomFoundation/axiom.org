@@ -15,7 +15,7 @@ vi.mock("@/lib/supabase", () => ({
 
 // Import after mock registration so ``resolveCitationPath`` picks up
 // the mocked ``supabaseCorpus``.
-import { resolveCitationPath } from "./resolver";
+import { DASH_PREFIX_BUDGET, resolveCitationPath } from "./resolver";
 
 describe("citationPathPrefixes", () => {
   it("enumerates deepest-first", () => {
@@ -281,6 +281,51 @@ describe("resolveCitationPath with a hyphen typed for an en dash", () => {
       "us/statute",
       "us",
     ]);
+  });
+
+  it("queries the typed prefixes alone when the en-dash prefixes exceed the budget", async () => {
+    corpus([{ id: "title", citation_path: "us/statute/42" }]);
+    const section = "a" + "-".repeat(2000);
+    const out = await resolveCitationPath(`us/statute/42/${section}`);
+    expect(out.match).toBe("ancestor");
+    expect(out.rule?.id).toBe("title");
+    expect(out.missingTail).toEqual([section]);
+    expect(queriedPaths()).toEqual([
+      `us/statute/42/${section}`,
+      "us/statute/42",
+      "us/statute",
+      "us",
+    ]);
+  });
+
+  it("adds the en-dash prefixes when they fill the budget exactly", async () => {
+    // The one added prefix is the full en-dash path: 9 encoded bytes per
+    // en dash, 1 per letter, plus a separator. Pad with letters so the
+    // total lands on the budget.
+    const room = DASH_PREFIX_BUDGET - encodeURIComponent("us/statute/42/a").length - 1;
+    const hyphens = Math.floor(room / 9);
+    const pad = "b".repeat(room - 9 * hyphens);
+    const section = `${pad}a${"-".repeat(hyphens)}`;
+    const stored = `us/statute/42/${pad}a${EN.repeat(hyphens)}`;
+    expect(encodeURIComponent(stored).length + 1).toBe(DASH_PREFIX_BUDGET);
+    corpus([{ id: "section", citation_path: stored }]);
+    const out = await resolveCitationPath(`us/statute/42/${section}`);
+    expect(out.match).toBe("exact");
+    expect(out.rule?.id).toBe("section");
+    expect(queriedPaths()).toContain(stored);
+  });
+
+  it("queries the typed prefixes alone one byte over the budget", async () => {
+    const room = DASH_PREFIX_BUDGET + 1 - encodeURIComponent("us/statute/42/a").length - 1;
+    const hyphens = Math.floor(room / 9);
+    const pad = "b".repeat(room - 9 * hyphens);
+    const section = `${pad}a${"-".repeat(hyphens)}`;
+    const stored = `us/statute/42/${pad}a${EN.repeat(hyphens)}`;
+    expect(encodeURIComponent(stored).length + 1).toBe(DASH_PREFIX_BUDGET + 1);
+    corpus([{ id: "section", citation_path: stored }]);
+    const out = await resolveCitationPath(`us/statute/42/${section}`);
+    expect(out.match).toBe("none");
+    expect(queriedPaths()).not.toContain(stored);
   });
 
   it("gives the missing tail in the spelling of the path that matched", async () => {
