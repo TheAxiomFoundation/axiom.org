@@ -1,4 +1,7 @@
+import fc from "fast-check";
+import { createClient } from "@supabase/supabase-js";
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { enDashCitationSegments } from "./citation-path";
 import { citationPathPrefixes } from "./resolver";
 
 const { mockIn } = vi.hoisted(() => ({ mockIn: vi.fn() }));
@@ -283,49 +286,113 @@ describe("resolveCitationPath with a hyphen typed for an en dash", () => {
     ]);
   });
 
-  it("queries the typed prefixes alone when the en-dash prefixes exceed the budget", async () => {
-    corpus([{ id: "title", citation_path: "us/statute/42" }]);
-    const section = "a" + "-".repeat(2000);
-    const out = await resolveCitationPath(`us/statute/42/${section}`);
-    expect(out.match).toBe("ancestor");
-    expect(out.rule?.id).toBe("title");
-    expect(out.missingTail).toEqual([section]);
-    expect(queriedPaths()).toEqual([
-      `us/statute/42/${section}`,
-      "us/statute/42",
-      "us/statute",
-      "us",
-    ]);
+  // The real client, never awaited: it builds the query string an
+  // ``.in()`` filter sends, so the tests measure what the resolver's
+  // query would cost on the wire.
+  const realClient = createClient("http://resolver.test", "test-key", {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+    db: { schema: "corpus" },
   });
+  function queryLength(paths: string[]): number {
+    const builder = realClient
+      .from("current_provisions")
+      .select("*")
+      .in("citation_path", paths);
+    // ``url`` is protected in the client's types; the tests read it.
+    return (builder as unknown as { url: URL }).url.search.length;
+  }
+  function addedLength(paths: string[], typed: string[]): number {
+    return queryLength(paths) - queryLength(typed);
+  }
 
-  it("adds the en-dash prefixes when they fill the budget exactly", async () => {
-    // The one added prefix is the full en-dash path: 9 encoded bytes per
-    // en dash, 1 per letter, plus a separator. Pad with letters so the
-    // total lands on the budget.
-    const room = DASH_PREFIX_BUDGET - encodeURIComponent("us/statute/42/a").length - 1;
+  // A section of ``lead``, letters, then hyphens whose en-dash spelling
+  // adds ``target`` bytes to the query of us/statute/42/<section>. A
+  // comma or parenthesis in ``lead`` makes the client quote the value.
+  function sectionAdding(
+    target: number,
+    lead: string
+  ): { section: string; stored: string } {
+    const typed = ["us/statute/42", "us/statute", "us"];
+    const room = target - addedLength([...typed, `us/statute/42/${lead}a`], typed);
     const hyphens = Math.floor(room / 9);
     const pad = "b".repeat(room - 9 * hyphens);
-    const section = `${pad}a${"-".repeat(hyphens)}`;
-    const stored = `us/statute/42/${pad}a${EN.repeat(hyphens)}`;
-    expect(encodeURIComponent(stored).length + 1).toBe(DASH_PREFIX_BUDGET);
+    return {
+      section: `${lead}${pad}a${"-".repeat(hyphens)}`,
+      stored: `us/statute/42/${lead}${pad}a${EN.repeat(hyphens)}`,
+    };
+  }
+
+  const LEADS = [
+    ["letters", ""],
+    ["a parenthesis", "("],
+    ["a comma", ","],
+  ];
+
+  it.each(LEADS)("adds the en-dash prefixes when they add exactly the budget, %s", async (_name, lead) => {
+    const { section, stored } = sectionAdding(DASH_PREFIX_BUDGET, lead);
     corpus([{ id: "section", citation_path: stored }]);
     const out = await resolveCitationPath(`us/statute/42/${section}`);
     expect(out.match).toBe("exact");
     expect(out.rule?.id).toBe("section");
-    expect(queriedPaths()).toContain(stored);
+    const queried = queriedPaths();
+    expect(queried).toContain(stored);
+    expect(addedLength(queried, citationPathPrefixes(out.citationPath))).toBe(
+      DASH_PREFIX_BUDGET
+    );
   });
 
-  it("queries the typed prefixes alone one byte over the budget", async () => {
-    const room = DASH_PREFIX_BUDGET + 1 - encodeURIComponent("us/statute/42/a").length - 1;
-    const hyphens = Math.floor(room / 9);
-    const pad = "b".repeat(room - 9 * hyphens);
-    const section = `${pad}a${"-".repeat(hyphens)}`;
-    const stored = `us/statute/42/${pad}a${EN.repeat(hyphens)}`;
-    expect(encodeURIComponent(stored).length + 1).toBe(DASH_PREFIX_BUDGET + 1);
+  it.each(LEADS)("queries the typed prefixes alone one byte over the budget, %s", async (_name, lead) => {
+    const { section, stored } = sectionAdding(DASH_PREFIX_BUDGET + 1, lead);
+    const typed = citationPathPrefixes(`us/statute/42/${section}`);
+    expect(addedLength([...typed, stored], typed)).toBe(DASH_PREFIX_BUDGET + 1);
     corpus([{ id: "section", citation_path: stored }]);
     const out = await resolveCitationPath(`us/statute/42/${section}`);
     expect(out.match).toBe("none");
-    expect(queriedPaths()).not.toContain(stored);
+    expect(queriedPaths()).toEqual(typed);
+  });
+
+  it.each([
+    ["2,000 hyphens", "a" + "-".repeat(2000)],
+    // Within the budget by encodeURIComponent's count, 2 bytes over on
+    // the wire: the separator encodes as %2C.
+    ["225 hyphens after two letters", "aa" + "-".repeat(225)],
+    // Quoted, with each parenthesis encoded as %28: about 6 KB on the wire.
+    ["a hyphen then 2,018 parentheses", "-" + "(".repeat(2018)],
+  ])("queries the typed prefixes alone for %s", async (_name, section) => {
+    corpus([{ id: "title", citation_path: "us/statute/42" }]);
+    const out = await resolveCitationPath(`us/statute/42/${section}`);
+    expect(out.match).toBe("ancestor");
+    expect(out.rule?.id).toBe("title");
+    expect(out.missingTail).toEqual([section]);
+    expect(queriedPaths()).toEqual(citationPathPrefixes(`us/statute/42/${section}`));
+  });
+
+  it("adds the en-dash prefixes exactly when the real query grows by at most the budget", async () => {
+    const LONE_SURROGATE = String.fromCharCode(0xd800);
+    const char = fc.constantFrom(
+      "a", "1", "-", "-", "-", EN, "(", ")", ",", '"', "~", "!", "'", " ", LONE_SURROGATE
+    );
+    const segment = fc
+      .array(char, { minLength: 1, maxLength: 400 })
+      .map((chars) => chars.join(""));
+    await fc.assert(
+      fc.asyncProperty(fc.array(segment, { minLength: 1, maxLength: 3 }), async (segments) => {
+        mockIn.mockReset();
+        corpus([]);
+        const out = await resolveCitationPath(["us", "statute", "42", ...segments].join("/"));
+        const typed = citationPathPrefixes(out.citationPath);
+        const dashed = citationPathPrefixes(
+          enDashCitationSegments(out.citationPath.split("/")).join("/")
+        ).filter((prefix) => !typed.includes(prefix));
+        const fits = addedLength([...typed, ...dashed], typed) <= DASH_PREFIX_BUDGET;
+        expect(queriedPaths()).toEqual(fits ? [...typed, ...dashed] : typed);
+      }),
+      { numRuns: 300 }
+    );
   });
 
   it("gives the missing tail in the spelling of the path that matched", async () => {

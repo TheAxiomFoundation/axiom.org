@@ -77,20 +77,35 @@ export function citationPathPrefixes(path: string): string[] {
  * already listed. The deeper match wins; at equal depth the path as
  * typed wins. A path with no such hyphen queries its own prefixes only,
  * and so does a path whose en-dash prefixes would add more than
- * ``DASH_PREFIX_BUDGET`` URL-encoded bytes to the query.
+ * ``DASH_PREFIX_BUDGET`` bytes to the query string.
  *
  * This is the load-bearing primitive for the command palette and
  * direct-URL entry: every wayfinding path ultimately resolves an
  * input to an atomic ``rules`` row here.
  */
 /**
- * The most URL-encoded bytes the en-dash prefixes may add to the
- * resolver's query. An en dash encodes as nine bytes (``%E2%80%93``),
- * so without a cap a path of many hyphens would multiply the query's
- * length and could fail where the typed query alone succeeds. A real
- * citation adds a few hundred bytes.
+ * The most bytes the en-dash prefixes may add to the resolver's query
+ * string. An en dash encodes as nine bytes (``%E2%80%93``), so without a
+ * cap a path of many hyphens would multiply the query's length and could
+ * fail where the typed query alone succeeds. A real citation adds a few
+ * hundred bytes.
  */
 export const DASH_PREFIX_BUDGET = 2048;
+
+/**
+ * The length of the ``.in("citation_path", values)`` filter as
+ * postgrest-js puts it in the query string: it quotes a value that holds
+ * a comma or a parenthesis, joins the values with commas inside
+ * ``in.(...)``, and URLSearchParams encodes the result. The tests check
+ * this against the real client.
+ */
+function inFilterLength(values: readonly string[]): number {
+  const list = values
+    .map((value) => (/[,()]/.test(value) ? `"${value}"` : value))
+    .join(",");
+  return new URLSearchParams([["citation_path", `in.(${list})`]]).toString()
+    .length;
+}
 
 export async function resolveCitationPath(
   input: string
@@ -117,10 +132,10 @@ export async function resolveCitationPath(
   let dashPrefixes =
     dashPath === citationPath ? [] : citationPathPrefixes(dashPath);
   let added = dashPrefixes.filter((prefix) => !prefixes.includes(prefix));
-  const addedBytes = added.reduce(
-    (total, prefix) => total + encodeURIComponent(prefix).length + 1,
-    0
-  );
+  const addedBytes =
+    added.length === 0
+      ? 0
+      : inFilterLength([...prefixes, ...added]) - inFilterLength(prefixes);
   if (addedBytes > DASH_PREFIX_BUDGET) {
     dashPrefixes = [];
     added = [];
