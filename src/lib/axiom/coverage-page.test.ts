@@ -99,7 +99,7 @@ describe("getCoverageData", () => {
 
   it("joins corpus stats, root document counts, and encoding counts", async () => {
     mockCorpusRpc.mockResolvedValue({ data: STATS, error: null });
-    // navigation_nodes root queries: one per corpus jurisdiction, in
+    // current_navigation_nodes root queries: one per corpus jurisdiction, in
     // stats order (us, nz).
     chainFor(mockCorpusFrom, (i) =>
       i === 0
@@ -126,6 +126,9 @@ describe("getCoverageData", () => {
     }));
 
     const data = await getCoverageData();
+    // The fallback root queries read the served view, never the table.
+    expect(mockCorpusFrom).toHaveBeenCalledWith("current_navigation_nodes");
+    expect(mockCorpusFrom).not.toHaveBeenCalledWith("navigation_nodes");
     expect(data?.totals).toEqual({
       jurisdictions: 3,
       documents: 5,

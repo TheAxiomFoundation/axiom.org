@@ -13,6 +13,7 @@ import {
 } from "@/lib/tree-data";
 import { enDashCitationSegments } from "@/lib/axiom/citation-path";
 import { getProvisionByCitationPath } from "@/lib/axiom/navigation-index/read";
+import { NAVIGATION_NODES_VIEW } from "@/lib/axiom/navigation-index/table";
 import type { NavigationNodeRow } from "@/lib/axiom/navigation-index/types";
 import { parseRuleSpec } from "@/lib/axiom/rulespec/doc";
 import { isGatedJurisdiction } from "@/lib/axiom/rulespec/index-visibility";
@@ -763,7 +764,7 @@ async function getNeighbor(
   direction: "prev" | "next",
 ): Promise<SectionNeighbor | null> {
   let query = supabaseCorpus
-    .from("navigation_nodes")
+    .from(NAVIGATION_NODES_VIEW)
     .select("path, citation_path, label, sort_key")
     .eq("jurisdiction", node.jurisdiction)
     .eq("doc_type", node.doc_type)
@@ -797,7 +798,7 @@ async function getNavigationNode(
 ): Promise<NavigationNodeRow | null> {
   const result = await withTimeout(
     supabaseCorpus
-      .from("navigation_nodes")
+      .from(NAVIGATION_NODES_VIEW)
       .select("*")
       .eq("path", path)
       .maybeSingle(),

@@ -1344,7 +1344,7 @@ describe('supabase lib', () => {
       )
     })
 
-    it('fills missing landing jurisdiction counts from navigation_nodes', async () => {
+    it('fills missing landing jurisdiction counts from current_navigation_nodes', async () => {
       const stats = {
         provisions_count: 658899,
         references_count: 148604,
@@ -1363,7 +1363,8 @@ describe('supabase lib', () => {
 
       const result = await getAxiomStats()
 
-      expect(mockFrom).toHaveBeenCalledWith('navigation_nodes')
+      expect(mockFrom).toHaveBeenCalledWith('current_navigation_nodes')
+      expect(mockFrom).not.toHaveBeenCalledWith('navigation_nodes')
       expect(result?.jurisdictions).toEqual(
         expect.arrayContaining([
           { jurisdiction: 'us', count: 467993 },

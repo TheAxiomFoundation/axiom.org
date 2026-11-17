@@ -204,7 +204,7 @@ describe("getSectionPageData", () => {
     getRuleEncodingMock.mockResolvedValue({ rulespec_content: YAML });
     queueTables({
       current_provisions: [{ data: [], error: null }], // empty subtree
-      navigation_nodes: [
+      current_navigation_nodes: [
         { data: NAV_NODE, error: null }, // current node
         { data: [{ path: "us/statute/26/31", citation_path: "us/statute/26/31", label: "§ 31" }], error: null }, // prev
         { data: [{ path: "us/statute/26/33", citation_path: null, label: "§ 33" }], error: null }, // next
@@ -244,7 +244,7 @@ describe("getSectionPageData", () => {
           error: null,
         },
       ],
-      navigation_nodes: [{ data: null, error: null }],
+      current_navigation_nodes: [{ data: null, error: null }],
     });
 
     const data = await getSectionPageData(["us", "statute", "26", "32"]);
@@ -261,7 +261,7 @@ describe("getSectionPageData", () => {
     );
     queueTables({
       current_provisions: [{ data: [], error: null }],
-      navigation_nodes: [{ data: null, error: null }],
+      current_navigation_nodes: [{ data: null, error: null }],
     });
 
     const data = await getSectionPageData(["us", "statute", "26", "32", "a", "1"]);
@@ -278,7 +278,7 @@ describe("getSectionPageData", () => {
     );
     queueTables({
       current_provisions: [{ data: [], error: null }],
-      navigation_nodes: [{ data: null, error: null }],
+      current_navigation_nodes: [{ data: null, error: null }],
     });
 
     // The fixture body only has subsections (a) and (b) — "z" is not
@@ -298,7 +298,7 @@ describe("getSectionPageData", () => {
     );
     queueTables({
       current_provisions: [{ data: [], error: null }],
-      navigation_nodes: [{ data: null, error: null }],
+      current_navigation_nodes: [{ data: null, error: null }],
     });
 
     const data = await getSectionPageData(["us", "statute", "26", "2011"]);
@@ -318,7 +318,7 @@ describe("getSectionPageData", () => {
         { data: [], error: null }, // hyphen subtree probe: empty
         { data: [], error: null }, // post-resolve subtree fetch
       ],
-      navigation_nodes: [{ data: null, error: null }],
+      current_navigation_nodes: [{ data: null, error: null }],
     });
 
     const data = await getSectionPageData(["us", "statute", "42", "1396u-1"]);
@@ -342,7 +342,7 @@ describe("getSectionPageData", () => {
           { data: [], error: null }, // hyphen subtree probe: empty
           { data: [], error: null }, // post-resolve subtree fetch
         ],
-        navigation_nodes: [{ data: null, error: null }],
+        current_navigation_nodes: [{ data: null, error: null }],
       });
 
       const resolution = await resolveSection([slug, docType, section]);
@@ -382,7 +382,7 @@ describe("getSectionPageData", () => {
           error: null,
         },
       ],
-      navigation_nodes: [
+      current_navigation_nodes: [
         {
           data: {
             jurisdiction: "us",
@@ -424,7 +424,7 @@ describe("getSectionPageData", () => {
     getRuleEncodingMock.mockRejectedValue(new Error("encoding down"));
     queueTables({
       current_provisions: [{ data: null, error: { message: "boom" } }],
-      navigation_nodes: [{ data: null, error: { message: "boom" } }],
+      current_navigation_nodes: [{ data: null, error: { message: "boom" } }],
     });
 
     const data = await getSectionPageData(["us", "statute", "26", "32"]);
@@ -524,7 +524,7 @@ describe("getSectionPageData", () => {
       } satisfies RuleEncodingData);
       queueTables({
         current_provisions: [{ data: [], error: null }],
-        navigation_nodes: [{ data: null, error: null }],
+        current_navigation_nodes: [{ data: null, error: null }],
       });
 
       const data = await getSectionPageData(["us-co", "regulation", "10-ccr", "4.410"]);
@@ -900,7 +900,7 @@ describe("reader metadata follows the resolution", () => {
       current_provisions: [
         { data: [rule("us/statute/42/1396a/a"), rule("us/statute/42/1396a/e/15")], error: null },
       ],
-      navigation_nodes: [{ data: { ...NAV_NODE, path: "us/statute/42/1396a", label: "§ 1396a" }, error: null }],
+      current_navigation_nodes: [{ data: { ...NAV_NODE, path: "us/statute/42/1396a", label: "§ 1396a" }, error: null }],
     });
     const resolution = await resolveSection(["us", "statute", "42", "1396a"]);
     expect(resolution?.synthetic).toBe(true);
