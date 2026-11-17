@@ -563,6 +563,11 @@ describe("what a carrier must hold", () => {
       m.number === 2205 ? { ...m, files: m.files!.filter((path) => path.includes("/block-7.")) } : m
     );
     expect(carrierPrFor(both, carrierIndex(partial, new Map()))).toBeNull();
+    // Both manifests present and one module absent: only the every-module rule refuses this.
+    const oneModule = merged().map((m) =>
+      m.number === 2205 ? { ...m, files: m.files!.filter((path) => !path.endsWith("/block-11.yaml")) } : m
+    );
+    expect(carrierPrFor(both, carrierIndex(oneModule, new Map()))).toBeNull();
     expect(carrierPrFor(both, carrierIndex(merged(), new Map()))?.number).toBe(2205);
     // And every signed manifest, not some: both modules with one of the two manifests is not enough.
     const oneManifest = merged().map((m) =>
