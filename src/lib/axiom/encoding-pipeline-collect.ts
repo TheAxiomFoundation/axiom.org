@@ -38,6 +38,8 @@ import {
   isInfraRule,
   type PipelineTryPhase,
 } from "./encoding-pipeline";
+import { parseRuleSpec } from "./rulespec/doc";
+import { moduleSourcePaths } from "./rulespec/source-citations";
 
 export interface WorkflowRun {
   id: number;
@@ -265,6 +267,13 @@ export interface MirrorRow {
   raw_yaml_sha256: string | null;
   /** The commit the sync read (once the commit_sha column exists). */
   commit_sha?: string | null;
+  /** The provisions the module's rules are grounded in, with its singular
+   *  source (`source_verification.corpus_citation_path`), when read. */
+  value_citation_paths?: string[] | null;
+  /** The module's singular `source_verification.corpus_citation_path`, once
+   *  read from its YAML (see moduleSourceLookups): null when it declares none
+   *  (a legacy plural list, or no source); absent until read. */
+  module_source?: string | null;
 }
 
 export interface CompileSweepRow {
@@ -470,6 +479,40 @@ export function rulespecModulePaths(files: string[]): string[] {
     .sort();
 }
 
+const MANIFEST_RE = /^(?:([^/.][^/]*)\/)?\.axiom\/encoding-manifests\/(.+)\.json$/;
+
+/**
+ * The modules a PR's signed manifests stand for. A manifest sits at
+ * `.axiom/encoding-manifests/<module path>.json`, at the repo root or under
+ * a jurisdiction folder (`us-az/.axiom/encoding-manifests/<rest>.json` is
+ * `us-az/<rest>.yaml`). A promotion lane's signed PR into a candidate's
+ * branch holds only the manifest: its module is in the branch.
+ */
+export function manifestModulePaths(files: string[]): string[] {
+  const modules = new Set<string>();
+  for (const path of files) {
+    const match = MANIFEST_RE.exec(path);
+    if (match) modules.add(`${match[1] ? `${match[1]}/` : ""}${match[2]}.yaml`);
+  }
+  return [...modules].sort();
+}
+
+/** A PR's modules: its own module files, else (a PR of signed manifests only) the modules they stand for. */
+function ownOrSignedModules(files: string[]): string[] {
+  const own = rulespecModulePaths(files);
+  return own.length ? own : manifestModulePaths(files);
+}
+
+/**
+ * The modules a PR's change brought to the default branch. A PR that holds
+ * only signed manifests and reached the default branch through another PR
+ * (its side branch's own PR, or a merge train that replaced it) brought the
+ * modules those manifests stand for: that PR merged them, at its merge commit.
+ */
+export function landedModulePaths(pr: Pick<ManifestPr, "files" | "via">): string[] {
+  return pr.via?.state === "MERGED" ? ownOrSignedModules(pr.files) : rulespecModulePaths(pr.files);
+}
+
 /** The first day a PR merged outside the pipeline is collected from. */
 export const OUTSIDE_SINCE = "2026-07-22T00:00:00Z";
 /** How far before the previous pass a pass lists merged PRs again: a pass that failed to write loses nothing. */
@@ -536,6 +579,59 @@ export function derivedCitation(repo: string, path: string): string {
   return [jurisdiction, CITATION_BUCKETS[bucket] ?? bucket, ...tail].join("/");
 }
 
+/**
+ * The provision an index row's module encodes, as a dispatch and the bundle
+ * documents name it: its singular source (`source_verification
+ * .corpus_citation_path`) when that is its one grounding citation
+ * (`value_citation_paths`). rulespec-us
+ * `us-az/policies/des/faa5/.../block-7.yaml` encodes
+ * `us-az/manual/des/faa5/.../block-7`. A module keeps its own citation when
+ * that is the source or a provision under it (`us/statutes/26/63/c.yaml`
+ * stays `us/statute/26/63/c`, not section 63), when it is grounded in
+ * several provisions, when it declares a legacy plural list of sources
+ * (`salt_deduction_pipeline`: six sections), and until its source is read.
+ */
+export function moduleCitation(
+  row: Pick<MirrorRow, "citation_path" | "value_citation_paths" | "module_source">
+): string {
+  const source = moveTarget(row);
+  return source !== null && row.module_source === source ? source : row.citation_path;
+}
+
+/** The one grounding citation a row's module might move to, or null when its own citation stays. */
+function moveTarget(row: Pick<MirrorRow, "citation_path" | "value_citation_paths">): string | null {
+  const values = row.value_citation_paths;
+  if (!Array.isArray(values) || values.length !== 1 || typeof values[0] !== "string" || !values[0]) return null;
+  const [source] = values;
+  if (row.citation_path === source || row.citation_path.startsWith(`${source}/`)) return null;
+  return source;
+}
+
+/**
+ * Index rows of modules merged outside the pipeline whose citation depends on
+ * the module's declared source, not read yet: the collector reads their YAML
+ * (moduleSourceOf) and sets `module_source`, then builds the modules again.
+ */
+export function moduleSourceLookups(modules: OutsideModule[], mirror: MirrorRow[] | MirrorIndex): MirrorRow[] {
+  const index = Array.isArray(mirror) ? buildMirrorIndex(mirror) : mirror;
+  const rows = new Set<MirrorRow>();
+  for (const module of modules) {
+    const row = index.byPath.get(`${module.pr.repo}:${module.path}`);
+    if (row && row.module_source === undefined && moveTarget(row) !== null) rows.add(row);
+  }
+  return [...rows];
+}
+
+/** A module's singular `source_verification.corpus_citation_path`, or null (none, a plural list, or YAML that does not parse). */
+export function moduleSourceOf(rawYaml: string | null | undefined): string | null {
+  if (typeof rawYaml !== "string") return null;
+  try {
+    return moduleSourcePaths(parseRuleSpec(rawYaml)).singular;
+  } catch {
+    return null;
+  }
+}
+
 /** A module's citation: from the index, else what an earlier pass stored, else its path. */
 function outsideCitation(
   repo: string,
@@ -544,7 +640,7 @@ function outsideCitation(
   stored: string | null | undefined
 ): Pick<OutsideModule, "citation" | "citationFrom"> {
   const row = index.byPath.get(`${repo}:${path}`);
-  if (row) return { citation: row.citation_path, citationFrom: "index" };
+  if (row) return { citation: moduleCitation(row), citationFrom: "index" };
   if (stored) return { citation: stored, citationFrom: "stored" };
   return { citation: derivedCitation(repo, path), citationFrom: "path" };
 }
@@ -684,7 +780,8 @@ export function outsideModules(
     if (!pr.via) continue;
     const key = prKey(pr.repo, pr.via.number);
     const paths = carried.get(key) ?? new Set<string>();
-    for (const path of rulespecModulePaths(pr.files)) paths.add(path);
+    // A manifest-only PR's module is the one its side branch's PR or merge train merged.
+    for (const path of ownOrSignedModules(pr.files)) paths.add(path);
     carried.set(key, paths);
   }
   const stored = storedOutside(previous);
@@ -826,57 +923,135 @@ export function mainMerge(pr: ManifestPr): { mergedAt: string; mergeCommit: stri
   return via?.state === "MERGED" && via.mergedAt ? { mergedAt: via.mergedAt, mergeCommit: via.mergeCommit } : null;
 }
 
-/** What says which merged PR holds which module files, for carrierPrFor. */
+/** What says which merged PR holds which files, for carrierPrFor. */
 export interface CarrierIndex {
-  /** Module paths per merged PR ("repo#number"): read this pass, or stored as outside rows. */
+  /** Paths per merged PR ("repo#number"): its whole file list when this pass read it, else the modules its stored outside rows name. */
   files: Map<string, Set<string>>;
   /** The carrier an earlier pass recorded per closed PR ("repo#number"). */
   recorded: Map<string, number>;
+  /** Merged PRs whose whole file list this pass read (manifests too); stored rows name modules only. */
+  read: Set<string>;
 }
 
-export function carrierIndex(merged: MergedPr[], previous: Map<string, Partial<PipelineAttempt>>): CarrierIndex {
+/** A merged PR whose files a pass reads to check that it carried a closed signed PR (see carrierFileLookups). */
+export interface CarrierCandidate {
+  repo: string;
+  number: number;
+  /** Repo-relative paths it added or changed (deletions left out); undefined until read. */
+  files?: string[];
+}
+
+export function carrierIndex(
+  merged: MergedPr[],
+  previous: Map<string, Partial<PipelineAttempt>>,
+  candidates: CarrierCandidate[] = []
+): CarrierIndex {
   const files = new Map<string, Set<string>>();
   const add = (key: string, path: string) => files.set(key, (files.get(key) ?? new Set<string>()).add(path));
-  for (const pr of merged) for (const path of pr.files ?? []) add(prKey(pr.repo, pr.number), path);
+  const read = new Set<string>();
+  for (const pr of [...merged, ...candidates]) {
+    if (pr.files === undefined) continue;
+    const key = prKey(pr.repo, pr.number);
+    read.add(key);
+    files.set(key, files.get(key) ?? new Set<string>());
+    for (const path of pr.files) add(key, path);
+  }
   const recorded = new Map<string, number>();
   for (const row of previous.values()) {
     const parts = row.id ? outsideIdParts(row.id) : null;
-    if (parts) add(prKey(parts.repo, parts.number), parts.path);
-    else if (row.pr_repo && row.pr_number != null && row.pr_via_number != null && row.pr_via_state === "merged") {
+    if (parts) {
+      // A PR read this pass is known by that read alone, not by what an earlier pass stored.
+      const key = prKey(parts.repo, parts.number);
+      if (!read.has(key)) add(key, parts.path);
+    } else if (row.pr_repo && row.pr_number != null && row.pr_via_number != null && row.pr_via_state === "merged") {
       recorded.set(prKey(row.pr_repo, Number(row.pr_number)), Number(row.pr_via_number));
     }
   }
-  return { files, recorded };
+  return { files, recorded, read };
+}
+
+/** The signed manifests among a PR's files. */
+function signedManifests(files: string[]): string[] {
+  return files.filter((path) => MANIFEST_RE.test(path));
+}
+
+/** The PRs that mention a closed PR and could have carried it: merged into the same repo's default branch after it was opened. */
+function carrierRefs(pr: ManifestPr): CrossRefPr[] {
+  return (pr.crossRefs ?? []).filter(
+    (ref) =>
+      ref.repo === pr.repo &&
+      ref.state === "MERGED" &&
+      !!ref.mergedAt &&
+      ref.mergedAt >= pr.createdAt &&
+      !!ref.defaultBranch &&
+      ref.baseRefName === ref.defaultBranch
+  );
+}
+
+/**
+ * Merged PRs whose files to read before a closed signed PR can link to them:
+ * a PR that mentions it and whose stored outside rows name every module of
+ * it, but whose files this pass did not read. Stored rows name modules
+ * only, so they cannot show that the PR holds the signed manifests
+ * (rulespec-us#2046 holds block 7 unsigned). A closed PR an earlier pass
+ * linked, and one that holds no manifest, need no read.
+ */
+export function carrierFileLookups(
+  prs: ManifestPr[],
+  merged: MergedPr[],
+  previous: Map<string, Partial<PipelineAttempt>>
+): CarrierCandidate[] {
+  const index = carrierIndex(merged, previous);
+  const lookups = new Map<string, CarrierCandidate>();
+  for (const pr of prs) {
+    if (pr.state !== "CLOSED") continue;
+    const modules = ownOrSignedModules(pr.files);
+    if (modules.length === 0 || signedManifests(pr.files).length === 0) continue;
+    const refs = carrierRefs(pr);
+    const recorded = index.recorded.get(prKey(pr.repo, pr.number));
+    if (refs.some((ref) => ref.number === recorded)) continue;
+    for (const ref of refs) {
+      const key = prKey(ref.repo, ref.number);
+      if (index.read.has(key)) continue;
+      const held = index.files.get(key);
+      if (held && modules.every((path) => held.has(path))) lookups.set(key, { repo: ref.repo, number: ref.number });
+    }
+  }
+  return [...lookups.values()];
 }
 
 /**
  * The PR that carried a closed manifest PR's module to the default branch
  * (a merge train that replaces several PRs): one that mentions the closed
  * PR, merged into the default branch of the same repo after the PR was
- * opened, and holds every module file of it. The files come from this
- * pass's read, from the train's stored outside rows, or from the link an
- * earlier pass recorded (its outside rows are dropped once linked). A
- * mention alone is not enough: a PR can name another without replacing it.
+ * opened, and holds every module file of it. A mention alone is not
+ * enough: a PR can name another without replacing it.
+ * A promotion lane's signed PR holds only the manifest: the train must hold
+ * the module it stands for (rulespec-us#2204's block-7, carried by #2205).
+ * A new link to a train also needs the closed PR's signed manifests in the
+ * train's whole file list, read this pass: a candidate PR that holds the
+ * module unsigned (#2046) did not carry the signed encoding. The train's
+ * stored outside rows name modules only, so they never make a new link for
+ * a PR that holds a manifest (the collector reads the train's files first,
+ * see carrierFileLookups; a read that fails leaves the PR unlinked this
+ * pass). The link an earlier pass recorded is kept: the train's outside
+ * rows are dropped once linked. A closed PR with no manifest has nothing
+ * signed to check, so the module files decide, from either source.
  */
 export function carrierPrFor(pr: ManifestPr, index: CarrierIndex): BranchPr | null {
   if (pr.state !== "CLOSED" || !pr.crossRefs?.length) return null;
-  const modules = rulespecModulePaths(pr.files);
+  const modules = ownOrSignedModules(pr.files);
   if (modules.length === 0) return null;
+  const manifests = signedManifests(pr.files);
   const recorded = index.recorded.get(prKey(pr.repo, pr.number));
-  const carriers = pr.crossRefs
-    .filter(
-      (ref) =>
-        ref.repo === pr.repo &&
-        ref.state === "MERGED" &&
-        !!ref.mergedAt &&
-        ref.mergedAt >= pr.createdAt &&
-        !!ref.defaultBranch &&
-        ref.baseRefName === ref.defaultBranch
-    )
+  const carriers = carrierRefs(pr)
     .filter((ref) => {
       if (ref.number === recorded) return true;
-      const held = index.files.get(prKey(ref.repo, ref.number));
-      return !!held && modules.every((path) => held.has(path));
+      const key = prKey(ref.repo, ref.number);
+      const held = index.files.get(key);
+      if (!held || !modules.every((path) => held.has(path))) return false;
+      if (manifests.length === 0) return true;
+      return index.read.has(key) && manifests.every((path) => held.has(path));
     })
     .sort((a, b) => a.mergedAt!.localeCompare(b.mergedAt!));
   const carrier = carriers[0];
@@ -1301,7 +1476,7 @@ export function containmentQueries(
     const main = mainMerge(pr);
     const mergeCommit = main?.mergeCommit;
     if (!main || !mergeCommit) continue;
-    const modules = rulespecModulePaths(pr.files);
+    const modules = landedModulePaths(pr);
     const indexed = modules.every((path) => index.byPath.has(`${pr.repo}:${path}`));
     const key = prKey(pr.repo, pr.number);
     const synced = stored.has(key) && !unsynced.has(key);
@@ -1989,7 +2164,7 @@ function withPr(
   const { mirror, compile, compileAt: compileGeneratedAt, contains, validation, waivers, oracle } =
     context;
   const state = prState(pr);
-  const modules = rulespecModulePaths(pr.files);
+  const modules = landedModulePaths(pr);
   const targetsDefault = pr.defaultBranch ? pr.baseRefName === pr.defaultBranch : null;
   const attempt: PipelineAttempt = {
     ...base,

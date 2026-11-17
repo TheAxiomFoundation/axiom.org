@@ -52,13 +52,27 @@ generate `/axiom/v2/...` hrefs. The app root and marketing pages stay on v1.
   column): `pr:<repo>#<n>:<module path>`, one module file a PR merged into a
   rulespec-* default branch with no dispatch behind it (from 2026-07-22; each
   pass lists PRs merged since a day before the last pass and reads only new
-  PRs' files, older ones are carried in their rows), and
+  PRs' files, older ones are carried in their rows; its citation is the
+  module's declared singular source when that is its one
+  `value_citation_paths` entry and not the module's own citation or one
+  above it, else the index's `citation_path`), and
   `dep:<encoding_runs id>`, a module the encoder wrote inside another
   citation's run (a source or dependent lane), with `queue_ref`
   `dependent:<run id>`. Encoder records share no session with their run, so
   the host is the same repo family's run whose encode window holds the
   record, then the encoder version. Both go through the same joins after the
-  merge. Citation views (stages, ledger, journey, bundles' latest stage)
+  merge. A signed PR that holds only its manifest
+  (`.axiom/encoding-manifests/<module>.json`, the promotion lane's PR into a
+  candidate's branch) stands for that module once its side branch's PR or a
+  merge train that replaced it carried the module to main, at that PR's merge
+  commit; that PR then has no row of its own for the module. A new link to
+  a merge train needs the train's file list, read in that pass, to hold the
+  module and the signed manifest (`carrierFileLookups` names the trains to
+  read); stored rows name modules only and make no new link, and a link an
+  earlier pass recorded is kept. A citation's
+  status comes from its newest attempt; attempts at the same time (modules
+  of one PR) give the least advanced stage.
+  Citation views (stages, ledger, journey, bundles' latest stage)
   include them; run statistics (flow, attempts, versions, the weekly runs,
   approvals) count dispatches only, and cost adds the dependent records.
   `scripts/collect-encoding-pipeline.mjs` rebuilds it every 30 minutes from
