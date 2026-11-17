@@ -1,11 +1,15 @@
 import { supabaseCorpus, type Rule } from "@/lib/supabase";
 import { naturalCompare } from "@/lib/natural-sort";
-import { normalizeCitationPathInput } from "@/lib/axiom/citation-path";
+import {
+  enDashCitationSegments,
+  normalizeCitationPathInput,
+} from "@/lib/axiom/citation-path";
 
 /**
  * Outcome of resolving a citation_path against ``corpus.current_provisions``.
  *
- * - ``exact``: the full path exists as an atomic rule.
+ * - ``exact``: the full path exists as an atomic rule, as typed or in
+ *   its en-dash spelling (see ``resolveCitationPath``).
  * - ``ancestor``: the full path does not exist, but some prefix does;
  *   ``rule`` is the deepest ingested ancestor and ``missingTail``
  *   lists the segments below it that aren't in the axiom yet.
@@ -22,8 +26,16 @@ export type ResolveMatch = "exact" | "ancestor" | "none";
 export interface ResolveResult {
   match: ResolveMatch;
   rule: Rule | null;
+  /**
+   * Segments below ``rule`` that aren't ingested, spelled as in the path
+   * that matched: en dashes when the en-dash spelling matched.
+   */
   missingTail: string[];
-  /** The input path after normalisation (lower-cased, no leading slash). */
+  /**
+   * The input path after normalisation (structural segments lower-cased,
+   * no leading slash), spelled as typed. ``rule.citation_path`` gives the
+   * spelling that matched.
+   */
   citationPath: string;
 }
 
@@ -56,6 +68,15 @@ export function citationPathPrefixes(path: string): string[] {
  * Resolve a citation_path against the ingested axiom. Single DB query
  * fetches every possible ancestor; we pick the deepest match.
  *
+ * The corpus stores USC lettered sections with an en dash
+ * (``us/statute/42/1395w–113``), but people and citation tools type a
+ * hyphen. When the path has a hyphen after its document type, the same
+ * query also fetches every prefix of its en-dash spelling
+ * (``enDashCitationSegments``, the swap the section page retries with):
+ * the typed prefixes deepest-first, then the en-dash prefixes not
+ * already listed. The deeper match wins; at equal depth the path as
+ * typed wins. A path with no such hyphen queries its own prefixes only.
+ *
  * This is the load-bearing primitive for the command palette and
  * direct-URL entry: every wayfinding path ultimately resolves an
  * input to an atomic ``rules`` row here.
@@ -78,10 +99,21 @@ export async function resolveCitationPath(
     return { match: "none", rule: null, missingTail: [], citationPath };
   }
 
+  // Both spellings have the same number of segments, so their prefixes
+  // line up depth for depth: ``dashPrefixes[i]`` is ``prefixes[i]``
+  // respelled.
+  const dashPath = enDashCitationSegments(citationPath.split("/")).join("/");
+  const dashPrefixes =
+    dashPath === citationPath ? [] : citationPathPrefixes(dashPath);
+  const queried = [
+    ...prefixes,
+    ...dashPrefixes.filter((prefix) => !prefixes.includes(prefix)),
+  ];
+
   const { data, error } = await supabaseCorpus
     .from("current_provisions")
     .select("*")
-    .in("citation_path", prefixes);
+    .in("citation_path", queried);
 
   if (error || !data || data.length === 0) {
     return { match: "none", rule: null, missingTail: [], citationPath };
@@ -92,16 +124,22 @@ export async function resolveCitationPath(
   for (const row of data as Rule[]) {
     if (row.citation_path) byPath.set(row.citation_path, row);
   }
-  for (const prefix of prefixes) {
-    const hit = byPath.get(prefix);
-    if (hit) {
-      const isExact = prefix === citationPath;
+  // Walk deepest-first; at each depth try the path as typed, then its
+  // en-dash spelling.
+  for (let i = 0; i < prefixes.length; i++) {
+    const candidates: Array<[prefix: string, spelled: string]> = [
+      [prefixes[i], citationPath],
+    ];
+    if (dashPrefixes.length > 0) {
+      candidates.push([dashPrefixes[i], dashPath]);
+    }
+    for (const [prefix, spelled] of candidates) {
+      const hit = byPath.get(prefix);
+      if (!hit) continue;
+      const isExact = prefix === spelled;
       const missingTail = isExact
         ? []
-        : citationPath
-            .slice(prefix.length)
-            .split("/")
-            .filter(Boolean);
+        : spelled.slice(prefix.length).split("/").filter(Boolean);
       return {
         match: isExact ? "exact" : "ancestor",
         rule: hit,

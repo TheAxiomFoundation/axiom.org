@@ -146,3 +146,160 @@ describe("resolveCitationPath", () => {
     expect(out.match).toBe("none");
   });
 });
+
+describe("resolveCitationPath with a hyphen typed for an en dash", () => {
+  // The corpus stores lettered US Code sections with an en dash
+  // (us/statute/42/1395w–113); people and citation tools type a hyphen.
+  const EN = String.fromCharCode(0x2013);
+
+  type Row = { id: string; citation_path: string };
+
+  // Answer only the paths the query asked for, like the real ``.in()``.
+  function corpus(rows: Row[]) {
+    mockIn.mockImplementation((_column: string, paths: string[]) =>
+      Promise.resolve({
+        data: rows.filter((row) => paths.includes(row.citation_path)),
+        error: null,
+      })
+    );
+  }
+
+  function queriedPaths(): string[] {
+    expect(mockIn).toHaveBeenCalledTimes(1);
+    return mockIn.mock.calls[0][1] as string[];
+  }
+
+  // A block body: ``mockReset`` returns the mock, and vitest would run
+  // a function returned from ``beforeEach`` as a teardown hook.
+  beforeEach(() => {
+    mockIn.mockReset();
+  });
+
+  it("matches the en-dash row exactly and keeps the path as typed", async () => {
+    corpus([
+      { id: "title", citation_path: "us/statute/42" },
+      { id: "section", citation_path: `us/statute/42/1395w${EN}113` },
+    ]);
+    const out = await resolveCitationPath("us/statute/42/1395w-113");
+    expect(out.match).toBe("exact");
+    expect(out.rule?.id).toBe("section");
+    expect(out.rule?.citation_path).toBe(`us/statute/42/1395w${EN}113`);
+    expect(out.missingTail).toEqual([]);
+    expect(out.citationPath).toBe("us/statute/42/1395w-113");
+  });
+
+  it("queries the prefixes of both spellings in one call", async () => {
+    corpus([]);
+    await resolveCitationPath("us/statute/42/1395w-113");
+    expect(queriedPaths()).toEqual([
+      "us/statute/42/1395w-113",
+      "us/statute/42",
+      "us/statute",
+      "us",
+      `us/statute/42/1395w${EN}113`,
+    ]);
+  });
+
+  it("prefers the path as typed when both spellings exist at the same depth", async () => {
+    corpus([
+      { id: "dash", citation_path: `us/statute/42/1395w${EN}113` },
+      { id: "typed", citation_path: "us/statute/42/1395w-113" },
+    ]);
+    const out = await resolveCitationPath("us/statute/42/1395w-113");
+    expect(out.match).toBe("exact");
+    expect(out.rule?.id).toBe("typed");
+    expect(out.missingTail).toEqual([]);
+  });
+
+  it("takes a deeper en-dash match over a shallower match as typed", async () => {
+    corpus([
+      { id: "typed-section", citation_path: "us/statute/42/1395w-113" },
+      { id: "dash-sub", citation_path: `us/statute/42/1395w${EN}113/a` },
+    ]);
+    const out = await resolveCitationPath("us/statute/42/1395w-113/a");
+    expect(out.match).toBe("exact");
+    expect(out.rule?.id).toBe("dash-sub");
+    expect(out.missingTail).toEqual([]);
+    expect(out.citationPath).toBe("us/statute/42/1395w-113/a");
+  });
+
+  it("takes a deeper en-dash section over the title as an ancestor", async () => {
+    corpus([
+      { id: "title", citation_path: "us/statute/42" },
+      { id: "section", citation_path: `us/statute/42/1395w${EN}113` },
+    ]);
+    const out = await resolveCitationPath("us/statute/42/1395w-113/a/1");
+    expect(out.match).toBe("ancestor");
+    expect(out.rule?.id).toBe("section");
+    expect(out.missingTail).toEqual(["a", "1"]);
+  });
+
+  it("takes a deeper match as typed over a shallower en-dash match", async () => {
+    corpus([
+      { id: "dash-section", citation_path: `us/statute/42/1395w${EN}113` },
+      { id: "typed-sub", citation_path: "us/statute/42/1395w-113/a" },
+    ]);
+    const out = await resolveCitationPath("us/statute/42/1395w-113/a");
+    expect(out.match).toBe("exact");
+    expect(out.rule?.id).toBe("typed-sub");
+  });
+
+  it("never changes the hyphens in the jurisdiction slug", async () => {
+    corpus([
+      { id: "typed", citation_path: "us-mt/statute/15-1-1" },
+      { id: "dash", citation_path: `us-mt/statute/15${EN}1${EN}1` },
+    ]);
+    const out = await resolveCitationPath("us-mt/statute/15-1-1");
+    expect(out.match).toBe("exact");
+    expect(out.rule?.id).toBe("typed");
+    const paths = queriedPaths();
+    expect(paths).toEqual([
+      "us-mt/statute/15-1-1",
+      "us-mt/statute",
+      "us-mt",
+      `us-mt/statute/15${EN}1${EN}1`,
+    ]);
+    expect(paths.some((path) => path.includes(`us${EN}mt`))).toBe(false);
+  });
+
+  it("queries only the path as typed when the slug holds its only hyphen", async () => {
+    corpus([{ id: "title", citation_path: "us-mt/statute/15" }]);
+    const out = await resolveCitationPath("us-mt/statute/15");
+    expect(out.match).toBe("exact");
+    expect(queriedPaths()).toEqual(["us-mt/statute/15", "us-mt/statute", "us-mt"]);
+  });
+
+  it("issues one query over the typed prefixes for a path with no hyphen", async () => {
+    corpus([{ id: "section", citation_path: "us/statute/26/32" }]);
+    const out = await resolveCitationPath("us/statute/26/32/b/1");
+    expect(out.match).toBe("ancestor");
+    expect(queriedPaths()).toEqual([
+      "us/statute/26/32/b/1",
+      "us/statute/26/32/b",
+      "us/statute/26/32",
+      "us/statute/26",
+      "us/statute",
+      "us",
+    ]);
+  });
+
+  it("gives the missing tail in the spelling of the path that matched", async () => {
+    corpus([
+      { id: "title", citation_path: "us/statute/42" },
+      { id: "section", citation_path: `us/statute/42/1395w${EN}113` },
+    ]);
+    const out = await resolveCitationPath("us/statute/42/1395w-113/a/1-b");
+    expect(out.match).toBe("ancestor");
+    expect(out.rule?.id).toBe("section");
+    expect(out.missingTail).toEqual(["a", `1${EN}b`]);
+    expect(out.citationPath).toBe("us/statute/42/1395w-113/a/1-b");
+  });
+
+  it("keeps the tail as typed when neither spelling of the section is ingested", async () => {
+    corpus([{ id: "title", citation_path: "us/statute/42" }]);
+    const out = await resolveCitationPath("us/statute/42/1395w-113");
+    expect(out.match).toBe("ancestor");
+    expect(out.rule?.id).toBe("title");
+    expect(out.missingTail).toEqual(["1395w-113"]);
+  });
+});

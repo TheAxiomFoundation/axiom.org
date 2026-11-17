@@ -11,6 +11,7 @@ import {
   buildBreadcrumbs,
   type BreadcrumbItem,
 } from "@/lib/tree-data";
+import { enDashCitationSegments } from "@/lib/axiom/citation-path";
 import { getProvisionByCitationPath } from "@/lib/axiom/navigation-index/read";
 import type { NavigationNodeRow } from "@/lib/axiom/navigation-index/types";
 import { parseRuleSpec } from "@/lib/axiom/rulespec/doc";
@@ -1081,12 +1082,7 @@ export async function resolveSection(
     // (us/statute/42/1396u–1) but every human types a hyphen. Retry
     // with hyphens swapped in the rule segments (never the
     // jurisdiction slug) before giving up.
-    const dashPath = [
-      slug,
-      ...ruleSegments.map((segment, index) =>
-        index === 0 ? segment : segment.replace(/-/g, "–"),
-      ),
-    ].join("/");
+    const dashPath = enDashCitationSegments([slug, ...ruleSegments]).join("/");
     if (dashPath !== requestedPath) {
       root = await getProvisionByCitationPath(dashPath).catch(() => null);
       if (root) {
