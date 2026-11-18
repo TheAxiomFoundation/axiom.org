@@ -101,6 +101,7 @@ body:has(.has-workspace) .nav-bar { display: none; }
 .graph-viewer-root.has-workspace .scenario-field input, .graph-viewer-root.has-workspace .scenario-field select { min-height: 40px; }
 .graph-viewer-root.has-workspace .run-actions { max-width: 360px; margin: 20px 0; }
 .workspace-stale { padding: 14px 0; color: var(--color-accent); font-size: 14px; }
+.workspace-dropped { margin: 0 0 20px; color: var(--color-accent); font-size: 14px; }
 @media (max-width: 900px) {
   .graph-viewer-root.has-workspace .viewer-panel { padding: 16px; }
   .workspace-neighborhood { gap: 24px; grid-template-columns: minmax(0, 1fr) minmax(160px, .8fr) minmax(0, 1fr); }

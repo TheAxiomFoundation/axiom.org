@@ -349,11 +349,9 @@ export function GraphViewerApp({
   // flow sweep, after which the execution layer holds still.
   const [planeFresh, setPlaneFresh] = useState(false);
   const [selectedLevers, setSelectedLevers] = useState<string[] | null>(null);
-  // The runtime's input registry: every settable input, its dtype
-  // and default — the single source of truth for answer controls.
-  // `options` and labels come from explicit enum metadata; a text
-  // slot's `textOptions` are the values its formulas distinguish.
-  const [inputMeta, setInputMeta] = useState<AnswerMeta>({ dtypes: {}, defaults: {} });
+  // A package's input registry, from fetchInputMeta; `inputMeta` (below)
+  // is the registry the answer controls read.
+  const [packageInputMeta, setPackageInputMeta] = useState<AnswerMeta>({ dtypes: {}, defaults: {} });
   // Bumped by Retry buttons — re-fires the program load effect after
   // a transient graph/registry failure.
   const [reloadNonce, setReloadNonce] = useState(0);
@@ -806,6 +804,23 @@ export function GraphViewerApp({
     snap_gross_monthly_earned_income: 1200,
     household_shelter_costs_incurred: 900,
   };
+  // The runtime's input registry: every settable input, its dtype
+  // and default — the single source of truth for answer controls.
+  // `options` and labels come from explicit enum metadata; a text
+  // slot's `textOptions` are the values its formulas distinguish.
+  // No package registry backs a composed view. Until the root catalog
+  // arrives, the graph's own input census (name + sample) stands in for
+  // the controls; then the catalog decides which inputs exist, with their
+  // types, choices and presentation. Derived in render, not in an effect,
+  // so the questions, their controls and a run's fit check change in the
+  // same commit as the catalog's arrival makes Run available.
+  const composeInputMeta = useMemo<AnswerMeta | null>(() => {
+    if (!composeFocus) return null;
+    if (!graph) return { dtypes: {}, defaults: {} };
+    const census = censusAnswerMeta(graph.inputs);
+    return rootSlots ? catalogAnswerMeta(rootSlots, census) : census;
+  }, [composeFocus, graph, rootSlots]);
+  const inputMeta = composeInputMeta ?? packageInputMeta;
   // Every input the runtime can ingest, with its control type — the
   // registry is the truth; the graph supplies canvas identity.
   const inputCatalog = useMemo(() => {
@@ -1144,7 +1159,7 @@ export function GraphViewerApp({
     setInstanceItems({});
     setResultsStale(false);
     ranScenarioKey.current = null;
-    setInputMeta({ dtypes: {}, defaults: {} });
+    setPackageInputMeta({ dtypes: {}, defaults: {} });
     setLensTrail([]);
     savedSelection.current = null;
     restoreFoldedRef.current = null;
@@ -1593,7 +1608,7 @@ export function GraphViewerApp({
     setLoading(true);
     setError(null);
     void fetchInputMeta(program).then((meta) => {
-      if (!cancelled) setInputMeta(meta);
+      if (!cancelled) setPackageInputMeta(meta);
     });
     fetchProgramGraph(program)
       .then((nextGraph) => {
@@ -1730,16 +1745,6 @@ export function GraphViewerApp({
     };
     // Retry after a failed load refetches the graph (reloadNonce).
   }, [composeFocus, reloadNonce]);
-
-  // No package registry backs a composed view. Until the root catalog
-  // arrives, the graph's own input census (name + sample) stands in for
-  // the controls; then the catalog decides which inputs exist, with their
-  // types, choices and presentation.
-  useEffect(() => {
-    if (!composeFocus || !graph) return;
-    const census = censusAnswerMeta(graph.inputs);
-    setInputMeta(rootSlots ? catalogAnswerMeta(rootSlots, census) : census);
-  }, [composeFocus, graph, rootSlots]);
 
   // Compilation capability is independent of whether an empty household can
   // produce a result. The input catalog compiles without executing a scenario.
@@ -2592,6 +2597,7 @@ export function GraphViewerApp({
             members={extraMembers}
             roles={composeFocus ? (runResult?.submittedRoles ?? (rootRelations.mode === "explicit" ? rolesForRun(rootRelations.relations, relationRoles, ["person_1", ...extraMembers], scopeInstanceKeys) : undefined)) : undefined}
             run={runResult}
+            runNote={runResult?.dropped?.length ? droppedAnswersNote(runResult.dropped) : null}
             renderInput={(id, selectedMember) => {
               const input = graph.inputs.find(item => item.legalId === id);
               if (!input || !Object.hasOwn(inputMeta.dtypes, input.name)) return null;
@@ -3592,8 +3598,8 @@ function droppedAnswerLabel(entry: string): string {
   return split < 0 ? humanize(entry) : `${humanize(entry.slice(split + 1))} (${memberLabel(entry.slice(0, split))})`;
 }
 
-/** The results sheet's note on the answers a run did not use: the engine
- *  read each one's default instead. */
+/** The note on the answers a run did not use, in the results sheet and the
+ *  Relationships view: the engine read each one's default instead. */
 function droppedAnswersNote(dropped: string[]): string {
   const one = dropped.length === 1;
   return `This run did not use your ${one ? "answer" : "answers"} for ${dropped.map(droppedAnswerLabel).join(", ")}; the result uses ${one ? "its default" : "their defaults"}.`;

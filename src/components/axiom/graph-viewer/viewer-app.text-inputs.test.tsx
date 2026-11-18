@@ -146,13 +146,15 @@ const tracedInput = (name: string) => {
   return status?.children?.find((child) => child.legalId === fixture.id(name));
 };
 
-/** Answers every run with `outputs` and records each request body. */
-function stubRuns(outputs: Array<Record<string, unknown>>) {
+/** Answers run i with `outputs[i]`, plus any other fields of the proxy's
+ *  reply in `extras[i]`, and records each request body. */
+function stubRuns(outputs: Array<Record<string, unknown>>, extras: Array<Record<string, unknown>> = []) {
   const requests: Array<Record<string, unknown>> = [];
   vi.stubGlobal("fetch", (url: string, init?: RequestInit) => {
     if (url === "/api/axiom/runtime/calculate") {
       requests.push(JSON.parse(String(init?.body)));
-      return Promise.resolve(Response.json({ outputs: outputs[requests.length - 1] ?? {}, trace: [] }));
+      const run = requests.length - 1;
+      return Promise.resolve(Response.json({ outputs: outputs[run] ?? {}, trace: [], ...extras[run] }));
     }
     if (url.startsWith("/api/axiom/rulespec?")) return Promise.resolve(Response.json({ content: "" }));
     throw new Error(`Unexpected request: ${url}`);
@@ -246,7 +248,35 @@ it("drops a number typed into the zone's census field once the catalog types the
   expect(await screen.findByText(/^1 household inputs answered/)).toBeTruthy();
 });
 
-it("never sends the census field's number from the commit that first shows the zone as a select", async () => {
+/** Presses Relationships' "Run household" in the commit that first enables
+ *  it, once `deliver` hands over the catalog, and reports what that commit
+ *  showed. The catalog arrives while waitFor holds act off: React then
+ *  commits each render in its own task, as in a browser, so the press
+ *  lands before any effect of that commit has run. Inside act, React would
+ *  flush every commit, the effects' included, before the observer ran. */
+async function pressRunAsCatalogArrives(deliver: () => void, requests: unknown[]) {
+  expect(screen.queryByRole("button", { name: "Run household" })).toBeNull();
+  let shown: { questions: string[]; zone: "select" | "number" | null } | null = null;
+  const observer = new MutationObserver(() => {
+    const run = screen.queryByRole("button", { name: "Run household" }) as HTMLButtonElement | null;
+    if (shown || !run || run.disabled) return;
+    shown = {
+      questions: relationshipQuestions().map((text) => text.toLowerCase()),
+      zone: screen.queryByRole("combobox", { name: /supermarket zone/i })
+        ? "select"
+        : screen.queryByRole("spinbutton", { name: /supermarket zone/i }) ? "number" : null,
+    };
+    run.click();
+  });
+  observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+  const sent = waitFor(() => expect(requests).toHaveLength(1));
+  deliver();
+  await sent;
+  observer.disconnect();
+  return shown!;
+}
+
+it("asks the catalog's questions from the first commit that enables Run, and never sends the census field's number", async () => {
   const requests = stubRuns([{}]);
   let deliver!: (value: RootCatalog) => void;
   vi.mocked(fetchRootCatalog).mockImplementation(() => new Promise((resolve) => { deliver = resolve; }));
@@ -254,23 +284,24 @@ it("never sends the census field's number from the commit that first shows the z
   await openActivityStatus();
   fireEvent.change(await screen.findByRole("spinbutton", { name: /supermarket zone/i }), { target: { value: "5" } });
   fireEvent.change(screen.getByRole("spinbutton", { name: /supermarket gfa/i }), { target: { value: "2000" } });
-  // Press Run as the select appears: the prune has not run yet.
-  let pressed = false;
-  const observer = new MutationObserver(() => {
-    const run = screen.queryByRole("button", { name: "Run household" }) as HTMLButtonElement | null;
-    if (pressed || !run || run.disabled || !screen.queryByRole("combobox", { name: /supermarket zone/i })) return;
-    pressed = true;
-    run.click();
-  });
-  observer.observe(document.body, { childList: true, subtree: true, attributes: true });
-  // Deliver while waitFor holds act off: React then commits each render in
-  // its own task, as in a browser, and the observer sees the commit that
-  // first shows the select. Inside act, React would flush every commit,
-  // the prune's included, before the observer ran.
-  const sent = waitFor(() => expect(requests).toHaveLength(1));
-  deliver(wellingtonCatalog);
-  await sent;
-  observer.disconnect();
+  const shown = await pressRunAsCatalogArrives(() => deliver(wellingtonCatalog), requests);
+  // The commit that enables Run already asks the catalog's two questions,
+  // with the zone as a select.
+  expect(shown).toEqual({ questions: ["wcc supermarket zone", "wcc proposed supermarket gfa m2"], zone: "select" });
+  expect(requests[0]!.facts).toEqual({ wcc_proposed_supermarket_gfa_m2: 2000 });
+});
+
+it("never sends a phantom question's answer, even from the first commit that enables Run", async () => {
+  const requests = stubRuns([{}]);
+  let deliver!: (value: RootCatalog) => void;
+  vi.mocked(fetchRootCatalog).mockImplementation(() => new Promise((resolve) => { deliver = resolve; }));
+  render(<GraphViewerApp />);
+  await openActivityStatus();
+  // Until the catalog arrives, the census asks the phantom inputs too.
+  fireEvent.change(await screen.findByRole("spinbutton", { name: /^complying/i }), { target: { value: "1" } });
+  fireEvent.change(screen.getByRole("spinbutton", { name: /supermarket gfa/i }), { target: { value: "2000" } });
+  const shown = await pressRunAsCatalogArrives(() => deliver(wellingtonCatalog), requests);
+  expect(shown.questions).toEqual(["wcc supermarket zone", "wcc proposed supermarket gfa m2"]);
   expect(requests[0]!.facts).toEqual({ wcc_proposed_supermarket_gfa_m2: 2000 });
 });
 
@@ -284,7 +315,11 @@ it("never sends an added person's number for the zone once a re-read catalog typ
       slot.name === "wcc_supermarket_zone" ? { name: slot.name, dtype: "decimal", default: 0, entity: "Person" } : slot,
     ),
   };
-  vi.mocked(fetchRootCatalog).mockReset().mockResolvedValueOnce(numericZone).mockResolvedValue(wellingtonCatalog);
+  let reread!: Promise<RootCatalog>;
+  let deliver!: (value: RootCatalog) => void;
+  vi.mocked(fetchRootCatalog).mockReset().mockResolvedValueOnce(numericZone).mockImplementationOnce(() =>
+    (reread = new Promise((resolve) => { deliver = resolve; })),
+  );
   const requests: Array<Record<string, unknown>> = [];
   vi.stubGlobal("fetch", (url: string, init?: RequestInit) => {
     if (url === "/api/axiom/runtime/calculate") {
@@ -304,19 +339,29 @@ it("never sends an added person's number for the zone once a re-read catalog typ
   fireEvent.click(screen.getByRole("button", { name: "Person 2" }));
   fireEvent.change(screen.getByRole("spinbutton", { name: /supermarket zone/i }), { target: { value: "5" } });
   fireEvent.change(screen.getByRole("spinbutton", { name: /supermarket gfa/i }), { target: { value: "2000" } });
-  // Press Run in the very commit that first shows the zone as a select, as
-  // a person would on seeing it: the state still holds the number then,
-  // because the prune runs in an effect after that commit.
+  fireEvent.click(screen.getByRole("button", { name: "Run scenario" }));
+  // The refusal sends the app back for the catalog, and Run stays available.
+  await waitFor(() => expect(fetchRootCatalog).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect((screen.getByRole("button", { name: "Run scenario" }) as HTMLButtonElement).disabled).toBe(false));
+  // Press Run in the first commit after the re-read lands, before any
+  // effect of that commit runs; the state still holds the number then. The
+  // app's handler on the re-read runs before this one, so `landed` turns
+  // true once the app has stored the new catalog.
+  let landed = false;
+  void reread.then(() => { landed = true; });
   let pressed = false;
   const observer = new MutationObserver(() => {
     const run = screen.queryByRole("button", { name: "Run scenario" }) as HTMLButtonElement | null;
-    if (pressed || !run || run.disabled || !screen.queryByRole("combobox", { name: /supermarket zone/i })) return;
+    if (!landed || pressed || !run || run.disabled) return;
     pressed = true;
     run.click();
   });
   observer.observe(document.body, { childList: true, subtree: true, attributes: true });
-  fireEvent.click(screen.getByRole("button", { name: "Run scenario" }));
-  await waitFor(() => expect(requests).toHaveLength(2));
+  // As in pressRunAsCatalogArrives, waitFor holds act off while the
+  // catalog arrives.
+  const sent = waitFor(() => expect(requests).toHaveLength(2));
+  deliver(wellingtonCatalog);
+  await sent;
   observer.disconnect();
   expect(requests[0]!.people).toEqual({ person_2: { wcc_supermarket_zone: 5, wcc_proposed_supermarket_gfa_m2: 2000 } });
   expect(requests[1]!.people).toEqual({ person_2: { wcc_proposed_supermarket_gfa_m2: 2000 } });
@@ -353,21 +398,13 @@ it("keeps the zone in the results strip when Other… opens its field", async ()
   expect(requests[1]!.facts).toEqual({ wcc_supermarket_zone: "OSZ", wcc_proposed_supermarket_gfa_m2: 2000 });
 });
 
+// The proxy holds back a text answer its fresh catalog no longer types as
+// text (a runtime deploy between the page's catalog read and the run).
+const zoneHeldBack = { applied: ["wcc_proposed_supermarket_gfa_m2"], dropped: ["wcc_supermarket_zone"] };
+const zoneNote = "This run did not use your answer for Wcc Supermarket Zone; the result uses its default.";
+
 it("names each answer a run did not use, and does not claim it", async () => {
-  // The proxy holds back a text answer its fresh catalog no longer types
-  // as text (a runtime deploy between the page's catalog read and the run).
-  vi.stubGlobal("fetch", (url: string) => {
-    if (url === "/api/axiom/runtime/calculate") {
-      return Promise.resolve(Response.json({
-        outputs: { wcc_supermarket_activity_status: "Out of scope", wcc_supermarket_permitted: false },
-        trace: [],
-        applied: ["wcc_proposed_supermarket_gfa_m2"],
-        dropped: ["wcc_supermarket_zone"],
-      }));
-    }
-    if (url.startsWith("/api/axiom/rulespec?")) return Promise.resolve(Response.json({ content: "" }));
-    throw new Error(`Unexpected request: ${url}`);
-  });
+  stubRuns([{ wcc_supermarket_activity_status: "Out of scope", wcc_supermarket_permitted: false }], [zoneHeldBack]);
   render(<GraphViewerApp />);
   fireEvent.click(await screen.findByRole("button", { name: "Run" }));
   fireEvent.change(await screen.findByRole("combobox", { name: /supermarket zone/i }), { target: { value: "MUZ" } });
@@ -375,14 +412,36 @@ it("names each answer a run did not use, and does not claim it", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Run scenario" }));
   // The results sheet carries the note under its heading, on the Run view
   // and the Graph view.
-  const note = "This run did not use your answer for Wcc Supermarket Zone; the result uses its default.";
   const underHeading = (element: HTMLElement) => element.previousElementSibling?.matches(".results-sheet > .results-head") ?? false;
-  expect(underHeading(await screen.findByText(note))).toBe(true);
+  expect(underHeading(await screen.findByText(zoneNote))).toBe(true);
   fireEvent.click(screen.getByRole("button", { name: "Graph" }));
-  expect(underHeading(screen.getByText(note))).toBe(true);
+  expect(underHeading(screen.getByText(zoneNote))).toBe(true);
   // The canvas shows the floor area the run used, and the zone's default.
   expect(tracedInput("wcc_proposed_supermarket_gfa_m2")).toMatchObject({ value: 2000, inputSource: "user" });
   expect(tracedInput("wcc_supermarket_zone")).toMatchObject({ value: null, inputSource: "default" });
+});
+
+it("names an answer a run from the Relationships view did not use, until a run uses them all", async () => {
+  stubRuns(
+    [
+      { wcc_supermarket_activity_status: "Out of scope", wcc_supermarket_permitted: false },
+      { wcc_supermarket_activity_status: "Restricted Discretionary", wcc_supermarket_permitted: false },
+    ],
+    [zoneHeldBack, { applied: ["wcc_supermarket_zone", "wcc_proposed_supermarket_gfa_m2"], dropped: [] }],
+  );
+  render(<GraphViewerApp />);
+  await openActivityStatus();
+  fireEvent.change(await screen.findByRole("combobox", { name: /supermarket zone/i }), { target: { value: "MUZ" } });
+  fireEvent.change(screen.getByRole("spinbutton", { name: /supermarket gfa/i }), { target: { value: "2000" } });
+  fireEvent.click(screen.getByRole("button", { name: "Run household" }));
+  // The run keeps the user on Relationships, which says so under its heading.
+  const note = await screen.findByText(zoneNote);
+  expect(note.previousElementSibling?.matches(".workspace-structure > .workspace-section-heading")).toBe(true);
+  // A run that uses every answer takes the note away.
+  fireEvent.click(screen.getByRole("button", { name: "Run again" }));
+  const status = await screen.findByRole("region", { name: "Result for Wcc Supermarket Activity Status" });
+  await waitFor(() => expect(status.textContent).toMatch(/Restricted Discretionary/));
+  expect(document.querySelector(".workspace-dropped")).toBeNull();
 });
 
 it("answers the zone on a canvas card", async () => {
