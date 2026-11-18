@@ -51,20 +51,18 @@ function stripAxiomPrefix(pathname: string): string {
 // The app's own routes that are not citation paths and are public at
 // their bare path on every host -- the encoded-rules index links to
 // /encoded/<citation> -- rewritten to their /axiom mount like citation
-// paths are. /ops is not among them: on the marketing host /ops is the
-// marketing page, so the app's ops dashboard stays at /axiom/ops.
+// paths are. /ops is not among them: it is a site page, served at /ops.
 const APP_BARE_ROUTE_RE = /^\/(?:encoded|search)(?:\/|$)/;
 
 // The one public URL on the canonical host for a path that reached the
 // app under its old host, its /axiom mount or a trailing-slash alias:
-// the root and the graph are /app, the ops dashboard is /axiom/ops, and
-// everything else -- a citation path, an index link, a marketing page --
+// the root and the graph are /app, the ops dashboard is /ops (its old
+// /axiom/ops mount redirects there), and everything else -- a citation path, an index link, a marketing page --
 // is the bare path itself.
 function canonicalSitePath(pathname: string): string {
   const trimmed = pathname.replace(/\/+$/, "") || "/";
   const bare = isInternalAxiomPath(trimmed) ? stripAxiomPrefix(trimmed) : trimmed;
   if (bare === "/" || bare === "/graph" || bare === "/app") return "/app";
-  if (bare === "/ops") return "/axiom/ops";
   return bare;
 }
 

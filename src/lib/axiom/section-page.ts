@@ -11,6 +11,7 @@ import {
   buildBreadcrumbs,
   type BreadcrumbItem,
 } from "@/lib/tree-data";
+import { enDashCitationSegments } from "@/lib/axiom/citation-path";
 import { getProvisionByCitationPath } from "@/lib/axiom/navigation-index/read";
 import type { NavigationNodeRow } from "@/lib/axiom/navigation-index/types";
 import { parseRuleSpec } from "@/lib/axiom/rulespec/doc";
@@ -115,10 +116,12 @@ export interface SectionPageData {
   programs: ProvisionProgramCoverage[];
   /** Rule name → repo file path (the file half of its legal ID). */
   ruleFiles: Record<string, string>;
-  /** Modules with materialized rules grounded in this provision. */
+  /** Modules with materialized rules that cite this provision. */
   citedByFiles: SectionEncoding["citedByFiles"];
-  /** Citing rules not shown because the reverse lookup is bounded. */
+  /** Citing rules (or, from the fallback, modules) not shown because the
+   *  reverse lookup is bounded. */
   citedByOverflow: number;
+  citedByOverflowUnit: SectionEncoding["citedByOverflowUnit"];
   /**
    * Set when the requested path was deeper than the ingested corpus
    * row (e.g. …/26/32/a on a section-granular corpus): the section
@@ -1079,12 +1082,7 @@ export async function resolveSection(
     // (us/statute/42/1396u–1) but every human types a hyphen. Retry
     // with hyphens swapped in the rule segments (never the
     // jurisdiction slug) before giving up.
-    const dashPath = [
-      slug,
-      ...ruleSegments.map((segment, index) =>
-        index === 0 ? segment : segment.replace(/-/g, "–"),
-      ),
-    ].join("/");
+    const dashPath = enDashCitationSegments([slug, ...ruleSegments]).join("/");
     if (dashPath !== requestedPath) {
       root = await getProvisionByCitationPath(dashPath).catch(() => null);
       if (root) {
@@ -1336,6 +1334,7 @@ async function getSectionEncodingAcrossPaths(
       ruleFiles: {},
       citedByFiles: [],
       citedByOverflow: 0,
+      citedByOverflowUnit: "rules" as const,
     }));
     if (hasEncodingContent(section)) return section;
     first = first ?? section;
@@ -1348,6 +1347,7 @@ async function getSectionEncodingAcrossPaths(
       ruleFiles: {},
       citedByFiles: [],
       citedByOverflow: 0,
+      citedByOverflowUnit: "rules" as const,
     }
   );
 }
@@ -1370,6 +1370,7 @@ export async function getSectionPageDataFromResolution(
         ruleFiles: {},
         citedByFiles: [],
         citedByOverflow: 0,
+        citedByOverflowUnit: "rules" as const,
       })),
       getProvisionCoverage(citationPath).catch(
         () => [] as ProvisionProgramCoverage[],
@@ -1477,6 +1478,7 @@ export async function getSectionPageDataFromResolution(
     ruleFiles: sectionEncoding.ruleFiles,
     citedByFiles: sectionEncoding.citedByFiles,
     citedByOverflow: sectionEncoding.citedByOverflow,
+    citedByOverflowUnit: sectionEncoding.citedByOverflowUnit,
     focusAnchor,
     prev,
     next,

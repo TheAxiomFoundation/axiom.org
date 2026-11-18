@@ -1,0 +1,166 @@
+import { describe, expect, it } from "vitest";
+import type { FlowEdge, FlowModel, StationStats } from "@/lib/axiom/pipeline-flow";
+import { laneLayout, pipelineLayout, stationsPerRow, stationStatus } from "./flow-layout";
+
+function station(id: string, rank: number, extra: Partial<StationStats> = {}): StationStats {
+  return {
+    id,
+    label: id,
+    description: "",
+    cases: 10,
+    ok: 10,
+    failed: 0,
+    cancelled: 0,
+    waived: 0,
+    yield: 1,
+    tries: null,
+    wip: 0,
+    p50_ms: null,
+    p95_ms: null,
+    trend: { now: { finished: 0, ok: 0 }, before: { finished: 0, ok: 0 } },
+    timed: true,
+    timed_share: 1,
+    failures: [],
+    oldest: [],
+    over_sla: 0,
+    target: null,
+    position: rank,
+    rank,
+    flow: { joined: 0, moved_on: 0, failed_here: 0, cancelled_here: 0, landed_here: 0, waiting_here: 0, wait_before_ms: null, exit_causes: [], wait_causes: [] },
+    ...extra,
+  };
+}
+
+const edge = (from: string, to: string, cases: number, loop = false): FlowEdge => ({ from, to, cases, median_wait_ms: null, loop });
+
+describe("pipelineLayout", () => {
+  const ids = "abcdefghij".split("");
+  const model: Pick<FlowModel, "stations" | "edges" | "sinks"> = {
+    stations: ids.map((id, i) => station(id, i)),
+    edges: [
+      ...ids.slice(1).map((id, i) => edge(ids[i], id, 100)),
+      edge("d", "c", 40, true),
+      edge("c", "c", 5),
+      edge("j", "a", 1, true),
+      edge("a", "c", 20),
+      edge("a", "j", 20),
+      edge("c", "exit:failed", 30),
+      edge("j", "exit:landed", 60),
+    ],
+    sinks: [
+      { id: "exit:failed", label: "Failed", cases: 30 },
+      { id: "exit:landed", label: "Landed", cases: 60 },
+    ],
+  };
+  const layout = pipelineLayout(model);
+
+  it("lays ten stations on a serpentine of two rows", () => {
+    const at = Object.fromEntries(layout.stations.map((p) => [p.id, p]));
+    expect(at.a.row).toBe(0);
+    expect(at.e.row).toBe(0);
+    expect(at.f.row).toBe(1);
+    // The second row runs back: its first station sits under the first row's last.
+    expect(at.f.x).toBe(at.e.x);
+    expect(at.j.x).toBe(at.a.x);
+  });
+
+  it("routes edges so none crosses a box, keeps self loops on the node and drops noise", () => {
+    const byId = Object.fromEntries(layout.edges.map((e) => [`${e.from}>${e.to}`, e]));
+    expect(byId["a>b"]).toMatchObject({ kind: "main", sourceHandle: "s-r", targetHandle: "t-l" });
+    expect(byId["f>g"]).toMatchObject({ kind: "main", sourceHandle: "s-l", targetHandle: "t-r" });
+    expect(byId["e>f"]).toMatchObject({ sourceHandle: "s-b", targetHandle: "t-t" });
+    // A step back and a skip on one row arc under it, from the boxes' inner quarters.
+    expect(byId["d>c"]).toMatchObject({ kind: "loop", sourceHandle: "s-bl", targetHandle: "t-br" });
+    expect(byId["a>c"]).toMatchObject({ kind: "main", sourceHandle: "s-br", targetHandle: "t-bl" });
+    // Exits are counts on the box, not lines across the floor.
+    expect(byId["c>exit:failed"]).toBeUndefined();
+    expect(byId["j>a"]).toBeUndefined();
+    expect(layout.selfLoops.get("c")).toBe(5);
+    expect(layout.sinks.map((s) => s.sink).sort()).toEqual(["exit:failed", "exit:landed"]);
+    expect(layout.exits.get("c")).toBe(30);
+  });
+
+  it("balances shorter rows, puts Landed in the next slot on the line and the other sinks under the floor", () => {
+    const narrow = pipelineLayout(model, 4);
+    const at = Object.fromEntries([...narrow.stations, ...narrow.sinks].map((p) => [p.id, p]));
+    // 10 stations on rows of at most 4: three rows of 4, 4 and 2.
+    expect(narrow.stations.map((p) => p.row)).toEqual([0, 0, 0, 0, 1, 1, 1, 1, 2, 2]);
+    expect(at["exit:landed"].row).toBe(2);
+    expect(at["exit:landed"].x).toBeGreaterThan(at.j.x);
+    expect(narrow.edges.find((e) => e.to === "exit:landed")).toMatchObject({ sourceHandle: "s-r", targetHandle: "t-l" });
+    expect(at["exit:failed"].y).toBeGreaterThan(at.j.y);
+    expect(narrow.height).toBe(at["exit:failed"].y + 64);
+    // a (row 0) to j (row 2) would cross row 1: a note on a, not a line.
+    expect(narrow.edges.find((e) => e.from === "a" && e.to === "j")).toBeUndefined();
+    expect(narrow.offRoute.get("a")).toEqual([{ to: "j", cases: 20, loop: false }]);
+  });
+
+  it("routes exit lines around every box into the Failed sink under the floor", () => {
+    const [drain] = layout.drains;
+    expect(drain).toMatchObject({ from: "c", to: "exit:failed", cases: 30 });
+    const box = (p: { x: number; y: number }) => ({ x0: p.x, x1: p.x + 216, y0: p.y, y1: p.y + 196 });
+    const boxes = layout.stations.map(box);
+    // Every straight piece of the line stays outside every box (it may touch the box it leaves).
+    for (let i = 1; i < drain.points.length; i++) {
+      const [[ax, ay], [bx, by]] = [drain.points[i - 1], drain.points[i]];
+      for (const b of boxes) {
+        const crosses = Math.max(ax, bx) > b.x0 && Math.min(ax, bx) < b.x1 && Math.max(ay, by) > b.y0 && Math.min(ay, by) < b.y1;
+        expect(crosses).toBe(false);
+      }
+    }
+    // It ends on the sink's top, and the sink sits under every station.
+    const sink = layout.sinks.find((x) => x.sink === "exit:failed")!;
+    expect(drain.points.at(-1)![1]).toBe(sink.y);
+    expect(sink.y).toBeGreaterThan(Math.max(...layout.stations.map((p) => p.y + 196)));
+  });
+});
+
+describe("stationsPerRow", () => {
+  it("fits rows to the canvas width, from 3 to 7", () => {
+    expect(stationsPerRow(400)).toBe(3);
+    expect(stationsPerRow(942)).toBe(3);
+    expect(stationsPerRow(1360)).toBe(5);
+    expect(stationsPerRow(5000)).toBe(7);
+  });
+});
+
+describe("stationStatus", () => {
+  it("takes the worst alert, else good with a target, else neutral", () => {
+    const s = station("v", 0);
+    expect(stationStatus(s, [])).toBe("neutral");
+    const targeted = station("v", 0, { target: { station: "v", min_yield: 0.5, max_p95_hours: null, max_wip: null, sla_hours: null } });
+    expect(stationStatus(targeted, [])).toBe("good");
+    const alert = (severity: "critical" | "warning") => ({ id: severity, rule: "x", severity, station: "v", title: "", detail: "", href: null });
+    expect(stationStatus(targeted, [alert("warning")])).toBe("warning");
+    expect(stationStatus(targeted, [alert("warning"), alert("critical")])).toBe("critical");
+  });
+});
+
+describe("laneLayout", () => {
+  it("puts a pip per station a case visited, in the pipeline's columns", () => {
+    const visit = (station: string, outcome: "ok" | "fail") => ({
+      station,
+      start: "2026-01-01T00:00:00Z",
+      end: null,
+      outcome,
+      rule_id: null,
+      try_no: null,
+      duration_ms: null,
+      actor: null,
+      cost_usd: null,
+      message: null,
+      reason: null,
+      ref_url: null,
+      waived: false,
+    });
+    const layout = laneLayout(
+      [{ case_id: "1", start: "", source: "pipeline_attempts", end: "failed", visits: [visit("a", "ok"), visit("b", "fail"), visit("a", "ok"), visit("b", "fail")] }],
+      ["a", "b"]
+    );
+    expect(layout.pips.map((p) => [p.station, p.visits, p.outcome])).toEqual([
+      ["a", 2, "ok"],
+      ["b", 2, "fail"],
+    ]);
+    expect(layout.links).toHaveLength(1);
+  });
+});

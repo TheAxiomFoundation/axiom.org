@@ -54,31 +54,21 @@ export function VerifyPage() {
             Verification
           </p>
           <h1 className="heading-page normal-case mb-6">
-            Don&rsquo;t trust it. Check it.
+            Run the checks behind our claims
           </h1>
           <p className="font-body text-xl text-[var(--color-ink-secondary)] leading-relaxed mb-4">
-            Every claim on this site carries a label, and the label is a
-            statement about evidence rather than about confidence. This page
-            lists what each label means, the command that tests it, and what
-            the test does not cover.
+            Download our releases, recompute their hashes, recheck the
+            calculator comparisons, and see what each check leaves out.
           </p>
           <p className="font-body text-[1rem] text-[var(--color-ink-muted)] leading-relaxed mb-6">
             {launchScopeNote}
           </p>
-          <p className="font-serif italic text-lg text-[var(--color-ink)] leading-relaxed">
-            A claim we cannot check is a claim we do not make.
-          </p>
         </header>
 
         <section className="mb-24">
-          <h2 className="heading-section normal-case mb-3">
+          <h2 className="heading-section normal-case mb-8">
             What the labels mean
           </h2>
-          <p className="font-body text-[1rem] text-[var(--color-ink-secondary)] max-w-[780px] leading-relaxed mb-8">
-            The same standard we apply to encoded law, applied to our own
-            surfaces. A label is not a measure of how much work went into
-            something.
-          </p>
           <dl className="grid gap-4 md:grid-cols-2">
             {tierOrder.map((tier) => (
               <div
@@ -154,7 +144,7 @@ export function VerifyPage() {
           <p className="font-body text-[1rem] text-[var(--color-ink-secondary)] max-w-[820px] leading-relaxed mb-4">
             We do not publish a match rate. A rate counts a difference we have
             traced to a bug in the other engine the same as one we cannot
-            account for, and those are not the same thing.
+            account for.
           </p>
           <p className="font-body text-[1rem] text-[var(--color-ink-secondary)] max-w-[820px] leading-relaxed mb-4">
             Instead, every disagreement is classified, with evidence, and the
@@ -271,7 +261,7 @@ export function VerifyPage() {
           </div>
 
           <h3 className="font-body text-xl text-[var(--color-ink)] mb-4">
-            What stops a classification from being an excuse
+            How we check classifications and coverage
           </h3>
           <ul className="flex flex-col gap-3 max-w-[860px]">
             {enforcement.map((rule) => (
@@ -372,9 +362,8 @@ export function VerifyPage() {
             What is broken right now
           </h2>
           <p className="font-body text-[1rem] text-[var(--color-ink-secondary)] max-w-[780px] leading-relaxed mb-10">
-            Findings from our own checks, with the errors they produce. These
-            leave the page when the check passes, not when the wording
-            improves.
+            Our own checks produced these findings, and we remove an entry
+            when its check passes.
           </p>
 
           <div className="space-y-6">

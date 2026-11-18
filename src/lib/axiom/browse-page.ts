@@ -266,6 +266,22 @@ function dedupeBySegment(nodes: TreeNode[]): TreeNode[] {
   });
 }
 
+/** At a doc type's root, numbered segments (Titles) come first in
+ *  numeric order, whether the index lists them or they were folded from
+ *  orphans; every other segment follows in the order it already had. */
+function numericFirst(segments: string[], nodes: TreeNode[]): TreeNode[] {
+  if (segments.length !== 2) return nodes;
+  const isNumber = (node: TreeNode) => /^\d+$/.test(node.segment);
+  const numbered = nodes
+    .filter(isNumber)
+    .sort(
+      (a, b) =>
+        Number(a.segment) - Number(b.segment) ||
+        a.segment.localeCompare(b.segment),
+    );
+  return [...numbered, ...nodes.filter((node) => !isNumber(node))];
+}
+
 /** Browse depth: jurisdiction (1), doc type (2), title (3). */
 export const MAX_BROWSE_SEGMENTS = 3;
 
@@ -351,15 +367,20 @@ export async function getBrowsePageData(
   const keptSegments = new Set(kept.map((node) => node.segment));
   const synthesized: TreeNode[] = Array.from(strayCounts)
     .filter(([segment]) => !keptSegments.has(segment))
-    .sort((a, b) => a[0].localeCompare(b[0]))
+    // Numeric order, so Title 7 comes before Title 42.
+    .sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }))
     .map(([segment, count]) => ({
       segment,
-      // Acronym-length segments read as initialisms (CMS, IRS);
-      // longer ones as words (Recovery).
+      // A number directly under a doc type is a Title (a targeted CFR
+      // slice ingested without its Title row), named as browseTitle
+      // names that level. Otherwise acronym-length segments read as
+      // initialisms (CMS, IRS); longer ones as words (Recovery).
       label:
-        segment.length <= 5
-          ? segment.toUpperCase()
-          : segment.charAt(0).toUpperCase() + segment.slice(1),
+        segments.length === 2 && /^\d+$/.test(segment)
+          ? `Title ${segment}`
+          : segment.length <= 5
+            ? segment.toUpperCase()
+            : segment.charAt(0).toUpperCase() + segment.slice(1),
       hasChildren: true,
       childCount: count,
       nodeType: "container" as TreeNode["nodeType"],
@@ -375,7 +396,10 @@ export async function getBrowsePageData(
       return node;
     });
 
-  const nodes = dedupeBySegment(positioned.filter((n) => !isPlumbingNode(n)));
+  const nodes = numericFirst(
+    segments,
+    dedupeBySegment(positioned.filter((n) => !isPlumbingNode(n))),
+  );
   const deadline = Date.now() + ENCODED_BUDGET_MS;
   const scan = await scanEncoded(segments, nodes, deadline).catch(
     () => EMPTY_SCAN

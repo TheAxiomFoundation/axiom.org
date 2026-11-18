@@ -759,11 +759,21 @@ function SceneProvision() {
   );
 }
 
-// The label tells the gate story the visitor actually gets: the film plays
-// the 0.03 catch and redraft; the still shows only the stamped result.
-const GATE_STORY = STATIC
-  ? "In this illustration the workbench shows four stamped gates — run, checks, compare, and AI review — and the other two sections show two ticks, for run and checks."
-  : "In this illustration the workbench stamps four gates — run, checks, compare, and AI review; one draft reads 0.03 for thirty per centum, disagrees with another calculator at compare, is redrafted to 0.30, and passes. The other two sections are stamped run and checks.";
+// The film's label tells the gate story the film plays: the 0.03 catch and
+// the redraft.
+const GATE_STORY =
+  "In this illustration the workbench stamps four gates — run, checks, compare, and AI review; one draft reads 0.03 for thirty per centum, disagrees with another calculator at compare, is redrafted to 0.30, and passes. The other two sections are stamped run and checks.";
+
+// The still renders scene II alone (only SceneProvision is staticVisible),
+// so its label describes what that frame draws and nothing else: no camera,
+// no later scenes, no registry numbers. The waiver sentence is the one
+// disclosure it carries that the frame does not draw, because the
+// workbench's module is on the waiver list.
+const STILL_LABEL = `${SCENE2_NAME}. § 2017 of Title 7 appears as three sections, with one open in a workbench. The workbench holds that section's RuleSpec: its id, citation, output type and formula. In the formula, allotment equals the larger of zero and tfp minus 0.30 times net income. A proof line cites the source words for 0.30 and tfp. The workbench also shows four stamped gates (run, checks, compare and AI review), and the other two sections show two ticks, for run and checks. On October 2, 2026, CI skipped the checks on 1,940 rulespec-us modules on the validation waiver list, the published § 2017(a) module among them.`;
+
+const FILM_LABEL = STATIC
+  ? STILL_LABEL
+  : `One continuous shot. The camera opens on one provision, § 2017 of Title 7: the statute is segmented into sections, each section encoded into a RuleSpec — id, citation, typed inputs and output, and the formula allotment equals tfp minus 0.30 times net income, every value citing its source words. The encoder applies a draft only once it compiles and passes its own tests; programs are compared through their outputs later, where another calculator covers them. ${GATE_STORY} On October 2, 2026 the published § 2017(a) module was one of 1,940 rulespec-us modules on the validation waiver list, whose checks CI skipped. The encoded rules then join the axiom graph as nodes — typed, cited, connected to the concepts they draw on; on the graph's output layer, two composed nodes declare their types and show illustrative output cards: snap/benefit, money per month, $478, and snap/eligible, boolean, yes. Then the camera backs out and the same cards keep coming: co-snap's own rules join around the hero graph — snap_maximum_allotment, the deductions, the eligibility tests, real names from its recorded outputs — then each runtime package in the ${snapshotMonth()} registry snapshot arrives as its own group of identical cards, from us-sc-snap to us-oasdi-wage-tax. At full distance the encoded graph sits among the ghost cards of everything not yet encoded, and the caption reads: ${snapshotMonth()} registry snapshot — ${registrySummary()}. The snapshot predates the registry's 2026-07-28 production cutover, and package outputs can count a shared rule more than once, so this is not a unique-rule or certification count.`;
 
 // helper: initial opacity for elements that animate in (visible in static)
 function O2() {
@@ -1388,7 +1398,7 @@ export function JourneyFilm({
         className="lsk"
         viewBox="0 0 1420 700"
         role="img"
-        aria-label={`One continuous shot. The camera opens on one provision, § 2017 of Title 7: the statute is segmented into sections, each section encoded into a RuleSpec — id, citation, typed inputs and output, and the formula allotment equals tfp minus 0.30 times net income, every value citing its source words. The encoder applies a draft only once it compiles and passes its own tests; programs are compared through their outputs later, where another calculator covers them. ${GATE_STORY} On October 2, 2026 the published § 2017(a) module was one of 1,940 rulespec-us modules on the validation waiver list, whose checks CI skipped. The encoded rules then join the axiom graph as nodes — typed, cited, connected to the concepts they draw on; on the graph's output layer, two composed nodes declare their types and show illustrative output cards: snap/benefit, money per month, $478, and snap/eligible, boolean, yes. Then the camera backs out and the same cards keep coming: co-snap's own rules join around the hero graph — snap_maximum_allotment, the deductions, the eligibility tests, real names from its recorded outputs — then each runtime package in the ${snapshotMonth()} registry snapshot arrives as its own group of identical cards, from us-sc-snap to us-oasdi-wage-tax. At full distance the encoded graph sits among the ghost cards of everything not yet encoded, and the caption reads: ${snapshotMonth()} registry snapshot — ${registrySummary()}. The snapshot predates the registry's 2026-07-28 production cutover, and package outputs can count a shared rule more than once, so this is not a unique-rule or certification count.`}
+        aria-label={FILM_LABEL}
       >
         <Defs />
         <g clipPath="url(#jw-stage)">

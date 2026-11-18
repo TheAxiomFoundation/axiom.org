@@ -24,7 +24,7 @@ export const tierNote: Record<Tier, string> = {
     "You can check it without us. Download, recompute the hash, verify the attestation, run it.",
   preview:
     "Live and usable today. Interfaces and limits may change; there is no service commitment yet.",
-  demo: "Shows what the layer enables. Bounded, and the bounds are named.",
+  demo: "Shows what the layer enables within stated limits.",
   blocked:
     "Written, published, and currently failing. The error and the fix are below.",
 };
@@ -81,14 +81,14 @@ export const surfaces: Surface[] = [
       "Fetch a US corpus release from the public mirror and recompute its canonical sha256.",
     expect: "Recomputed hash matches the published manifest.",
     limit:
-      "Coverage is per-program and partial. The programs list is the coverage claim; there is no blanket one. CI skips validation, companion tests, and proof checks for modules on a public waiver list, counted under What is broken right now.",
+      "Coverage is per-program and partial. CI skips validation, companion tests, and proof checks for modules on a public waiver list, counted under What is broken right now.",
   },
   {
     id: "oracles",
     name: "US validation against other calculators and USDA data",
     tier: "verified",
     claim:
-      "Where a policy is covered, every disagreement with the reference calculator is classified with evidence: reconciled arithmetically, traced to a bug in the other engine, or attributed to the comparison harness itself (bridge artifacts) — a bounded class we disclose rather than blend in.",
+      "Where a policy is covered, every disagreement with the reference calculator is classified with evidence: reconciled arithmetically, traced to a bug in the other engine, or attributed to the comparison harness itself (bridge artifacts).",
     check:
       "git clone https://github.com/TheAxiomFoundation/axiom-oracles\ncd axiom-oracles\nif [ -f scripts/oracle_data.py ]; then\n  python3 scripts/oracle_data.py materialize\nfi &&\ncat conformance/scoreboard.json &&\nuv run scripts/apply_dispositions.py --check",
     expect:
@@ -265,7 +265,7 @@ export const closureMeaning = {
     "https://github.com/TheAxiomFoundation/axiom-oracles/tree/main/closure/universes/us-co-snap",
 };
 
-/** What stops a classification from being an excuse. */
+/** How we check classifications and coverage. */
 export const enforcement = [
   "Evidence is mandatory. A disposition needs a stated mechanism plus arithmetic that reconciles or an upstream citation. Classifications must reconcile numerically, not assert.",
   "The arithmetic is checked. Expressions are evaluated in CI and must equal the claimed value within tolerance.",
@@ -325,7 +325,7 @@ export const openIssues: OpenIssue[] = [
       "requires_engine.min_version says \"0.1.0\", which cannot express the artifact-format boundary that actually decides loadability — a reader comparing version strings reaches the wrong verdict. An artifact_format_version floor exists as a prototyped, unmerged change to the build tool, and the release gate computes the third-party verdict from the published contract and fails when it disagrees with reality. Every manifest a stranger downloads today still carries the misleading floor; this entry closes when the emission merges, ships in a release, and the gate goes green on it.",
     evidence:
       '"requires_engine": {"min_version": "0.1.0", "capabilities": []}\n// loadability is decided by artifact_format_version, absent above',
-    fix: "Merge the floor emission, republish artifacts with it, and keep the contract-versus-reality gate so the two can never diverge silently again.",
+    fix: "Merge the floor emission, republish artifacts with it, and keep the contract-versus-reality gate.",
   },
 ];
 

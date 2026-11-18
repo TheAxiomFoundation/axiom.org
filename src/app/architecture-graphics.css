@@ -162,15 +162,19 @@
   border-color: var(--color-accent);
   color: var(--color-accent);
 }
-.fpwrap:fullscreen {
+.fpfigure:fullscreen {
   background: var(--color-paper);
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   padding: 3vh 3vw;
 }
-.fpwrap:fullscreen .lsk {
-  max-height: 94vh;
+.fpfigure:fullscreen .fpwrap {
+  width: 100%;
+}
+.fpfigure:fullscreen .lsk {
+  max-height: 82vh;
 }
 
 .jw-collabel {

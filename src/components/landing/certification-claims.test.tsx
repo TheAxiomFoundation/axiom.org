@@ -109,15 +109,12 @@ describe("public copy claims no certification the ledger lacks", () => {
     // the corpus is not "the whole law" (live /coverage: selected sources).
     expect(container.textContent).toContain("one provision · segmented & encoded · graphed · compiled");
     expect(container.textContent).not.toMatch(/whole law captured|everywhere/);
+    // The still shows scene II alone, so its label names neither the graph's
+    // output cards nor the registry. Registry numbers, wherever a label
+    // gives them, carry their date (the animated test below).
     const label = imgLabel(container);
-    expect(label).toContain(
-      `the caption reads: ${snapshotMonth()} registry snapshot — ${registrySummary()}.`,
-    );
-    expect(label).toContain("predates the registry's 2026-07-28 production cutover");
-    // The site never plays scene I (the scrolly starts at FILM_FROM), and
-    // the $478 card is a fixed illustration, not a live answer.
+    expect(label).not.toMatch(/registry|snapshot|package outputs|output cards|\$478/);
     expect(label).not.toMatch(/live registry|compute live answers|lit green|1,742,391|cites the wrong section/);
-    expect(label).toContain("show illustrative output cards");
   });
 
   it("the animated film's caption and label agree on one derived summary", async () => {
@@ -142,8 +139,15 @@ describe("public copy claims no certification the ledger lacks", () => {
     // render the same snapshot through the same functions.
     const stamp = `${snapshotMonth()} registry snapshot — ${registrySummary()}`;
     expect(container.textContent).toContain(stamp);
-    expect(imgLabel(container)).toContain(`the caption reads: ${stamp}.`);
+    const label = imgLabel(container);
+    expect(label).toContain(`the caption reads: ${stamp}.`);
     expect(stamp).toBe("July 2026 registry snapshot — 16 runtime packages, 3,826 package outputs");
+    // The film's registry numbers are dated, and its $478 card is a fixed
+    // illustration, not a live answer. The site never plays scene I (the
+    // scrolly starts at FILM_FROM).
+    expect(label).toContain("predates the registry's 2026-07-28 production cutover");
+    expect(label).toContain("show illustrative output cards");
+    expect(label).not.toMatch(/live registry|compute live answers|lit green|1,742,391|cites the wrong section/);
   });
 
   it("the film's numbers move when the snapshot moves", async () => {
@@ -158,6 +162,16 @@ describe("public copy claims no certification the ledger lacks", () => {
         registrySummary: (cs = clusters) => real.registrySummary(cs),
       };
     });
+    // Only the animated film's label gives the snapshot; the still's does not.
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: false,
+      media: query,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }));
     vi.resetModules();
     const { JourneyFilm } = await import("./journey-film");
     const { container } = render(<JourneyFilm />);
@@ -174,6 +188,9 @@ describe("public copy claims no certification the ledger lacks", () => {
     expect(words).toContain("compiled · illustrative");
     expect(imgLabel(container)).toContain("which compiles into a program artifact");
     expect(imgLabel(container)).not.toMatch(/1,742,391|7\.7M/);
+    // The corpus holds selected sources (live /coverage), so the strip names
+    // the corpus and claims no more than that.
+    expect(publicCopy(container)).not.toMatch(/\bthe whole law\b/i);
   });
 
   it("the reading-room library claims no certification or unsourced count", () => {
@@ -200,6 +217,9 @@ describe("retired certification copy stays retired", () => {
     "certifies itself",
     "certification is automatic",
     "the whole law captured",
+    "the whole law, word for word",
+    "the whole law word for word",
+    "deterministic checks, oracles, AI judge",
   ];
 
   function sources(dir: string): string[] {

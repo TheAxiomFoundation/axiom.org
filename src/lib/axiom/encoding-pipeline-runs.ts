@@ -10,7 +10,10 @@ import {
   cancelledBeforeEncode,
   dependentHostId,
   durationLabel,
+  failedStepStation,
   ENCODE_GATE_LABELS,
+  encodeExit,
+  encodeExitSentence,
   encodeGate,
   errorMessage,
   failureReason,
@@ -22,6 +25,7 @@ import {
   type EncodeLoopTiming,
   type PipelineAttempt,
   type PipelineTry,
+  type PipelineTryCheck,
 } from "./encoding-pipeline";
 import { attemptJurisdiction } from "./encoding-pipeline-insights";
 import { normalizeCitation } from "./ops-citations";
@@ -64,6 +68,8 @@ export interface RunRow {
   loop: EncodeLoopTiming | null;
   /** What the encoder's record says the run's model calls cost, in US dollars. */
   cost: number | null;
+  /** Whether the encode step ran and what it recorded: says why a run has no tries and no cost. */
+  encodeRecord: EncodeRecord;
   outcome: RunOutcome;
   /** In a few words: "Encoded", "Failed validation", "Cancelled at approval". */
   outcomeLabel: string;
@@ -148,7 +154,7 @@ function outcomeOf(attempt: PipelineAttempt): Outcome {
     outcome: "failed",
     outcomeLabel: ENCODE_GATE_LABELS[encodeGate(attempt)],
     cancelStage: null,
-    cause: clip(attempt.encoder_error ? errorMessage(attempt.encoder_error) : group),
+    cause: clip(attempt.encoder_error ? errorMessage(attempt.encoder_error) : group, ERROR_MAX),
     causeGroup: clip(group),
   };
 }
@@ -164,6 +170,59 @@ export function reachedEncode(attempt: PipelineAttempt): boolean {
   if (!attempt.encode_started_at && attempt.jobs_checked_at) return false;
   return !(attempt.steps_read_at && attempt.encode_seconds == null);
 }
+
+/** What a run's encode step left on record. */
+export interface EncodeRecord {
+  /** tries: the encoder recorded each try. no_try_record: the encode step ran, with no try or cost synced.
+   *  no_encode: the run ended before the encode step. not_yet: the run is still going. outside: no encode run. */
+  state: "tries" | "no_try_record" | "no_encode" | "not_yet" | "outside";
+  /** The state in words, with the step that stopped the run when known. */
+  label: string;
+}
+
+const NO_ENCODE_CANCEL: Record<string, string> = {
+  approval: "the run was cancelled at the approval",
+  before_job: "the run was cancelled before its encode job",
+};
+
+/**
+ * Why a run has, or does not have, tries and a cost. A dispatch with neither
+ * is one of three things: the run ended before its encode step (no model
+ * call), the encode step ran and the encoder synced no try for it (older
+ * runs, or a step that failed before any model call), or it is still going.
+ */
+export function encodeRecord(attempt: PipelineAttempt): EncodeRecord {
+  if (attemptSource(attempt) === "outside") {
+    return { state: "outside", label: "No encode run: the module was merged outside the pipeline" };
+  }
+  const reached = reachedEncode(attempt);
+  if (reached && attempt.tries?.length) return { state: "tries", label: "Tries recorded" };
+  if (attempt.run_status !== "completed" && attemptSource(attempt) === "dispatch") {
+    return { state: "not_yet", label: "No try recorded yet: the run is still going" };
+  }
+  // The encoder's pre-encode gate blocks before any model call.
+  if (attempt.encoder_status === "pre_encode_blocked") {
+    return { state: "no_encode", label: "No encode ran: the target gate blocked the run before the first model call" };
+  }
+  const failedStation = attempt.failed_step ? failedStepStation(attempt.failed_step) : null;
+  if (!reached || failedStation === "setup") {
+    const why = cancelledBeforeEncode(attempt)
+      ? NO_ENCODE_CANCEL[attempt.cancel_stage ?? ""]
+      : attempt.failed_step
+        ? `the run failed at "${attempt.failed_step}"`
+        : !attempt.encode_started_at
+          ? "the encode job did not start"
+          : "the run's steps show no encode step";
+    return { state: "no_encode", label: `No encode ran: ${why}` };
+  }
+  const ran =
+    attempt.encode_seconds != null ? `the encode step ran ${secondsLabel(attempt.encode_seconds)}` : "the encode step ran";
+  const exit = encodeExit(attempt);
+  const ended = exit ? `. ${encodeExitSentence(exit)}` : "";
+  return { state: "no_try_record", label: `No try recorded: ${ran}, and the encoder synced no try or cost for it${ended}` };
+}
+
+const secondsLabel = (seconds: number) => (seconds < 60 ? `${Math.round(seconds)}s` : durationLabel(seconds * 1000));
 
 /**
  * A dispatch with only what it did itself. A run that never reached its
@@ -183,8 +242,10 @@ export function ownRecord(attempt: PipelineAttempt): PipelineAttempt {
 
 /** Long causes and check errors are cut here; the run and the PR hold the rest. */
 const TEXT_MAX = 180;
-const clip = (text: string | null) =>
-  text && text.length > TEXT_MAX ? `${text.slice(0, TEXT_MAX - 1)}…` : text;
+/** An encoder error is kept longer: the run's timeline shows it whole. */
+const ERROR_MAX = 1000;
+const clip = (text: string | null, max = TEXT_MAX) =>
+  text && text.length > max ? `${text.slice(0, max - 1)}…` : text;
 
 const ms = (from: string | null | undefined, to: string | null | undefined) =>
   from && to ? Math.max(0, Date.parse(to) - Date.parse(from)) : null;
@@ -222,6 +283,7 @@ export function runRow(dispatch: PipelineAttempt, hosts: Map<string, string> = n
     tries: attempt.tries ?? null,
     loop: attempt.encode_loop ?? null,
     cost: attempt.cost_usd ?? null,
+    encodeRecord: encodeRecord(dispatch),
     ...outcomeOf(attempt),
     runUrl: attempt.run_url,
     pr:
@@ -728,6 +790,9 @@ export interface TimelineTry {
   /** What sent the try back, in a few words; `error` is the full message. */
   headline: string | null;
   error: string | null;
+  /** The typed checks that failed the try, each with its gate and number of findings; empty when its record names none. */
+  checks: PipelineTryCheck[];
+  checksMore: number;
   /** The try's whole time with its checks, when the encoder timed its phases. */
   wallMs: number | null;
   /** Its phases on the timeline's clock (from the dispatch); empty before the encoder timed them. */
@@ -861,6 +926,8 @@ export interface RunTimeline {
   split: LoopSplit | null;
   /** What stopped a run that did not encode. */
   stopped: string | null;
+  /** For a run with no tries: whether an encode ran at all, in words. Null when the tries say it. */
+  encodeNote: string | null;
   after: TimelineStep[];
 }
 
@@ -1065,6 +1132,8 @@ export function runTimeline(row: RunRow, referenceMs: number, details: TimelineD
       ok: attempt.ok,
       headline: attempt.error ? causeHeadline(attempt.error) : null,
       error: attempt.error,
+      checks: attempt.checks ?? [],
+      checksMore: attempt.checksMore ?? 0,
       wallMs: attempt.phases ? (attempt.wallMs ?? null) : null,
       phases,
     };
@@ -1080,6 +1149,7 @@ export function runTimeline(row: RunRow, referenceMs: number, details: TimelineD
     loopMs: row.phases.encodeMs,
     split: loopSplit(row, tries),
     stopped,
+    encodeNote: tries.length || row.encodeRecord.state === "tries" || row.encodeRecord.state === "outside" ? null : row.encodeRecord.label,
     after,
   };
 }
@@ -1147,8 +1217,11 @@ const COMPLETENESS_RULE_RE = /^\[?complete-source-unit:([a-z0-9-]+)\]?\s*/i;
 
 /** A cause without the file and the check it came from. */
 function causeBody(cause: string): string {
-  // A raw encoder message leads with its file ("statutes/42/402/q.yaml: ci: …").
-  let text = cause.trim().replace(/^[\w./-]+\.ya?ml:\s*/i, "");
+  // A raw encoder message leads with its file ("statutes/42/402/q.yaml: ci: …"),
+  // a guard's issue with its manifest (".axiom/…/q.json validation_… does not match").
+  let text = cause.trim().replace(/^[\w./-]+\.(?:ya?ml:\s*|json(?::\s*|\s+))/i, "");
+  // A test runner's line leads with the test that failed ("FAILED data/…/x.jsonl: ContentStoreError: …").
+  text = text.replace(/^FAILED \S+?:\s+/, "");
   while (CAUSE_SOURCE_RE.test(text)) text = text.replace(CAUSE_SOURCE_RE, "");
   return text;
 }
@@ -1173,8 +1246,8 @@ export function causeText(cause: string): string {
  */
 /** A command-line tool's error: "jq: error: syntax error, unexpected …". */
 const TOOL_ERROR_RE = /^([a-z][\w-]{1,20}):\s*error:\s*([\s\S]+)$/i;
-/** An exception raised under its module path: "axiom_encode.corpus_resolver.CorpusLayoutError: …". */
-const MODULE_EXCEPTION_RE = /^(?:[a-z_][\w]*\.)+([A-Z]\w*?)(Error|Exception):\s*/;
+/** An exception, under its module path or not: "axiom_encode.corpus_resolver.CorpusLayoutError: …", "ContentStoreError: …". */
+const MODULE_EXCEPTION_RE = /^(?:[a-z_][\w]*\.)*([A-Z]\w*?)(Error|Exception):\s*/;
 
 /** "CorpusLayout" as "Corpus layout". */
 const words = (camel: string) => {

@@ -41,18 +41,38 @@ generate `/axiom/v2/...` hrefs. The app root and marketing pages stay on v1.
   `tries` also carries its start, whole time and phases (with a check
   phase's time by tool), and `encode_loop` keeps the encoder's loop clock;
   the ledger timeline draws the tries on the run's clock from them. Older
-  records lack both and read as "not timed".
+  records lack both and read as "not timed". A dispatch whose encode step
+  ran and left no encoder record takes how the encode ended
+  (`encode_exit_status`, `encode_exit_rule`, `encode_last_phase`) from the
+  encoder's row for the run in `encodings.live_encoding_runs`
+  (`runner.github_run_id`, axiom-encode #1750 on; `outcome_status` and
+  `error_rule` once the encoder sends them); a run no live row names reads
+  as "not on record".
   Two more kinds of rows, told apart by id (`attemptSource`, no extra
   column): `pr:<repo>#<n>:<module path>`, one module file a PR merged into a
   rulespec-* default branch with no dispatch behind it (from 2026-07-22; each
   pass lists PRs merged since a day before the last pass and reads only new
-  PRs' files, older ones are carried in their rows), and
+  PRs' files, older ones are carried in their rows; its citation is the
+  module's declared singular source when that is its one
+  `value_citation_paths` entry and not the module's own citation or one
+  above it, else the index's `citation_path`), and
   `dep:<encoding_runs id>`, a module the encoder wrote inside another
   citation's run (a source or dependent lane), with `queue_ref`
   `dependent:<run id>`. Encoder records share no session with their run, so
   the host is the same repo family's run whose encode window holds the
   record, then the encoder version. Both go through the same joins after the
-  merge. Citation views (stages, ledger, journey, bundles' latest stage)
+  merge. A signed PR that holds only its manifest
+  (`.axiom/encoding-manifests/<module>.json`, the promotion lane's PR into a
+  candidate's branch) stands for that module once its side branch's PR or a
+  merge train that replaced it carried the module to main, at that PR's merge
+  commit; that PR then has no row of its own for the module. A new link to
+  a merge train needs the train's file list, read in that pass, to hold the
+  module and the signed manifest (`carrierFileLookups` names the trains to
+  read); stored rows name modules only and make no new link, and a link an
+  earlier pass recorded is kept. A citation's
+  status comes from its newest attempt; attempts at the same time (modules
+  of one PR) give the least advanced stage.
+  Citation views (stages, ledger, journey, bundles' latest stage)
   include them; run statistics (flow, attempts, versions, the weekly runs,
   approvals) count dispatches only, and cost adds the dependent records.
   `scripts/collect-encoding-pipeline.mjs` rebuilds it every 30 minutes from
@@ -120,6 +140,11 @@ Dev needs `.env.local` (gitignored) with:
   (`bun scripts/collect-program-bundles.mjs --out <file>`, `--bundle <yaml>`
   for a bundle file not yet on axiom-corpus main) that the bundles tab reads
   instead of the tables.
+- `AXIOM_GITHUB_TOKEN` — set in Production; optional in dev. The `/ops`
+  Pipeline tab's ingest stations read axiom-corpus's PRs and every rulespec
+  repo's pin history through GitHub's GraphQL API with it (cached 15
+  minutes). Without it, Corpus ingest has no times and Release pin shows as
+  not measured (`GH_TOKEN=$(gh auth token) bun run dev` works locally).
 - `NEXT_PUBLIC_GRAPH_VIEWER_URL` / `NEXT_PUBLIC_BUILDER_URL` — optional
   overrides for the graph-viewer / dashboard-builder deep-link targets.
 

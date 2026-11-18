@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GROUP_PHONE_INTRO, DISCLOSURE, EVENT, GROUP_QUESTIONS, LOOK_UP, STAGES, USE_CASES } from "@/lib/aspen/content";
+import { PLEDGE_KEY } from "./client";
 import { Agenda, Disclosure, GroupsCard, LookUp, NextStepsForm, SmallGroups, ThankYouContent, VoteCard, WelcomeLanding } from "./stages";
 
 function jsonResponse(data: unknown, ok = true) {
@@ -57,6 +58,21 @@ describe("Agenda", () => {
     expect(buttons).toHaveLength(STAGES.length);
     fireEvent.click(screen.getByRole("button", { name: /Try it/ }));
     expect(onPick).toHaveBeenCalledWith("try");
+  });
+
+  it("fades a stage the room hasn't reached without letting the thread show through its number", () => {
+    render(<Agenda live="scale" current="scale" onPick={vi.fn()} compact limit={3} />);
+    const locked = screen.getByRole("button", { name: /Shared foundation/ });
+    expect(locked).toBeDisabled();
+    // Nothing on the row is translucent but the label: the circle keeps an opaque fill over the line.
+    expect(locked.className).not.toMatch(/opacity/);
+    const circle = locked.querySelector("span");
+    expect(circle?.textContent).toBe("5");
+    expect(circle?.className).toContain("bg-[var(--color-paper)]");
+    expect(circle?.className).not.toMatch(/opacity/);
+    expect(circle?.nextElementSibling?.className).toContain("opacity-45");
+    // A reached stage is not faded.
+    expect(screen.getByRole("button", { name: /At scale/ }).querySelector("span")?.nextElementSibling?.className).not.toMatch(/opacity/);
   });
 });
 
@@ -138,12 +154,13 @@ describe("VoteCard", () => {
     expect(screen.queryByRole("button", { name: "Vote" })).not.toBeInTheDocument();
   });
 
-  it("offers all five choices, testing cases against the rules among them", async () => {
+  it("offers the four choices, one per group, testing cases against the rules among them", async () => {
     const fetchMock = stubFetch();
     render(<VoteCard stage="vote" />);
     const choices = within(screen.getByRole("group", { name: "Pick one" })).getAllByRole("button");
     expect(choices.map((b) => b.querySelector("span")?.textContent)).toEqual(USE_CASES.map((u) => u.label));
-    expect(choices).toHaveLength(5);
+    expect(choices).toHaveLength(4);
+    expect(screen.queryByRole("button", { name: /Create application interfaces/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Test cases against the rules/ }));
     fireEvent.click(screen.getByRole("button", { name: "Vote" }));
     expect(screen.getByText(/You voted:/)).toHaveTextContent("Test cases against the rules");
@@ -308,7 +325,8 @@ describe("NextStepsForm", () => {
   it("sends the pledge and thanks the participant", async () => {
     let resolve: (r: Response) => void = () => {};
     const fetchMock = stubFetch(() => new Promise<Response>((r) => (resolve = r)));
-    render(<NextStepsForm />);
+    const onSent = vi.fn();
+    render(<NextStepsForm onSent={onSent} />);
     // Just an email and a note: Aspen's roster already has each leader's name, title and state.
     expect(screen.getAllByRole("textbox").map((el) => el.getAttribute("type") ?? "textarea")).toEqual(["email", "textarea"]);
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
@@ -317,8 +335,11 @@ describe("NextStepsForm", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
 
     expect(await screen.findByRole("button", { name: "Sending…" })).toBeDisabled();
+    expect(onSent).not.toHaveBeenCalled();
     resolve(jsonResponse({ ok: true }));
     expect(await screen.findByText("Thank you.")).toBeInTheDocument();
+    expect(onSent).toHaveBeenCalledTimes(1);
+    expect(localStorage.getItem(PLEDGE_KEY)).toBe("true");
     expect(screen.getByText(new RegExp(EVENT.contactEmail))).toBeInTheDocument();
     expect(bodies(fetchMock, "/api/aspen/pledge")[0]).toEqual({
       participantId: "p-1",
@@ -331,12 +352,27 @@ describe("NextStepsForm", () => {
 
   it("shows the server's error message", async () => {
     stubFetch(async () => jsonResponse({ error: "Enter a valid email." }, false));
-    render(<NextStepsForm />);
+    const onSent = vi.fn();
+    render(<NextStepsForm onSent={onSent} />);
     fill();
     fireEvent.click(screen.getByRole("checkbox", { name: /State systems/ }));
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
     expect(await screen.findByText("Enter a valid email.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
+    expect(onSent).not.toHaveBeenCalled();
+    expect(localStorage.getItem(PLEDGE_KEY)).toBeNull();
+  });
+
+  it("shows the thank-you, not a blank form, in a tab reloaded after sending", async () => {
+    // iOS reloads a tab left in the background; a blank form there invites a second send.
+    const fetchMock = stubFetch();
+    localStorage.setItem(PLEDGE_KEY, "true");
+    const onSent = vi.fn();
+    render(<NextStepsForm onSent={onSent} />);
+    expect(await screen.findByText("Thank you.")).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Email" })).not.toBeInTheDocument();
+    expect(onSent).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("falls back to a generic error when the request fails", async () => {

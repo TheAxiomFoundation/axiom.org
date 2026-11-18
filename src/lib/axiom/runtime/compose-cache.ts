@@ -3,6 +3,9 @@ type Result = Awaited<ReturnType<typeof runtimeProxyGet>>;
 const cache = new Map<string, { result: Result; expires: number; bytes: number }>();
 const pending = new Map<string, Promise<Result>>();
 const MAX_BYTES = 24 * 1024 * 1024;
+// Only a 2xx answer is cached, for five minutes. A 404 (not composable yet),
+// a 429 or a server error is passed through uncached, so the next request
+// asks the API again rather than serving a failure for five minutes.
 export function clearComposeCache() { cache.clear(); pending.clear(); }
 export function cachedCompose(focus: string): Promise<Result> {
   const cached = cache.get(focus);

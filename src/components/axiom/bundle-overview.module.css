@@ -219,6 +219,16 @@
   background: var(--partly);
 }
 
+/* Not in the corpus: the end of the track, striped so it reads without colour. */
+.missing {
+  display: block;
+  flex: none;
+  height: 100%;
+  margin-left: auto;
+  border-radius: 4px;
+  background: repeating-linear-gradient(135deg, var(--color-ink-muted) 0 2px, transparent 2px 4px);
+}
+
 .states {
   min-width: 0;
 }

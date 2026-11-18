@@ -29,6 +29,40 @@ export function attemptSource(attempt: Pick<PipelineAttempt, "id">): AttemptSour
   return "dispatch";
 }
 
+/** How an encode with no try record ended: any part may be missing. */
+export interface EncodeExit {
+  status: string | null;
+  rule: string | null;
+  phase: string | null;
+}
+
+/** The recorded end of a row's encode, or null when none of it is recorded (or the columns do not exist yet). */
+export function encodeExit(
+  attempt: Pick<PipelineAttempt, "encode_exit_status" | "encode_exit_rule" | "encode_last_phase">
+): EncodeExit | null {
+  const status = attempt.encode_exit_status || null;
+  const rule = attempt.encode_exit_rule || null;
+  const phase = attempt.encode_last_phase || null;
+  return status || rule || phase ? { status, rule, phase } : null;
+}
+
+/** An encode's end in words: "exited · exit:1 · in phase resolve". */
+export function encodeExitLabel(exit: EncodeExit): string {
+  return [exit.status, exit.rule, exit.phase ? `in phase ${exit.phase}` : null].filter(Boolean).join(" · ");
+}
+
+/** Whether how the encode ended is on record: an outcome status or a typed rule. A last phase alone is not an end. */
+export function encodeExitKnown(exit: EncodeExit | null | undefined): boolean {
+  return Boolean(exit && (exit.status || exit.rule));
+}
+
+/** A recorded end as a sentence: how the encode ended, or its last phase alone when the end is not on record. */
+export function encodeExitSentence(exit: EncodeExit): string {
+  return encodeExitKnown(exit)
+    ? `The encode ended: ${encodeExitLabel(exit)}`
+    : `The encode's last reported phase was ${exit.phase}; how it ended is not on record`;
+}
+
 /** Whether a row is a dispatch: only dispatches count in run statistics. */
 export function isDispatch(attempt: Pick<PipelineAttempt, "id">): boolean {
   return attemptSource(attempt) === "dispatch";
@@ -130,6 +164,28 @@ export interface PipelineAttempt {
   pr_via_state?: "draft" | "open" | "merged" | "closed" | null;
   pr_via_merged_at?: string | null;
   pr_via_merge_commit?: string | null;
+  /** The PR's head commit, and how many commits the PR holds: the bot opens
+   *  it with one, and each update from the base branch adds one. */
+  pr_head_sha?: string | null;
+  pr_commit_count?: number | null;
+  /** GitHub's merge state of an open PR: BEHIND (the base moved on; a strict
+   *  branch rule wants an update), BLOCKED, CLEAN, DIRTY (conflicts), UNSTABLE. */
+  pr_merge_state?: string | null;
+  /** When the head commit's first check started, and when its last one
+   *  finished (null while any still runs): the CI run that counts. */
+  pr_checks_started_at?: string | null;
+  pr_checks_finished_at?: string | null;
+  /** The latest approving review: when, and whether it is on the head commit
+   *  (a push after it, such as a branch update, leaves it on an older one). */
+  pr_approved_at?: string | null;
+  pr_approval_on_head?: boolean | null;
+  /** How many reviews were dismissed (a rule dismisses a stale approval). */
+  pr_approvals_dismissed?: number | null;
+  /** Whether the dispatch asked for a pull request: false for a run whose
+   *  open-PR step was skipped (open_pr false), which ends at its signed artifact. */
+  pr_requested?: boolean | null;
+  /** What the dispatch asked for, from the run's "Record dispatch" job; null for a run without that job. */
+  dispatch_record?: DispatchRecord | null;
   /** The module's jurisdiction validation (compile, companion tests,
    *  source-unit rules) on the default branch at a commit with the merge. */
   tests_status?: "pass" | "fail" | "waived" | null;
@@ -138,7 +194,9 @@ export interface PipelineAttempt {
   /** The axiom-oracles comparison: match, explained (only dispositioned
    *  engine or bridge differences), disagree, or stale (compared an earlier
    *  version of the module). */
-  oracle_status?: "match" | "explained" | "disagree" | "stale" | null;
+  /** pending: no report compares the module yet, and its repo's
+   *  oracle-coverage-pending.yaml lists an output of it as awaiting an oracle. */
+  oracle_status?: "match" | "explained" | "disagree" | "stale" | "pending" | null;
   oracle_report?: string | null;
   oracle_engine?: string | null;
   oracle_checked_at?: string | null;
@@ -174,6 +232,17 @@ export interface PipelineAttempt {
   tests_first_run_url?: string | null;
   /** Each try of the encode loop, from the encoder's own record. */
   tries?: PipelineTry[] | null;
+  /**
+   * Why a dispatch whose encode step ran has no encoder record, from the
+   * encoder's live row for the run (encodings.live_encoding_runs, joined on
+   * runner.github_run_id): how the encode ended (an outcome status, or
+   * aborted, exited, interrupted), its typed rule (exception:<Class>,
+   * exit:<code>, a check id), and the last phase it reported. Null when no
+   * live row names the run (every run before axiom-encode #1750).
+   */
+  encode_exit_status?: string | null;
+  encode_exit_rule?: string | null;
+  encode_last_phase?: string | null;
   /** The encode loop's own clock, from the encoder's record (axiom-encode 0.2.2157 on). */
   encode_loop?: EncodeLoopTiming | null;
 }
@@ -188,11 +257,35 @@ export interface PipelineTry {
   ok: boolean;
   /** The first check that failed this try's candidate. */
   error: string | null;
+  /** The typed checks that failed this try's candidate, most findings first (encoder issue documents). */
+  checks?: PipelineTryCheck[];
+  /** How many further typed checks the list leaves out. */
+  checksMore?: number;
   /** When the try started, and its whole time with its checks (encoder 0.2.2157 on). */
   startedAt?: string;
   wallMs?: number;
   /** What the try did, in order and back to back; the phases add up to its whole time. */
   phases?: PipelineTryPhase[];
+}
+
+/** One typed check that failed a try: its registry id, the gate that ran it, and its number of findings. */
+/**
+ * What a dispatch requested (axiom-encode's dispatch record, read from a step
+ * name of the run's "Record dispatch" job). It says what was asked, not what
+ * the workflow admitted. A field is null when the record leaves it out or
+ * marks it invalid.
+ */
+export interface DispatchRecord {
+  kind: "promotion" | "repair" | "queue" | "adhoc" | null;
+  open_pr: boolean | null;
+  pr_base_branch: string | null;
+  repair_run_id: string | null;
+}
+
+export interface PipelineTryCheck {
+  id: string;
+  gate: string | null;
+  n: number;
 }
 
 /** One phase of a try: what the encoder did, for how long, and a check phase's time by tool. */
@@ -319,16 +412,26 @@ export const FAILED_COMPILE_STATUSES = new Set([
  * Whether a merged attempt reached the repo's default branch: its PR merged
  * into it, or into a side branch whose own PR then merged into it.
  */
+/**
+ * Whether a closed, unmerged PR's change still reached the default branch:
+ * another PR (a merge train) carried its module there. pr_via_* name that PR.
+ */
+export function carriedToMain(attempt: Pick<PipelineAttempt, "pr_state" | "pr_via_state">): boolean {
+  return attempt.pr_state === "closed" && attempt.pr_via_state === "merged";
+}
+
 export function reachedMain(attempt: PipelineAttempt): boolean {
+  if (carriedToMain(attempt)) return true;
   return (
     attempt.pr_state === "merged" &&
     (attempt.pr_targets_default !== false || attempt.pr_via_state === "merged")
   );
 }
 
-/** When the attempt's change reached the default branch: its own merge, or its side branch's. */
+/** When the attempt's change reached the default branch: its own merge, its side branch's, or its merge train's. */
 export function mainMergedAt(attempt: PipelineAttempt): string | null {
   if (!reachedMain(attempt)) return null;
+  if (carriedToMain(attempt)) return attempt.pr_via_merged_at ?? null;
   return attempt.pr_targets_default === false ? (attempt.pr_via_merged_at ?? null) : attempt.pr_merged_at;
 }
 
@@ -341,6 +444,7 @@ export function viaPrLabel(attempt: PipelineAttempt): string | null {
 /** Where a merge went: the default branch, a side branch its own PR took on, or a side branch only. */
 export function mergeDetail(attempt: PipelineAttempt): string {
   const into = `Into ${attempt.pr_base_branch}`;
+  if (carriedToMain(attempt)) return `Closed; ${viaPrLabel(attempt)} carried it into the default branch`;
   if (attempt.pr_targets_default !== false) return into;
   const via = viaPrLabel(attempt);
   if (attempt.pr_via_state === "merged") return `${into}, then the default branch by ${via}`;
@@ -351,7 +455,7 @@ export function mergeDetail(attempt: PipelineAttempt): string {
 }
 
 export function attemptStage(attempt: PipelineAttempt): PipelineStage {
-  if (attempt.pr_state === "merged") {
+  if (attempt.pr_state === "merged" || carriedToMain(attempt)) {
     if (!reachedMain(attempt)) return "merged_off_main";
     if (attempt.index_status === "missing") return "not_indexed";
     if (!attempt.synced_at) return "awaiting_sync";
@@ -491,14 +595,40 @@ export function cancelledBeforeEncode(attempt: PipelineAttempt): boolean {
 }
 
 /**
+ * How far a stage got, least first: where an attempt stopped (in ALL_STAGES
+ * order), then the stages still on the way, up to verified.
+ */
+const STAGE_DONENESS: PipelineStage[] = [
+  "encode_failed",
+  "no_pr",
+  "closed",
+  "merged_off_main",
+  "not_indexed",
+  "compile_failed",
+  "tests_failing",
+  "oracle_disagrees",
+  "encoding",
+  "review",
+  "awaiting_sync",
+  "indexed",
+  "runs",
+  "verified",
+];
+
+/**
  * The attempt a citation's status comes from: its newest of every source
  * (by attemptTime, so a module merged by hand counts from its merge),
  * passing over dispatches cancelled before their encode job started while
  * an earlier attempt exists, so a cancelled re-dispatch does not hide what
- * came before it.
+ * came before it. Attempts at the same time (several modules of one PR
+ * that encode the same provision) give the least advanced stage, so a
+ * citation never looks more done than its weakest module.
  */
 export function statusAttempt(attempts: PipelineAttempt[]): PipelineAttempt | null {
-  const sorted = [...attempts].sort(byTimeDesc);
+  const sorted = [...attempts].sort(
+    (a, b) =>
+      byTimeDesc(a, b) || STAGE_DONENESS.indexOf(attemptStage(a)) - STAGE_DONENESS.indexOf(attemptStage(b))
+  );
   return sorted.find((attempt) => !cancelledBeforeEncode(attempt)) ?? sorted[0] ?? null;
 }
 
@@ -598,6 +728,11 @@ export function dependentModule(attempt: PipelineAttempt): string | null {
   return attempt.encoder_error?.match(/^(\S+?\.ya?ml):/)?.[1] ?? null;
 }
 
+/** A workflow step's check id (infra:<step>), as against a validator rule. */
+export function isInfraRule(rule: string | null | undefined): boolean {
+  return !!rule && rule.startsWith("infra:");
+}
+
 export function failureReason(attempt: PipelineAttempt): FailureReason {
   // A cancelled run's story is how far it got, not what it last logged.
   if (attempt.run_conclusion === "timed_out") {
@@ -616,7 +751,8 @@ export function failureReason(attempt: PipelineAttempt): FailureReason {
     return {
       key: `rule:${attempt.encoder_error_rule}`,
       label: attempt.encoder_error_rule,
-      kind: "validator",
+      // An infra:<step> check is the workflow's, not a validator rule.
+      kind: isInfraRule(attempt.encoder_error_rule) ? "workflow" : "validator",
     };
   }
   // An issue or log error with no rule id: group by what it says, which
@@ -701,6 +837,32 @@ const STEP_GATES: Array<[RegExp, EncodeGate]> = [
   [/encode_apply|encode, review, validate, and apply/i, "encode"],
 ];
 
+/** Encoder step ids a failure bundle names, by the station they belong to. */
+const ENCODER_STEP_STATION: Record<string, string> = {
+  encode_apply: "validate",
+  repair_candidate: "validate",
+  package_exact_generated_changes: "publish",
+  verify_generated_provenance: "publish",
+  finalize_signed_reencode_artifact: "publish",
+};
+
+/**
+ * The station a failed workflow step belongs to. Workflow step names read
+ * "<job> / <step>"; encoder step ids are bare. Anything else before the
+ * encode step is setup. The ledger's gates and the event log's stations
+ * both read it, so a new step name lands in the same place in both.
+ */
+export function failedStepStation(step: string): string {
+  if (ENCODER_STEP_STATION[step]) return ENCODER_STEP_STATION[step];
+  const name = step.includes(" / ") ? step.slice(step.lastIndexOf(" / ") + 3) : step;
+  if (/^Encode, review, validate|dependent cascade/i.test(name)) return "validate";
+  if (/pull request|^Push |^Package|^Sign/i.test(name)) return "publish";
+  return "setup";
+}
+
+/** A station from failedStepStation, as the gate a failed run's label names. */
+const STATION_GATES: Record<string, EncodeGate> = { setup: "setup", validate: "validate", publish: "sign" };
+
 export function encodeGate(attempt: PipelineAttempt): EncodeGate {
   if (attempt.run_conclusion === "cancelled" || attempt.run_conclusion === "timed_out") {
     return "cancelled";
@@ -710,13 +872,17 @@ export function encodeGate(attempt: PipelineAttempt): EncodeGate {
   if (check && ERROR_CHECK_GATES[check]) return ERROR_CHECK_GATES[check];
   if (attempt.encoder_status === "apply_blocked_generation") return "generate";
   if (attempt.encoder_status === "apply_blocked_manifest") return "sign";
-  if (attempt.encoder_error_rule || attempt.encoder_status === "apply_blocked_validation") {
+  // An infra:<step> check names a workflow step: the step decides its gate, below.
+  if ((attempt.encoder_error_rule && !isInfraRule(attempt.encoder_error_rule)) || attempt.encoder_status === "apply_blocked_validation") {
     return "validate";
   }
   if (attempt.failed_step) {
     for (const [pattern, gate] of STEP_GATES) {
       if (pattern.test(attempt.failed_step)) return gate;
     }
+    // A step the list does not name still has a place in the run: before
+    // the encode step it is setup (fetching the corpus, migrations).
+    return STATION_GATES[failedStepStation(attempt.failed_step)] ?? "setup";
   }
   return attempt.failure_source ? "unknown" : "pending";
 }
@@ -1215,12 +1381,14 @@ export function journeySteps(attempt: PipelineAttempt): JourneyStep[] {
       detail: attempt.oracle_status
         ? [oracleLabel(attempt), attempt.oracle_report].filter(Boolean).join(" — ")
         : attempt.pr_state === "merged"
-          ? "No oracle report covers it"
+          ? ORACLE_NONE_LABEL
           : null,
       // Attempts retain a filename, so this detail link follows the live report branch.
       href: attempt.oracle_report
         ? `https://github.com/TheAxiomFoundation/axiom-oracles/blob/oracle-data/dashboard/public/data/${attempt.oracle_report}`
-        : null,
+        : attempt.oracle_status === "pending" && attempt.pr_repo
+          ? `https://github.com/TheAxiomFoundation/${attempt.pr_repo}/blob/HEAD/${ORACLE_PENDING_LEDGER}`
+          : null,
     },
   ];
 }
@@ -1262,6 +1430,11 @@ const ORACLE_ENGINE_LABELS: Record<string, string> = {
   spsm: "SPSM",
 };
 
+/** The repo-root ledger of outputs that await an oracle comparison. */
+export const ORACLE_PENDING_LEDGER = "oracle-coverage-pending.yaml";
+/** A merged module no report compares and no ledger lists. */
+export const ORACLE_NONE_LABEL = "No oracle compares this module";
+
 /** The oracle comparison in a few words, or null when no report covers it. */
 export function oracleLabel(attempt: PipelineAttempt): string | null {
   if (!attempt.oracle_status) return null;
@@ -1276,6 +1449,8 @@ export function oracleLabel(attempt: PipelineAttempt): string | null {
       return `Disagrees with ${engine}`;
     case "stale":
       return capitalize(`${engine} report predates this version`);
+    case "pending":
+      return `Oracle pending: no report compares it yet (listed in ${ORACLE_PENDING_LEDGER})`;
   }
 }
 
@@ -1402,7 +1577,7 @@ function itemReason(state: CitationState): string | null {
         : "Waiting for its jurisdiction's validation on main";
     case "verified":
     case "oracle_disagrees":
-      return oracleLabel(latest) ?? "No oracle report covers it";
+      return oracleLabel(latest) ?? ORACLE_NONE_LABEL;
     case "compile_failed":
       return latest.compile_status?.replaceAll("_", " ") ?? null;
     case "merged_off_main": {

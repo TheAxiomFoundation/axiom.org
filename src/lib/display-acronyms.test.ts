@@ -41,6 +41,15 @@ describe("DISPLAY_ACRONYMS", () => {
     });
   }
 
+  it("covers the SNAP immigration encoding's acronyms", () => {
+    // Lawful permanent resident, the One Big Beautiful Bill Act, Compact of
+    // Free Association, PRWORA, the Immigration and Nationality Act and
+    // quality control: tokens the signed SNAP immigration encoding uses.
+    for (const token of ["lpr", "obbb", "cofa", "prwora", "ina", "qc", "cfr", "us"]) {
+      expect(DISPLAY_ACRONYMS.has(token), token).toBe(true);
+    }
+  });
+
   it("excludes tokens that are ordinary words in some displayable use", () => {
     // concept-naming.md §Acronyms: "co" means co-resident in fragments and
     // Colorado in program ids; "eu"/"un" are jurisdiction vocabulary only

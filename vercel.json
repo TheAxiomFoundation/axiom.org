@@ -155,12 +155,30 @@
     {
       "source": "/:site(partners|partners-[a-z0-9-]+)/:path(.*)",
       "destination": "https://axiom-partners-sigma.vercel.app/:site/:path(.*)"
+    },
+    {
+      "source": "/:site(institute|institute-[a-z0-9-]+)",
+      "destination": "https://axiom-institute-tan.vercel.app/:site"
+    },
+    {
+      "source": "/:site(institute|institute-[a-z0-9-]+)/:path(.*)",
+      "destination": "https://axiom-institute-tan.vercel.app/:site/:path(.*)"
     }
   ],
   "redirects": [
     {
       "source": "/receipt/api",
       "destination": "/receipt/api/",
+      "permanent": false
+    },
+    {
+      "source": "/gallery",
+      "destination": "/demos",
+      "permanent": false
+    },
+    {
+      "source": "/gallery/",
+      "destination": "/demos",
       "permanent": false
     },
     {

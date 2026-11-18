@@ -159,7 +159,7 @@ describe("ProgramBundle", () => {
     render(<ProgramBundle bundle={withParts} documents={documents} available referenceMs={NOW} />);
     expect(screen.getByRole("heading", { name: "Arizona SNAP" })).toBeInTheDocument();
     // The page sits in the /ops bundles tab; its back link returns to the grid on its program.
-    expect(screen.getByRole("link", { name: "All program bundles" })).toHaveAttribute("href", "/ops?tab=bundles&program=snap");
+    expect(screen.getByRole("link", { name: "All program bundles" })).toHaveAttribute("href", "/ops?tab=programs&program=snap");
     const matrix = screen.getByRole("table", { name: "Parts of the program by tier" });
     const headers = within(matrix).getAllByRole("columnheader");
     // Both tiers lead with how much is encoded; under the screener tier's, its comparison run.
@@ -394,7 +394,8 @@ describe("ProgramBundle", () => {
     ];
     render(<ProgramBundle bundle={withParts} documents={documents} snapshots={snapshots} available referenceMs={NOW} />);
     const headers = within(screen.getByRole("table", { name: "Parts of the program by tier" })).getAllByRole("columnheader");
-    expect(headers[1]).toHaveTextContent("Changed from 3 on Oct 5, 2026");
+    expect(headers[1]).toHaveTextContent("Scope changed from 3 documents on Oct 5, 2026");
+    expect(headers[1]).not.toHaveTextContent(/Changed from/);
     const panel = screen.getByRole("region", { name: "Documents" });
     fireEvent.click(within(panel).getByRole("button", { name: /^Federal statutes and public laws/ }));
     expect(within(panel).getByRole("button", { name: "7 USC 2014" }).closest("th")).toHaveTextContent(

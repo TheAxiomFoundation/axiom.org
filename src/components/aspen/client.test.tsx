@@ -5,12 +5,12 @@ import {
   CHAT_KEY,
   CONTROL_TIMEOUT_MS,
   OVERALL_KEY,
+  PLEDGE_KEY,
   RATING_KEY,
   SAVE_TIMEOUT_MS,
   TAB_KEY,
   VOTE_KEY,
   enterRun,
-  formatValue,
   heldElsewhere,
   holdTab,
   newId,
@@ -131,6 +131,7 @@ describe("enterRun", () => {
     localStorage.setItem(OVERALL_KEY, "true");
     localStorage.setItem(VOTE_KEY, JSON.stringify("project"));
     localStorage.setItem(RATING_KEY, "{}");
+    localStorage.setItem(PLEDGE_KEY, "true");
     localStorage.setItem("aspen.overall.v1", "true");
     localStorage.setItem("aspen.participant", "p-1");
     expect(enterRun("phoenix")).toBe(true);
@@ -138,6 +139,7 @@ describe("enterRun", () => {
     expect(localStorage.getItem(OVERALL_KEY)).toBeNull();
     expect(localStorage.getItem(VOTE_KEY)).toBeNull();
     expect(localStorage.getItem(RATING_KEY)).toBeNull();
+    expect(localStorage.getItem(PLEDGE_KEY)).toBeNull();
     // A key from an earlier version of the page goes too.
     expect(localStorage.getItem("aspen.overall.v1")).toBeNull();
     expect(localStorage.getItem("aspen.participant")).toBe("p-1");
@@ -204,33 +206,6 @@ describe("sendEvent", () => {
     vi.stubGlobal("fetch", fetchMock);
     expect(() => sendEvent("x", {})).not.toThrow();
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-  });
-});
-
-describe("formatValue", () => {
-  it("formats dollars without cents for whole numbers", () => {
-    expect(formatValue(1234, "USD")).toBe("$1,234");
-  });
-
-  it("keeps cents for fractional dollars", () => {
-    expect(formatValue(12.5, "USD")).toBe("$12.50");
-  });
-
-  it("formats plain numbers with grouping", () => {
-    expect(formatValue(1234567)).toBe("1,234,567");
-    expect(formatValue(3, "people")).toBe("3");
-  });
-
-  it("maps truth values and blanks", () => {
-    expect(formatValue("holds")).toBe("Yes");
-    expect(formatValue("not_holds")).toBe("No");
-    expect(formatValue(null)).toBe("—");
-    expect(formatValue(undefined)).toBe("—");
-  });
-
-  it("returns other values as strings", () => {
-    expect(formatValue("eligible")).toBe("eligible");
-    expect(formatValue(true)).toBe("true");
   });
 });
 
