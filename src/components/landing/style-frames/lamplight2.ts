@@ -1194,16 +1194,23 @@ export function lamplightBeat6(ctx: BeatCtx): BeatSpec {
 }
 
 // ── beat 8: one set of rules powers every kind of tool ──────────────
-// After the RaC Guild deck's OneSourceSlide (axiom-slides, 2026-10-06):
-// one source card fans out to the five kinds of user, each with the
-// slide's three uses.
+// After the Aspen deck's rules slide (src/components/aspen/presenter-app.tsx,
+// RulesSlide, Oct 26): one open set of rules feeds AI, government and
+// navigation tools, each with one line on what it is. Researchers are the
+// fourth group here (Nov 6).
 
-const GROUPS: Array<{ icon: "person" | "bank" | "spark" | "code" | "book"; who: string; items: string[] }> = [
-  { icon: "person", who: "Individuals & navigators", items: ["Benefits screeners, calculators and navigation tools", "Benefit-cliff explorers", "Legal aid assistance"] },
-  { icon: "bank", who: "Governments", items: ["The eligibility rules engine inside a state system", "A test oracle to check current rules and workflows", "Policy dashboards and microsimulation"] },
-  { icon: "spark", who: "AI systems", items: ["Assistants that call the rules through MCP", "Benefits chatbots grounded in the law", "Model evaluation and rewards"] },
-  { icon: "code", who: "Builders", items: ["A hosted API behind any product", "Embedded libraries — Rust, Python, npm", "Zero-PII WASM, running in the browser"] },
-  { icon: "book", who: "Researchers", items: ["Reproducible analysis, pinned to a dated release", "Reform modeling and forecasting", "Open rules to study and cite"] },
+const GROUPS: Array<{ icon: "person" | "bank" | "spark" | "code" | "book"; who: string; detail: string }> = [
+  { icon: "spark", who: "AI tools", detail: "The chatbots and assistants residents and staff already ask" },
+  { icon: "bank", who: "Government tools", detail: "Eligibility systems, caseworker guidance and training, and policy changes tested before they land" },
+  { icon: "person", who: "Navigation tools", detail: "Community screeners and navigators that say what to apply for" },
+  { icon: "book", who: "Researchers", detail: "Evaluators and analysts who model a policy and reproduce the analysis" },
+];
+
+// what makes the one set of rules checkable, as on the deck's rules box
+const TRAITS = [
+  "Every value is built to cite the provision it comes from",
+  "Every change carries its effective date",
+  "Every release is versioned, so you can see what changed",
 ];
 
 function icon(g: CanvasRenderingContext2D, kind: string, x: number, y: number, s: number) {
@@ -1307,33 +1314,20 @@ export function lamplightBeat7(ctx: BeatCtx): BeatSpec {
     g.fillText("ONE SOURCE", 70, 110);
     g.fillStyle = "#f6ead8";
     g.font = `400 86px ${serif}`;
-    g.fillText("Encoded, cited", 70, 222);
-    g.fillText("rules", 70, 316);
-    g.fillStyle = "rgba(246, 234, 216, 0.68)";
+    g.fillText("One open set", 70, 222);
+    g.fillText("of rules", 70, 316);
+    // the three traits, each on a plain bullet: they say how the rules are
+    // built, not work that is finished
     g.font = `400 38px ${sans}`;
-    wrapLines(g, "Every value tied to the provision it comes from, effective-dated, in versioned releases.", SWpx - 140).forEach((ln, i) =>
-      g.fillText(ln, 70, 400 + i * 54),
-    );
-    // the delivery channels, as chips
-    let x = 70;
-    let y = 600;
-    g.font = `500 30px ${mono}`;
-    ["App", "API", "MCP", "Rust · Python · npm", "WASM"].forEach((c) => {
-      const w = g.measureText(c).width + 44;
-      if (x + w > SWpx - 60) {
-        x = 70;
-        y += 76;
-      }
+    let y = 420;
+    TRAITS.forEach((trait) => {
+      g.fillStyle = "#ffb45c";
       g.beginPath();
-      g.roundRect(x, y, w, 56, 10);
-      g.fillStyle = "rgba(255, 225, 190, 0.06)";
+      g.arc(82, y - 12, 7, 0, Math.PI * 2);
       g.fill();
-      g.strokeStyle = "rgba(255, 190, 120, 0.45)";
-      g.lineWidth = 2;
-      g.stroke();
-      g.fillStyle = "#f6ead8";
-      g.fillText(c, x + 22, y + 38);
-      x += w + 16;
+      g.fillStyle = "rgba(246, 234, 216, 0.82)";
+      wrapLines(g, trait, SWpx - 180).forEach((ln, i) => g.fillText(ln, 110, y + i * 52));
+      y += wrapLines(g, trait, SWpx - 180).length * 52 + 30;
     });
     // a glimpse of the graph the rules form
     const nodes = [[120, 900], [120, 990], [260, 860], [260, 950], [400, 900], [520, 860], [520, 990], [660, 930], [780, 960]];
@@ -1374,43 +1368,35 @@ export function lamplightBeat7(ctx: BeatCtx): BeatSpec {
   glow.lookAt(camera.position);
   fx.add(glow);
 
-  // the five kinds of user, on a shallow arc. Sized a fifth larger than
-  // the fan was first drawn, into the margin the frame already had, so the
-  // three uses on each card read from the back of a room (Oct 26).
+  // the four kinds of tool, on a shallow arc: each card a name and the
+  // one line under it, large enough to read from the back of a room
+  const N = GROUPS.length;
   const GWpx = 1900;
-  const GHpx = 420;
+  const GHpx = 380;
   const GW = 4.8;
   const GH = (GHpx / GWpx) * GW;
-  const ys = [3.07, 1.81, 0.55, -0.71, -1.97];
+  const ys = [2.85, 1.42, -0.01, -1.44];
   const groupCards: THREE.Mesh[] = [];
   const beams: Array<{ beam: THREE.Mesh; df: THREE.Mesh; dt: THREE.Mesh; packet: THREE.Mesh; c: THREE.Curve<THREE.Vector3> }> = [];
   const r = rng(88);
   GROUPS.forEach((grp, i) => {
     const tex = glass(GWpx, GHpx, (g) => {
-      icon(g, grp.icon, 110, 128, 92);
-      g.fillStyle = "rgba(255, 210, 160, 0.82)";
-      g.font = `500 30px ${mono}`;
-      g.fillText(grp.who.toUpperCase(), 190, 140);
-      g.fillStyle = "rgba(255, 190, 120, 0.18)";
-      g.fillRect(60, 196, GWpx - 120, 2);
-      const colW = (GWpx - 160) / 3;
-      g.font = `400 40px ${sans}`;
-      grp.items.forEach((it, k) => {
-        const x = 70 + k * colW;
-        g.fillStyle = "#ffb45c";
-        g.fillText("·", x, 270);
-        g.fillStyle = "#f2e6d4";
-        wrapLines(g, it, colW - 70).forEach((ln, li) => g.fillText(ln, x + 30, 270 + li * 54));
-      });
+      icon(g, grp.icon, 130, GHpx / 2, 120);
+      g.fillStyle = "#f6ead8";
+      g.font = `500 76px ${sans}`;
+      g.fillText(grp.who, 250, 150);
+      g.fillStyle = "rgba(242, 230, 212, 0.86)";
+      g.font = `400 48px ${sans}`;
+      wrapLines(g, grp.detail, GWpx - 320).slice(0, 2).forEach((ln, li) => g.fillText(ln, 250, 238 + li * 62));
     });
     const m = cardMesh(tex, GW, GH, 1.0);
     groupCards.push(m);
-    m.position.set(3.8, ys[i], -0.32 * Math.abs(i - 2));
+    m.position.set(3.8, ys[i], -0.32 * Math.abs(i - (N - 1) / 2));
     m.lookAt(camera.position);
     scene.add(m);
     m.updateMatrixWorld();
     // the fan: one beam per group, leaving the source in the same order
-    const from = source.localToWorld(new THREE.Vector3(SW / 2, (0.5 - (i + 0.5) / 5) * SH * 0.62 + SH * 0.08, 0.01));
+    const from = source.localToWorld(new THREE.Vector3(SW / 2, (0.5 - (i + 0.5) / N) * SH * 0.62 + SH * 0.08, 0.01));
     const to = m.localToWorld(new THREE.Vector3(-GW / 2, 0, 0.01));
     const c = new THREE.CubicBezierCurve3(from, from.clone().add(new THREE.Vector3(1.5, 0, 0.25)), to.clone().add(new THREE.Vector3(-1.5, 0, 0.2)), to);
     const beam = wire(c, 0.008, "#ffb45c", 2.0);
@@ -1420,10 +1406,9 @@ export function lamplightBeat7(ctx: BeatCtx): BeatSpec {
     scene.add(beam, df, dt, packet);
     beams.push({ beam, df, dt, packet, c });
     const GROUP_LINKS: Array<[string, string]> = [
-      ["/demos", "Try a screener built on the rules"],
-      ["/validation", "See how the rules are checked"],
       ["/docs", "Connect an assistant over MCP"],
-      ["/docs", "Use the API and libraries"],
+      ["/validation", "See how the rules are checked"],
+      ["/demos", "Try a screener built on the rules"],
       ["/coverage", "See what the rules cover"],
     ];
     ctx.link(m, GROUP_LINKS[i][0], GROUP_LINKS[i][1], { when: [0.4 + i * 0.1, 1.4] });

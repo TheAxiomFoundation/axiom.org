@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
   const days = parseWindow(params.get("window") ?? undefined);
   const jurisdiction = params.get("j") || null;
   const [{ model, origin, error }, accepted] = await Promise.all([
-    loadFlow({ days, jurisdiction, population: parsePopulation(params.get("pop")) }),
+    loadFlow({ days, jurisdiction, only: params.get("only") === "1", population: parsePopulation(params.get("pop")) }),
     // The cached headline: totals and weeks, without the program lookup
     // (?accepted has the programs).
     getAcceptedHeadline(),

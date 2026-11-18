@@ -189,7 +189,10 @@ describe("causeHeadline", () => {
     ).toBe("Corpus layout error");
     expect(causeHeadline("error: rulespec ref is not the exact pull request base branch tip")).toBe(
       "rulespec ref is not the exact pull request base branch tip"
-    );
+    );    // A guard's issue leads with its manifest, without a colon.
+    expect(
+      causeHeadline(".axiom/encoding-manifests/us-az/x.json validation_waiver_set_sha256 does not match the RuleSpec toolchain-bound waiver set")
+    ).toBe("validation_waiver_set_sha256 does not match the RuleSpec toolchain-boun…");
   });
 });
 
@@ -205,6 +208,16 @@ describe("sectionBrief", () => {
     expect(b.now).toEqual({ text: "Waiting for approval", link: { label: "Approve on GitHub ↗", url: "https://x/run/1" } });
     expect(b.repeated).toEqual([]);
     expect(b.marks.map((m) => m.tone)).toEqual(["waiting"]);
+  });
+
+  it("lists a failure that came back only while the section is stuck on it", () => {
+    const failed = { run_conclusion: "failure", encoder_error_rule: "complete-source-unit:tests", failure_source: "diagnostics" } as const;
+    const pr = { run_conclusion: "success", pr_repo: "rulespec-us", pr_number: 7, pr_url: "https://x/pr/7", pr_created_at: day(9), pr_state: "open" } as const;
+    // Two failures, then a run that passed: the failures are history.
+    expect(brief([failed, failed, pr]).repeated).toEqual([]);
+    // Two failures since the run that passed: stuck on them again.
+    expect(brief([failed, failed, pr, failed, failed]).repeated.map((r) => r.count)).toEqual([2]);
+    expect(brief([failed, failed, pr, failed]).repeated).toEqual([]);
   });
 
   it("points at the PR in review, the tests that fail, and the side branch's own PR", () => {

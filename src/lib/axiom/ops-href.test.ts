@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { busiestRoots, LEGACY_OPS_TABS, opsHref, sharedOpsParams } from "./ops-href";
+import { busiestRoots, LEGACY_OPS_TABS, opsHref, sharedOpsParams, subdivisionsOf } from "./ops-href";
 
 describe("opsHref", () => {
   it("puts the tab first and keeps every other parameter", () => {
@@ -23,5 +23,11 @@ describe("sharedOpsParams", () => {
 describe("busiestRoots", () => {
   it("counts by root jurisdiction, most first, ties by name, up to the limit", () => {
     expect(busiestRoots(["us-co", "us", "dk", null, "ca", "ca-on", "be"], 3)).toEqual(["ca", "us", "be"]);
+  });
+});
+
+describe("subdivisionsOf", () => {
+  it("lists each root's subdivisions by name, and leaves the rest out", () => {
+    expect(subdivisionsOf(["us-co", "us-co", "us-az", "us", "dk", "ca-on", null], ["us", "dk"])).toEqual({ us: ["us-az", "us-co"] });
   });
 });

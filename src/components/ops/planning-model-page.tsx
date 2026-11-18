@@ -304,10 +304,11 @@ export function PlanningModelPage() {
             recorded as gaps in those models. Three caveats: the runs are
             manual, on our licensed machine rather than in CI, because the
             license bars giving the model or its data to third parties; the
-            compared rule modules are not encoder output (Rwanda&apos;s carry
-            no encoding record, and the other four countries&apos; carry
-            manual attestations); and every compared household is synthetic,
-            with no microdata at all for Rwanda.
+            compared rule modules are not encoder output (none carries an
+            encoder apply record: Rwanda&apos;s carry no encoding record, and in
+            the other four countries most carry manual attestations and a few
+            carry none); and every compared household is synthetic, with no
+            microdata at all for Rwanda.
           </p>
           <ul className="font-body text-[1rem] text-[var(--color-ink-secondary)] leading-relaxed space-y-2 list-disc pl-5">
             <li>

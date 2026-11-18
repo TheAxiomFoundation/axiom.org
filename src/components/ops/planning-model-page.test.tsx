@@ -171,13 +171,20 @@ describe("PlanningModelPage", () => {
     expect(text).toMatch(
       /the runs are manual, on our licensed machine rather than in CI, because the license bars giving the model or its data to third parties/,
     );
-    // (b) In rulespec-gh, -ug, -zm and -et every compared module's
-    // .axiom/encoding-manifests entry has backend "manual" and runner
-    // "manual-attestation" (axiom-encode sign-applied-files), not
-    // `encode --apply`; rulespec-rw has no encoding manifests at all.
+    // (b) No module a SOUTHMOD suite compares or imports has an
+    // .axiom/encoding-manifests entry written by `encode --apply`. In
+    // rulespec-gh, -ug, -zm and -et, 32 of the 36 have one with backend
+    // "manual" (axiom-encode sign-applied-files), and four have none
+    // covering them: zm act-2018-19 and act-2021-45, which act-2024-24
+    // imports; gh act-1007's Fifth Schedule personal reliefs, which act-896's
+    // fifth schedule imports; and gh act-1111's First Schedule, whose one
+    // manifest lists only its .test.yaml. rulespec-rw has no encoding
+    // manifests at all. So the page says "most" and "a few carry none",
+    // never that all carry attestations.
     expect(text).toMatch(
-      /the compared rule modules are not encoder output \(Rwanda's carry no encoding record, and the other four countries' carry manual attestations\)/,
+      /the compared rule modules are not encoder output \(none carries an encoder apply record: Rwanda's carry no encoding record, and in the other four countries most carry manual attestations and a few carry none\)/,
     );
+    expect(text).not.toMatch(/other four countries'? carry manual attestations/);
     // (c) Every suite runs `population: synthetic`; GHAMOD, UGAMOD,
     // MicroZAMOD and ETMOD read only their dataset's variable list, and the
     // bundle ships no Rwandan microdata (rw-*.yaml build a header-only file).

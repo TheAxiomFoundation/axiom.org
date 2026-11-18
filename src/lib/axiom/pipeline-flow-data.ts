@@ -101,6 +101,8 @@ export function unmeasuredStations(ingest: Record<string, string>, gateSince: st
 export async function loadFlow(options: {
   days: number;
   jurisdiction: string | null;
+  /** The jurisdiction alone, without those under it. */
+  only?: boolean;
   population?: Population;
   now?: number;
   /** Read workflow health from GitHub for the alerts; the page shows no alerts and skips it. */
@@ -123,6 +125,7 @@ export async function loadFlow(options: {
     now,
     days: options.days,
     jurisdiction: options.jurisdiction,
+    only: options.only,
     population: options.population,
     targets: targets.targets,
     workflows: signals,

@@ -1,9 +1,7 @@
 // What the page says over each beat: one title (the kicker is kept as
-// data, not shown). The two disclosures the copy rules need ride in the
-// titles: the encode beat is an illustration, and the registry's numbers
-// carry their snapshot month.
-
-import { snapshotMonth } from "../registry-snapshot";
+// data, not shown). The titles describe the process in general terms and
+// put the checks first; they quote no registry numbers, so they carry no
+// snapshot date, and they claim no human review and no blanket "verified".
 
 // The timeline, in beats. Progress P runs 0..TOTAL across the scenes;
 // each scene's own motion runs over its span, and the last OVERLAP of it
@@ -33,12 +31,12 @@ export const captionAt = (P: number) => {
 
 export const CAPTIONS: Array<{ kicker: string; title: string }> = [
   { kicker: "1 / 8 · Off the shelf", title: "It starts with the law as written." },
-  { kicker: "2 / 8 · The law, as published", title: "Hundreds of official sources, word for word." },
+  { kicker: "2 / 8 · The law, as published", title: "The legal text is the specification, encoded line by line." },
   { kicker: "3 / 8 · The corpus", title: "Every provision has an address." },
-  { kicker: "4 / 8 · Encode · an illustration", title: "An illustration: AI drafts a rule, and a failed check sends it back." },
+  { kicker: "4 / 8 · Encode and check", title: "Automated encoding, deterministic checks, transparent validation." },
   { kicker: "5 / 8 · Cited code", title: "Every value cites the sentence it came from." },
-  { kicker: "6 / 8 · The graph", title: "Typed, cited, executable." },
-  { kicker: `7 / 8 · All the law · ${snapshotMonth()} snapshot`, title: `The same structure, at scale (${snapshotMonth()} snapshot).` },
+  { kicker: "6 / 8 · The graph", title: "The rules run as one graph, and its results are checked against test cases." },
+  { kicker: "7 / 8 · At scale", title: "The same process and the same checks, law by law." },
   { kicker: "8 / 8 · Every system", title: "One set of rules powers every kind of tool, built by anyone." },
 ];
 
