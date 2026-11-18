@@ -15,7 +15,7 @@ const CLOTH = ["#4a1f19", "#5b3a26", "#3a3f46", "#3f4636", "#2e231b", "#6a4a2e",
 // no label patch. The lettering is drawn on its own layer, worn with a
 // speckle of missing foil, then pressed in (a dark edge above-left, a
 // faint light edge below-right).
-function gilt(
+export function gilt(
   g: CanvasRenderingContext2D,
   w: number,
   h: number,
@@ -141,7 +141,7 @@ export function heroSpine() {
   });
 }
 
-function pageEdges() {
+export function pageEdges() {
   return canvasTexture(256, 64, (g) => {
     g.fillStyle = "#d9ccb2";
     g.fillRect(0, 0, 256, 64);
@@ -150,7 +150,7 @@ function pageEdges() {
   });
 }
 
-function plaque(text: string) {
+export function plaque(text: string) {
   const mono = fontVar("--font-mono");
   return canvasTexture(1024, 160, (g) => {
     g.fillStyle = "#a9853f";

@@ -34,8 +34,8 @@ export const CAPTIONS: Array<{ kicker: string; title: string }> = [
   { kicker: "2 / 8 · The law, as published", title: "The legal text is the specification, encoded line by line." },
   { kicker: "3 / 8 · The corpus", title: "Every provision has an address." },
   { kicker: "4 / 8 · Encode and check", title: "Automated encoding, deterministic checks, transparent validation." },
-  { kicker: "5 / 8 · Cited code", title: "Every value cites the sentence it came from." },
-  { kicker: "6 / 8 · The graph", title: "The rules run as one graph, and its results are checked against test cases." },
+  { kicker: "5 / 8 · Cited code", title: "Every part of a rule can be traced back to its primary source." },
+  { kicker: "6 / 8 · The graph", title: "The rules run as one graph." },
   { kicker: "7 / 8 · At scale", title: "The same process and the same checks, law by law." },
   { kicker: "8 / 8 · Every system", title: "One set of rules powers every kind of tool, built by anyone." },
 ];

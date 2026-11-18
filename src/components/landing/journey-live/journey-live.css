@@ -1,0 +1,1405 @@
+/* The live journey. The stage is opaque, so the page's citation network
+   does not show through the story. Depth comes from layered shadows and
+   lit edges; motion is transform and opacity only. */
+
+.jv-track,
+.jv-track .jv-stage {
+  background:
+    radial-gradient(1200px 700px at 72% 28%, color-mix(in srgb, var(--color-accent) 5%, transparent), transparent 70%),
+    var(--color-paper, #faf9f6);
+}
+.jv-stage .jl-cap {
+  z-index: 3;
+}
+/* each caption rises in and lifts out (--dy, set by the script) */
+.jv-stage .jv-cap {
+  transform: translate3d(0, var(--dy, 0px), 0);
+}
+.jv-steps {
+  display: none;
+}
+
+/* ── the words for each beat ──
+   Narrower screens: the title alone, over the stage (the shared caption
+   style). Wide screens: a column on the left with the step, the title,
+   what the step shows and a link to open it; the stage fits the rest. */
+.jv-cap__about,
+.jv-cap__go {
+  display: none;
+}
+@media (min-width: 1100px) {
+  .jv-side {
+    position: absolute;
+    z-index: 3;
+    top: 0;
+    bottom: 0;
+    left: clamp(40px, 5vw, 88px);
+    width: clamp(280px, 22vw, 360px);
+  }
+  .jv-stage .jv-cap {
+    left: 0;
+    right: 0;
+    top: 50%;
+    bottom: auto;
+    max-width: none;
+    transform: translate3d(0, calc(-50% + var(--dy, 0px)), 0);
+  }
+  /* the page colour behind the column: a view that zooms (the shelf, the
+     corpus) passes under the words, not through them */
+  .jv-side::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    inset: 0 -44px 0 -100px;
+    background: linear-gradient(90deg, var(--color-paper, #faf9f6) 62%, transparent);
+    pointer-events: none;
+  }
+  /* where the story is: one tick for each beat */
+  .jv-steps {
+    position: absolute;
+    left: 0;
+    bottom: clamp(28px, 7vh, 64px);
+    display: flex;
+    gap: 6px;
+  }
+  .jv-steps i {
+    width: 16px;
+    height: 2px;
+    border-radius: 1px;
+    background: color-mix(in srgb, var(--color-ink) 16%, transparent);
+    transition: width 300ms ease, background-color 300ms ease;
+  }
+  .jv-steps i[data-on="past"] {
+    background: color-mix(in srgb, var(--color-accent) 45%, transparent);
+  }
+  .jv-steps i[data-on="now"] {
+    width: 34px;
+    background: var(--color-accent);
+  }
+  .jv-stage .jv-cap::before {
+    display: none;
+  }
+  /* a short accent rule over the title */
+  .jv-cap .jl-title {
+    margin-top: 0;
+    padding-top: 22px;
+    background: linear-gradient(var(--color-accent), var(--color-accent)) left top / 28px 2px no-repeat;
+    font-size: clamp(28px, 2.4vw, 38px);
+    line-height: 1.14;
+    letter-spacing: -0.015em;
+  }
+  .jv-cap__about {
+    display: block;
+    max-width: 32ch;
+    margin-top: 18px;
+    font: 400 16.5px/1.6 var(--font-geist-sans, system-ui, sans-serif);
+    color: var(--color-ink-secondary, #57534e);
+    text-wrap: pretty;
+  }
+  .jv-cap__go {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 26px;
+    padding: 9px 16px;
+    border: 1px solid color-mix(in srgb, var(--color-accent) 40%, transparent);
+    border-radius: 999px;
+    font: 500 14px/1 var(--font-geist-sans, system-ui, sans-serif);
+    color: var(--color-accent);
+    text-decoration: none;
+    transition: background-color 160ms ease, border-color 160ms ease;
+  }
+  .jv-cap__go:hover,
+  .jv-cap__go:focus-visible {
+    border-color: var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 7%, transparent);
+  }
+}
+
+/* beat 1: the aisle. The canvas is see-through and runs to the top, the
+   bottom and the right edge of the stage, as a full-bleed picture does, so
+   nothing frames it. It fades only where it meets the page: on the left,
+   toward the words, and a little at the top and the foot. The scene's fog
+   is the page colour, so the far shelves go into the page too. */
+.jv-aisle {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: max(0px, calc(var(--side, 0px) - 140px));
+  width: calc(100% - max(0px, calc(var(--side, 0px) - 140px)));
+  height: 100%;
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, rgba(0, 0, 0, 0.5) 13%, #000 30%), linear-gradient(180deg, transparent 0, #000 12%, #000 86%, transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0, rgba(0, 0, 0, 0.5) 13%, #000 30%), linear-gradient(180deg, transparent 0, #000 12%, #000 86%, transparent 100%);
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+}
+.jv-aisle:not([data-ready]) {
+  visibility: hidden;
+}
+
+.jv-live {
+  --k: 1;
+  /* --side, the width of the words' column on a wide screen, is set on
+     the stage by the script and read here */
+  position: absolute;
+  left: calc(var(--side, 0px) + (100% - var(--side, 0px)) / 2);
+  top: 50%;
+  width: 1280px;
+  height: 800px;
+  margin: -400px 0 0 -640px;
+  transform: translate3d(var(--ox, 0px), var(--oy, 0px), 0) scale(var(--k));
+  transform-origin: 50% 50%;
+  z-index: 2;
+  color: var(--color-ink);
+}
+.jv-live > * {
+  position: absolute;
+  left: 0;
+  top: 0;
+  will-change: transform, opacity;
+}
+.jv-svg {
+  overflow: visible;
+  pointer-events: none;
+  will-change: auto;
+}
+
+/* ── shared ── */
+
+.jv-card {
+  border-radius: 14px;
+  background: var(--color-paper-elevated, #fff);
+  border: 1px solid color-mix(in srgb, var(--color-ink) 8%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    0 1px 1px rgba(28, 25, 23, 0.04),
+    0 3px 6px rgba(28, 25, 23, 0.04),
+    0 12px 24px -6px rgba(28, 25, 23, 0.07),
+    0 40px 80px -20px rgba(28, 25, 23, 0.14);
+  transform-origin: 50% 50%;
+  opacity: 0;
+}
+.jv-bar {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0 18px;
+  height: 40px;
+  align-items: center;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-ink) 7%, transparent);
+  font: 400 11px/1 var(--font-mono);
+  letter-spacing: 0.04em;
+  color: var(--color-ink-muted);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.jv-count {
+  color: var(--color-ink-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.jv-count b {
+  font-weight: 500;
+  color: var(--color-accent);
+}
+.jv-kicker {
+  font: 500 11px/1 var(--font-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+.jv-n {
+  flex: none;
+  width: 30px;
+  text-align: right;
+  color: var(--color-ink-muted);
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+
+.jv-wire {
+  fill: none;
+  stroke: var(--color-accent);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  opacity: 0;
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--color-accent) 45%, transparent));
+}
+.jv-wire--fail {
+  stroke: #b91c1c;
+  stroke-dasharray: 1;
+  filter: drop-shadow(0 0 4px rgba(185, 28, 28, 0.35));
+}
+/* beat 5: a thread runs over the cards to the left side of a row */
+.jv-wire--thread {
+  filter: none;
+}
+.jv-wire--beam {
+  stroke-width: 1.75;
+}
+.jv-dot {
+  fill: var(--color-accent);
+  opacity: 0;
+}
+.jv-dot--fail {
+  fill: #b91c1c;
+}
+.jv-edge {
+  fill: none;
+  stroke: var(--color-ink-muted);
+  stroke-width: 1;
+  opacity: 0;
+}
+
+/* ── the statute ── */
+
+.jv-text {
+  margin: 0;
+  padding: 22px 24px 16px;
+  font: 400 17px/1.62 var(--font-serif);
+  color: var(--color-ink-secondary);
+}
+.jv-phrase {
+  --mark: 0;
+  --active: 0;
+  color: color-mix(in srgb, var(--color-accent-hover) calc(var(--active) * 100%), var(--color-ink));
+  background-image: linear-gradient(
+    color-mix(in srgb, var(--color-accent) 16%, transparent),
+    color-mix(in srgb, var(--color-accent) 16%, transparent)
+  );
+  background-repeat: no-repeat;
+  background-position: 0 88%;
+  background-size: calc(var(--mark) * 100%) calc(0.4em + var(--active) * 0.55em);
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  border-radius: 2px;
+}
+.jv-dots {
+  display: flex;
+  gap: 6px;
+  padding: 0 24px 18px;
+}
+.jv-dot-ui {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  opacity: 0.25;
+  transform: scale(0.6);
+}
+
+/* ── the gates ── */
+
+.jv-gates {
+  width: 1280px;
+  height: 800px;
+  pointer-events: none;
+  opacity: 0;
+}
+.jv-gates > * {
+  position: absolute;
+}
+.jv-rail {
+  position: absolute;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--color-ink) 22%, transparent) 8%, color-mix(in srgb, var(--color-ink) 22%, transparent) 92%, transparent);
+}
+/* a gate: its name, its state under it, and one mark on the right that
+   says the same thing as a shape (empty, at work, passed, failed) */
+.jv-gate {
+  position: absolute;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto;
+  align-content: center;
+  align-items: center;
+  column-gap: 10px;
+  row-gap: 7px;
+  padding: 0 14px 0 16px;
+  border-radius: 12px;
+  background: var(--color-paper-elevated, #fff);
+  border: 1px solid color-mix(in srgb, var(--color-ink) 10%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    0 2px 4px rgba(28, 25, 23, 0.04),
+    0 14px 28px -10px rgba(28, 25, 23, 0.12);
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+}
+.jv-gate__name {
+  grid-column: 1;
+  font: 500 10px/1 var(--font-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-ink-muted);
+  white-space: nowrap;
+}
+.jv-gate__state {
+  grid-column: 1;
+  font: 400 13.5px/1 var(--font-geist-sans, system-ui), system-ui, sans-serif;
+  color: var(--color-ink-secondary);
+  white-space: nowrap;
+}
+.jv-gate__mark {
+  grid-column: 2;
+  grid-row: 1 / 3;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1.5px solid color-mix(in srgb, var(--color-ink) 18%, transparent);
+  display: grid;
+  place-items: center;
+  font: 600 11px/1 var(--font-geist-sans, system-ui), system-ui, sans-serif;
+  color: #fff;
+  transition: background-color 200ms ease, border-color 200ms ease;
+}
+.jv-gate[data-state="active"] {
+  border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
+  box-shadow:
+    0 0 0 4px color-mix(in srgb, var(--color-accent) 10%, transparent),
+    0 14px 28px -10px rgba(146, 64, 14, 0.25);
+}
+.jv-gate[data-state="active"] .jv-gate__mark {
+  border-color: var(--color-accent);
+  background: radial-gradient(circle, var(--color-accent) 0 32%, transparent 36%);
+}
+.jv-gate[data-state="active"] .jv-gate__name,
+.jv-gate[data-state="done"] .jv-gate__name,
+.jv-gate[data-state="pass"] .jv-gate__name {
+  color: var(--color-accent);
+}
+.jv-gate[data-state="done"],
+.jv-gate[data-state="pass"] {
+  border-color: color-mix(in srgb, var(--color-accent) 38%, transparent);
+}
+.jv-gate[data-state="done"] .jv-gate__mark,
+.jv-gate[data-state="pass"] .jv-gate__mark {
+  border-color: var(--color-accent-hover);
+  background: var(--color-accent-hover);
+}
+.jv-gate[data-state="done"] .jv-gate__mark::after,
+.jv-gate[data-state="pass"] .jv-gate__mark::after {
+  content: "✓";
+}
+.jv-gate[data-state="fail"] {
+  border-color: rgba(185, 28, 28, 0.5);
+  box-shadow:
+    0 0 0 4px rgba(185, 28, 28, 0.08),
+    0 14px 28px -10px rgba(185, 28, 28, 0.25);
+}
+.jv-gate[data-state="fail"] .jv-gate__name,
+.jv-gate[data-state="fail"] .jv-gate__state {
+  color: #b91c1c;
+}
+.jv-gate[data-state="fail"] .jv-gate__mark {
+  border-color: #b91c1c;
+  background: #b91c1c;
+}
+.jv-gate[data-state="fail"] .jv-gate__mark::after {
+  content: "✕";
+}
+
+/* ── the draft ── */
+
+.jv-draft {
+  transform-origin: 0 0;
+}
+.jv-rows {
+  margin: 0;
+  padding: 12px 0 6px;
+  list-style: none;
+}
+.jv-rows li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 24px;
+  padding: 0 14px 0 6px;
+  font: 400 11px/1 var(--font-mono);
+  white-space: pre;
+  overflow: hidden;
+}
+.jv-rows code {
+  font: inherit;
+  color: color-mix(in srgb, var(--color-ink) 70%, transparent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.jv-rate code {
+  color: var(--color-ink);
+  font-weight: 500;
+}
+.jv-draft[data-draft="1"] .jv-rate code {
+  color: #b91c1c;
+}
+/* the draft's test: the foot of the card, edge to edge (not a box inside
+   the card): the verdict, then the two numbers it compares, one under the
+   other */
+.jv-test {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 12px 16px 14px;
+  border-top: 1px solid color-mix(in srgb, currentColor 16%, transparent);
+  border-radius: 0 0 13px 13px;
+  background: color-mix(in srgb, var(--color-accent) 7%, var(--color-paper-elevated, #fff));
+  color: var(--color-accent-hover);
+  opacity: 0;
+}
+.jv-test__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 3px;
+}
+/* the draft and its failure are made up to show the loop, and say so */
+.jv-test__head i {
+  font: 500 8.5px/1 var(--font-mono);
+  font-style: normal;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+.jv-test b {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font: 600 12.5px/1 var(--font-geist-sans, system-ui), system-ui, sans-serif;
+}
+.jv-test b::before {
+  content: "✓";
+  display: grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--color-accent-hover);
+  color: #fff;
+  font-size: 9px;
+}
+.jv-test__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  font: 400 11.5px/1.2 var(--font-geist-sans, system-ui), system-ui, sans-serif;
+}
+.jv-test__row i {
+  font-style: normal;
+  color: color-mix(in srgb, var(--color-ink) 62%, transparent);
+}
+.jv-test__row em {
+  font: 500 11.5px/1.2 var(--font-mono);
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
+.jv-draft[data-draft="1"] .jv-test {
+  background: color-mix(in srgb, #b91c1c 7%, var(--color-paper-elevated, #fff));
+  color: #b91c1c;
+}
+.jv-draft[data-draft="1"] .jv-test b::before {
+  content: "✕";
+  background: #b91c1c;
+}
+
+/* ── the code card ── */
+
+.jv-code {
+  transform-origin: 0 0;
+}
+.jv-win {
+  position: relative;
+  height: 520px;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(transparent, #000 12%, #000 88%, transparent);
+  mask-image: linear-gradient(transparent, #000 12%, #000 88%, transparent);
+}
+.jv-list {
+  margin: 0;
+  list-style: none;
+  will-change: transform;
+}
+.jv-line,
+.jv-gap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 18px 0 10px;
+  font: 400 12px/1 var(--font-mono);
+  white-space: pre;
+}
+.jv-gap {
+  padding-left: 56px;
+  color: var(--color-ink-muted);
+  opacity: 0.6;
+}
+.jv-line {
+  --lit: 0;
+  --chip: 0;
+}
+.jv-line::before {
+  content: "";
+  position: absolute;
+  inset: 0 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color-accent) 11%, transparent);
+  box-shadow: inset 2px 0 0 var(--color-accent);
+  opacity: var(--lit);
+}
+.jv-line .jv-n {
+  position: relative;
+}
+.jv-src {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font: inherit;
+  color: color-mix(in srgb, var(--color-ink) calc(55% + var(--lit) * 45%), transparent);
+}
+.jv-chip {
+  position: absolute;
+  right: 16px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--color-paper-elevated, #fff);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 35%, transparent);
+  box-shadow: 0 4px 12px -4px rgba(146, 64, 14, 0.25);
+  font: italic 400 12.5px/1.2 var(--font-serif);
+  color: var(--color-accent-hover);
+  opacity: var(--chip);
+  transform: translate3d(calc((1 - var(--chip)) * 10px), 0, 0);
+}
+
+/* ── beat 5: one rule, whole; it does not scroll ── */
+
+.jv-rule {
+  margin: 0;
+  padding: 8px 0 0;
+  list-style: none;
+}
+.jv-rule .jv-line {
+  font-size: 12px;
+  padding-right: 14px;
+}
+.jv-rule .jv-src {
+  display: block;
+  white-space: pre;
+  color: color-mix(in srgb, var(--color-ink) 62%, transparent);
+}
+/* a piece the sentence sets: an empty slot until its words are read, then
+   the value, lit while its step is on */
+.jv-tok {
+  --on: 0;
+  --hot: 0;
+  border-radius: 3px;
+  color: color-mix(in srgb, color-mix(in srgb, var(--color-accent-hover) calc(var(--hot) * 100%), var(--color-ink)) calc(var(--on) * 100%), transparent);
+  background: color-mix(in srgb, var(--color-accent) calc(6% + var(--hot) * 16%), transparent);
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--color-accent) calc(45% - var(--on) * 45% + var(--hot) * 45%), transparent);
+}
+.jv-what {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  top: calc(100% + 12px);
+  margin: 0;
+  font: italic 400 15.5px/1.2 var(--font-serif);
+  color: var(--color-accent-hover);
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+/* the address in the statute card's bar: a thread starts here, but the
+   address itself carries no mark */
+.jv-phrase--bar {
+  background-image: none;
+  color: inherit;
+}
+
+/* ── the graph ── */
+
+.jv-node {
+  --fire: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 14px;
+  border-radius: 12px;
+  background: var(--color-paper-elevated, #fff);
+  border: 1px solid color-mix(in srgb, var(--color-ink) 9%, transparent);
+  box-shadow:
+    0 0 0 calc(var(--fire) * 6px) color-mix(in srgb, var(--color-accent) calc(var(--fire) * 14%), transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    0 2px 4px rgba(28, 25, 23, 0.04),
+    0 14px 28px -10px rgba(28, 25, 23, 0.12);
+  transform-origin: 50% 50%;
+  opacity: 0;
+}
+.jv-node__kind {
+  font: 500 7.5px/1 var(--font-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-ink-muted);
+}
+.jv-node[data-kind="import"] .jv-node__kind {
+  color: color-mix(in srgb, var(--color-ink-muted) 70%, var(--color-accent));
+}
+.jv-node__label {
+  font: 500 10.5px/1.25 var(--font-geist-sans, system-ui), system-ui, sans-serif;
+  letter-spacing: -0.005em;
+  text-wrap: balance;
+  color: var(--color-ink);
+}
+.jv-node__value {
+  font: 500 10px/1 var(--font-mono);
+  color: var(--color-ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+.jv-node[data-fired="1"] .jv-node__value {
+  color: var(--color-accent-hover);
+}
+.jv-node--hero {
+  padding: 0 18px;
+  gap: 6px;
+  border-color: color-mix(in srgb, var(--color-accent) 35%, transparent);
+}
+.jv-node--hero .jv-node__value {
+  font: 400 30px/1 var(--font-serif);
+  letter-spacing: -0.02em;
+}
+.jv-node__note {
+  font: 400 11.5px/1.3 var(--font-geist-sans, system-ui), system-ui, sans-serif;
+  color: var(--color-ink-muted);
+}
+
+/* ── the registry ── */
+
+.jv-cluster,
+.jv-amber {
+  border-radius: 50%;
+  transform-origin: 50% 50%;
+  opacity: 0;
+}
+.jv-cluster::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--color-ink) 30%, transparent) 0 1.3px, transparent 1.7px) 0 0 / 9px 9px,
+    radial-gradient(circle, color-mix(in srgb, var(--color-ink) 13%, transparent), transparent 72%);
+  -webkit-mask-image: radial-gradient(circle, #000 50%, transparent 71%);
+  mask-image: radial-gradient(circle, #000 50%, transparent 71%);
+}
+.jv-cluster__label {
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  transform: translate(-50%, 4px);
+  white-space: nowrap;
+  font: 500 14.5px/1.2 var(--font-geist-sans, system-ui), system-ui, sans-serif;
+  color: var(--color-ink-secondary);
+  opacity: 0;
+}
+.jv-amber {
+  border-radius: 50%;
+  transform-origin: 50% 50%;
+  opacity: 0;
+}
+.jv-cluster::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--color-ink) 30%, transparent) 0 1.3px, transparent 1.7px) 0 0 / 9px 9px,
+    radial-gradient(circle, color-mix(in srgb, var(--color-ink) 13%, transparent), transparent 72%);
+  -webkit-mask-image: radial-gradient(circle, #000 50%, transparent 71%);
+  mask-image: radial-gradient(circle, #000 50%, transparent 71%);
+}
+.jv-cluster__label {
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  transform: translate(-50%, 2px);
+  display: flex;
+  gap: 6px;
+  white-space: nowrap;
+  font: 400 10.5px/1 var(--font-mono);
+  color: var(--color-ink-muted);
+  opacity: 0;
+}
+.jv-cluster__label b {
+  font-weight: 500;
+  color: var(--color-ink-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.jv-amber {
+  background: radial-gradient(circle, color-mix(in srgb, var(--color-accent) 85%, #fff) 0 30%, color-mix(in srgb, var(--color-accent) 45%, transparent) 55%, transparent 72%);
+  box-shadow: 0 0 40px 6px color-mix(in srgb, var(--color-accent) 25%, transparent);
+}
+.jv-amber__label {
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  transform: translate(-50%, 6px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  font: 600 15px/1 var(--font-geist-sans, system-ui), system-ui, sans-serif;
+  color: var(--color-accent-hover);
+}
+.jv-amber__label i {
+  font: 400 10.5px/1 var(--font-mono);
+  font-style: normal;
+  opacity: 0.8;
+}
+
+/* ── one source, every kind of user ── */
+
+.jv-source {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 30px 30px 26px;
+  border-color: color-mix(in srgb, var(--color-accent) 30%, transparent);
+  box-shadow:
+    inset 3px 0 0 color-mix(in srgb, var(--color-accent) 30%, transparent),
+    0 1px 1px rgba(28, 25, 23, 0.04),
+    0 12px 24px -6px rgba(28, 25, 23, 0.07),
+    0 40px 80px -20px rgba(146, 64, 14, 0.2);
+}
+.jv-source__title {
+  margin: 0;
+  font: 400 36px/1.05 var(--font-serif);
+  letter-spacing: -0.02em;
+}
+.jv-source__about {
+  margin: 0;
+  font: 400 14.5px/1.5 var(--font-geist-sans, system-ui), system-ui, sans-serif;
+  color: var(--color-ink-secondary);
+}
+.jv-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: auto;
+}
+.jv-chip-ui {
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--color-ink) 10%, transparent);
+  font: 400 11px/1 var(--font-mono);
+  color: var(--color-ink-secondary);
+}
+.jv-user {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 22px;
+  text-decoration: none;
+  color: inherit;
+}
+.jv-user:hover,
+.jv-user:focus-visible {
+  border-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
+  outline: none;
+}
+.jv-user__who {
+  font: 400 20px/1.1 var(--font-serif);
+  letter-spacing: -0.01em;
+}
+.jv-user__items {
+  font: 400 12.5px/1.45 var(--font-geist-sans, system-ui), system-ui, sans-serif;
+  color: var(--color-ink-muted);
+}
+
+/* ── beat 1: the library ──
+   An old law library in the story's own hand. The bookcase is a card
+   (the same radius, border and shadow as every other card); the shelves
+   are walnut with a name plate; the volumes are flat colour with the
+   labels and gilt bands law reports are bound with. No texture. */
+
+.jv-shelf {
+  --dim: 0;
+  transform-origin: 640px 300px;
+  pointer-events: none;
+}
+.jv-shelf > * {
+  position: absolute;
+}
+.jv-bookcase {
+  border-radius: 14px;
+  background: color-mix(in srgb, #6b4a32 13%, var(--color-paper-elevated, #fff));
+  border: 1px solid color-mix(in srgb, #6b4a32 30%, transparent);
+  box-shadow:
+    inset 0 22px 30px -22px rgba(74, 51, 36, 0.35),
+    0 1px 1px rgba(28, 25, 23, 0.04),
+    0 12px 24px -6px rgba(28, 25, 23, 0.07),
+    0 40px 80px -20px rgba(28, 25, 23, 0.16);
+}
+.jv-board {
+  display: flex;
+  align-items: center;
+  padding-left: 20px;
+  background: #6b4a32;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 10px 14px -8px rgba(74, 51, 36, 0.45);
+  font: 500 8.5px/1 var(--font-mono);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #ead9b8;
+  z-index: 2;
+}
+.jv-board:last-of-type {
+  border-radius: 0 0 2px 2px;
+}
+.jv-spine {
+  /* the binding: cloth, the two labels, the gilt, the lettering */
+  --cloth: #cdb88f;
+  --l1: #8a2a1c;
+  --l2: #2a2420;
+  --gilt: rgba(120, 88, 40, 0.55);
+  --ink: #f0dcae;
+  border-radius: 2px 2px 0 0;
+  background-color: var(--cloth);
+  background-image:
+    linear-gradient(90deg, rgba(0, 0, 0, 0.2), rgba(255, 255, 255, 0.12) 32%, rgba(0, 0, 0, 0) 64%, rgba(0, 0, 0, 0.18)),
+    linear-gradient(180deg, transparent 9%, var(--gilt) 9%, var(--gilt) 10%, transparent 10%, transparent 14%, var(--l1) 14%, var(--l1) 30%, transparent 30%, transparent 37%, var(--l2) 37%, var(--l2) 47%, transparent 47%, transparent 88%, var(--gilt) 88%, var(--gilt) 89%, transparent 89%);
+  opacity: calc(1 - var(--dim, 0) * 0.6);
+  z-index: 1;
+}
+.jv-spine i {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 14%;
+  height: 16%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 500 7.5px/1 var(--font-mono);
+  font-style: normal;
+  color: var(--ink);
+}
+.jv-spine[data-set="green"] {
+  --cloth: #2f4a3c;
+  --l1: rgba(0, 0, 0, 0.3);
+  --l2: transparent;
+  --gilt: rgba(214, 178, 106, 0.7);
+}
+.jv-spine[data-set="oxblood"] {
+  --cloth: #6b2a2a;
+  --l1: rgba(0, 0, 0, 0.3);
+  --l2: transparent;
+  --gilt: rgba(214, 178, 106, 0.7);
+}
+.jv-spine[data-set="navy"] {
+  --cloth: #27364f;
+  --l1: rgba(0, 0, 0, 0.3);
+  --l2: transparent;
+  --gilt: rgba(214, 178, 106, 0.7);
+}
+.jv-spine[data-set="black"] {
+  --cloth: #2e2925;
+  --l1: #7d2518;
+  --l2: transparent;
+  --gilt: rgba(214, 178, 106, 0.7);
+}
+.jv-spine[data-set="title7"] {
+  --cloth: var(--color-accent-hover);
+  --l1: rgba(0, 0, 0, 0.28);
+  --l2: transparent;
+  --gilt: rgba(236, 204, 140, 0.85);
+}
+/* the block that takes Title 7's place on screen and grows into the cover */
+.jv-spine7 {
+  transform-origin: 0 0;
+  border-radius: 2px;
+  background: var(--color-accent-hover);
+  z-index: 3;
+  opacity: 0;
+}
+
+/* ── beat 2: the page and its cover ── */
+
+.jv-page {
+  transform-origin: 0 0;
+  overflow: hidden;
+  padding: 26px 34px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.jv-page__head {
+  display: flex;
+  justify-content: space-between;
+  font: 400 10.5px/1 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-ink-muted);
+  padding-bottom: 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-ink) 10%, transparent);
+}
+.jv-page__title {
+  margin: 6px 0 0;
+  font: 500 22px/1.2 var(--font-serif);
+  letter-spacing: -0.01em;
+}
+.jv-page__text {
+  margin: 0;
+  font: 400 15.5px/1.65 var(--font-serif);
+  color: var(--color-ink);
+}
+.jv-page__more {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 6px;
+}
+.jv-page__more p {
+  position: relative;
+  margin: 0;
+  padding-left: 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+.jv-page__more b {
+  position: absolute;
+  left: 0;
+  top: -5px;
+  font: 500 14px/1.2 var(--font-serif);
+  color: var(--color-ink-muted);
+}
+.jv-page__more i {
+  height: 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--color-ink) 9%, transparent);
+}
+/* the part of the page the capture line has not reached */
+.jv-veil {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--color-paper-elevated, #fff) 72%, transparent);
+  pointer-events: none;
+}
+.jv-scan {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  background: var(--color-accent);
+  box-shadow: 0 0 14px 2px color-mix(in srgb, var(--color-accent) 45%, transparent);
+  opacity: 0;
+}
+.jv-cover {
+  transform-origin: 0 50%;
+  backface-visibility: hidden;
+  border-radius: 4px 14px 14px 4px;
+  background: var(--color-accent-hover);
+  box-shadow:
+    inset 0 0 0 18px var(--color-accent-hover),
+    inset 0 0 0 19px rgba(236, 204, 140, 0.7),
+    inset 6px 0 0 rgba(0, 0, 0, 0.12),
+    0 12px 24px -6px rgba(28, 25, 23, 0.1),
+    0 40px 80px -20px rgba(146, 64, 14, 0.35);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: #f3e2bd;
+  opacity: 0;
+}
+.jv-cover__kicker {
+  font: 500 12px/1 var(--font-mono);
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+}
+.jv-cover__title {
+  font: 400 64px/1 var(--font-serif);
+  letter-spacing: 0.02em;
+}
+.jv-cover__sub {
+  font: italic 400 22px/1 var(--font-serif);
+}
+
+/* ── beat 3: the corpus ── */
+
+.jv-grid {
+  transform-origin: 0 0;
+  pointer-events: none;
+  opacity: 0;
+}
+.jv-grid > * {
+  position: absolute;
+}
+.jv-cellbox {
+  fill: var(--color-paper-elevated, #fff);
+  stroke: color-mix(in srgb, var(--color-ink) 28%, transparent);
+  stroke-width: 0.75;
+}
+.jv-cellline {
+  stroke: color-mix(in srgb, var(--color-ink) 30%, transparent);
+  stroke-linecap: round;
+}
+/* a title of the corpus: a tag beside the field, with a lead to it */
+.jv-region {
+  --lead: 26px;
+  padding: 6px 11px;
+  border-radius: 999px;
+  background: var(--color-paper-elevated, #fff);
+  border: 1px solid color-mix(in srgb, var(--color-ink) 12%, transparent);
+  box-shadow: 0 6px 14px -8px rgba(28, 25, 23, 0.18);
+  white-space: nowrap;
+  font: 500 11px/1 var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-ink-secondary);
+  opacity: 0;
+}
+.jv-region::after {
+  content: "";
+  position: absolute;
+  background: color-mix(in srgb, var(--color-ink) 28%, transparent);
+}
+.jv-region[data-at="left"],
+.jv-region[data-at="right"] {
+  translate: 0 -50%;
+}
+.jv-region[data-at="left"]::after {
+  left: 100%;
+  top: 50%;
+  width: calc(var(--lead) - 4px);
+  height: 1px;
+}
+.jv-region[data-at="right"]::after {
+  right: 100%;
+  top: 50%;
+  width: calc(var(--lead) - 4px);
+  height: 1px;
+}
+.jv-region[data-at="top"] {
+  translate: -50% -100%;
+}
+.jv-region[data-at="top"]::after {
+  left: 50%;
+  top: 100%;
+  width: 1px;
+  height: calc(var(--lead) - 4px);
+}
+/* the title the story follows */
+.jv-region[data-own] {
+  border-color: color-mix(in srgb, var(--color-accent) 38%, transparent);
+  color: var(--color-accent-hover);
+}
+.jv-region[data-own]::after {
+  background: color-mix(in srgb, var(--color-accent) 60%, transparent);
+}
+/* the lit cell; as it grows into the statute card, the amber gives way
+   to a plain card surface, so the scaled outline never shows thick */
+.jv-cell {
+  --card: 0;
+  transform-origin: 0 0;
+  opacity: 0;
+}
+.jv-cell::before,
+.jv-cell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 2px;
+}
+.jv-cell::before {
+  background: color-mix(in srgb, var(--color-accent) 22%, var(--color-paper-elevated, #fff));
+  outline: 1px solid var(--color-accent);
+  box-shadow: 0 0 16px 2px color-mix(in srgb, var(--color-accent) 35%, transparent);
+  opacity: calc(1 - var(--card));
+}
+.jv-cell::after {
+  background: var(--color-paper-elevated, #fff);
+  opacity: var(--card);
+}
+.jv-address {
+  margin: 0;
+  text-align: center;
+  font: 500 15px/1 var(--font-mono);
+  color: var(--color-accent-hover);
+  opacity: 0;
+}
+/* a pill, so the address reads over the cells behind it */
+.jv-address::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: -10px 62px;
+  border-radius: 999px;
+  background: var(--color-paper-elevated, #fff);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 38%, transparent);
+  box-shadow: 0 8px 20px -8px rgba(146, 64, 14, 0.3);
+}
+/* and a stem from the pill down to its cell */
+.jv-address::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 10px);
+  width: 1px;
+  height: 19px;
+  background: var(--color-accent);
+}
+.jv-address i {
+  font-style: normal;
+  color: var(--color-ink-muted);
+}
+
+/* ── phones and reduced motion: the story at rest ── */
+
+.js-story {
+  position: relative;
+  z-index: 1;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 48px 20px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 56px;
+  background: var(--color-paper, #faf9f6);
+}
+.js-beat {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.js-beat figcaption {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.js-n {
+  font: 500 11px/1 var(--font-mono);
+  letter-spacing: 0.12em;
+  color: var(--color-accent);
+}
+.js-title {
+  font: 400 clamp(24px, 6vw, 32px) / 1.12 var(--font-serif);
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+.js-about {
+  font: 400 15px/1.55 var(--font-geist-sans, system-ui), system-ui, sans-serif;
+  color: var(--color-ink-secondary);
+  text-wrap: pretty;
+}
+.js-go {
+  align-self: flex-start;
+  margin-top: 6px;
+  padding: 9px 16px;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 40%, transparent);
+  border-radius: 999px;
+  font: 500 14px/1 var(--font-geist-sans, system-ui), system-ui, sans-serif;
+  color: var(--color-accent);
+  text-decoration: none;
+}
+.js-card {
+  display: block;
+  border-radius: 12px;
+  padding: 18px 18px 16px;
+  background: var(--color-paper-elevated, #fff);
+  border: 1px solid color-mix(in srgb, var(--color-ink) 9%, transparent);
+  box-shadow: 0 1px 1px rgba(28, 25, 23, 0.04), 0 14px 30px -18px rgba(28, 25, 23, 0.2);
+  color: inherit;
+  text-decoration: none;
+}
+.js-card h4 {
+  margin: 6px 0 8px;
+  font: 400 20px/1.2 var(--font-serif);
+}
+.js-card p {
+  margin: 0;
+  font: 400 15px/1.6 var(--font-serif);
+}
+.js-meta {
+  font: 400 10.5px/1.3 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-ink-muted);
+}
+.js-note {
+  margin-top: 12px !important;
+  font: italic 400 13.5px/1.5 var(--font-serif) !important;
+  color: var(--color-ink-muted);
+}
+.js-shelf {
+  overflow: hidden;
+}
+.js-shelf__row {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  padding: 14px 12px 0;
+  border-radius: 12px 12px 0 0;
+  background: color-mix(in srgb, #6b4a32 13%, var(--color-paper-elevated, #fff));
+  border-bottom: 12px solid #6b4a32;
+}
+.js-spine {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+}
+.js-spine--7 {
+  flex-grow: 1.7;
+  box-shadow: 0 -6px 18px -4px rgba(146, 64, 14, 0.55);
+}
+.js-shelf__label {
+  display: block;
+  margin-top: 9px;
+  font: 500 10.5px/1 var(--font-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-ink-muted);
+}
+.js-address p {
+  margin-top: 10px;
+  font: 500 clamp(15px, 4.4vw, 19px) / 1.3 var(--font-mono);
+  color: var(--color-accent-hover);
+}
+.js-address i {
+  font-style: normal;
+  color: var(--color-ink-muted);
+}
+.js-gates {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.js-gates li {
+  display: grid;
+  grid-template-columns: 92px 1fr auto;
+  gap: 12px;
+  align-items: baseline;
+}
+.js-gate {
+  font: 500 10.5px/1 var(--font-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+.js-gate__about {
+  font: 400 13.5px/1.4 var(--font-geist-sans, system-ui), system-ui, sans-serif;
+  color: var(--color-ink-secondary);
+}
+.js-gate__ok {
+  color: var(--color-accent-hover);
+}
+.js-cites {
+  margin: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.js-cites li {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-ink) 7%, transparent);
+}
+.js-cites li:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+.js-phrase {
+  font: italic 400 15px/1.4 var(--font-serif);
+  color: var(--color-accent-hover);
+}
+.js-cites code {
+  font: 400 11.5px/1.4 var(--font-mono);
+  color: var(--color-ink-secondary);
+  overflow-wrap: anywhere;
+}
+.js-nodes {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.js-node {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: baseline;
+}
+.js-node__label {
+  min-width: 0;
+  font: 400 14px/1.35 var(--font-geist-sans, system-ui), system-ui, sans-serif;
+  color: var(--color-ink-secondary);
+}
+.js-node b {
+  flex: none;
+  font: 500 12.5px/1 var(--font-mono);
+  color: var(--color-accent-hover);
+}
+.js-node--hero {
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
+}
+.js-node--hero b {
+  font: 400 30px/1 var(--font-serif);
+}
+.js-clusters {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.js-clusters li {
+  font: 400 14px/1.3 var(--font-geist-sans, system-ui), system-ui, sans-serif;
+  color: var(--color-ink-secondary);
+}
+.js-cluster--amber {
+  color: var(--color-accent-hover) !important;
+}
+.js-source {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.js-user {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 18px;
+}
+.js-user b {
+  font: 400 18px/1.2 var(--font-serif);
+}
+.js-user span {
+  font: 400 13px/1.45 var(--font-geist-sans, system-ui), system-ui, sans-serif;
+  color: var(--color-ink-muted);
+}
