@@ -416,6 +416,14 @@ export async function getRuleEncoding(ruleId: string): Promise<RuleEncodingData 
   // corpus row backing them. Skip the corpus lookup and resolve the
   // path directly so the standard rule-detail rail can render the
   // encoding without waiting on the DB backfill.
+  // Stand-in section roots ("synthetic:<citation_path>", minted by
+  // ``synthesizeSectionRoot`` for paths whose corpus rows exist only below
+  // the section) have no corpus row by definition. ``current_provisions.id``
+  // is a uuid column, so asking for one fails in Postgres with "invalid
+  // input syntax for type uuid" on every call. The answer was already null
+  // (the error branch below); give it without the query.
+  if (ruleId.startsWith('synthetic:')) return null
+
   let rule: {
     citation_path: string | null
     jurisdiction: string

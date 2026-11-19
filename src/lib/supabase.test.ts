@@ -464,6 +464,17 @@ describe('supabase lib', () => {
   }
 
   describe('getRuleEncoding', () => {
+    it('answers null for a synthetic section root without querying the uuid id column', async () => {
+      mockFrom.mockClear()
+      // Any query would be a defect: current_provisions.id is a uuid and
+      // "synthetic:<citation path>" is not one.
+      mockFrom.mockImplementation(() => {
+        throw new Error('getRuleEncoding must not query for a synthetic id')
+      })
+      await expect(getRuleEncoding('synthetic:us-nc/manual/dhb/medicaid')).resolves.toBeNull()
+      expect(mockFrom).not.toHaveBeenCalled()
+    })
+
     it('returns encoding data when rule has citation_path and encoding exists', async () => {
       // getRuleEncoding calls supabaseCorpus.from('current_provisions') then supabaseEncodings.from('encoding_runs')
       // Both clients use the same mockFrom since createClient is mocked once
