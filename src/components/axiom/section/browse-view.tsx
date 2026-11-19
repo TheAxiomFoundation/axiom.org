@@ -57,7 +57,15 @@ function Breadcrumbs({ data }: { data: BrowsePageData }) {
 /** Transient-failure state: the URL is valid; the navigation index
  *  didn't answer in time. Distinct from notFound so crawlers and
  *  users never see a valid level as nonexistent. */
-export function BrowseUnavailable({ path }: { path: string }) {
+export function BrowseUnavailable({
+  path,
+  known = true,
+}: {
+  path: string;
+  /** False when the outage also hid whether this path exists (the reader
+   *  could not resolve it and the index did not answer). */
+  known?: boolean;
+}) {
   return (
     <div className="mx-auto w-full max-w-2xl px-4 pt-24 pb-16">
       <div
@@ -74,8 +82,9 @@ export function BrowseUnavailable({ path }: { path: string }) {
           Navigation data is temporarily unavailable
         </p>
         <p className="mt-2 text-sm text-[var(--color-ink-muted)] leading-relaxed">
-          The index didn't answer in time — this level exists, the
-          backend hiccupped.
+          {known
+            ? "The index didn't answer in time — this level exists, the backend hiccupped."
+            : "The rules database didn't answer in time. This is on our side. Please try again in a few minutes."}
         </p>
         <a
           href={`/${path}`}

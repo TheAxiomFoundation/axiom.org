@@ -99,7 +99,7 @@ function SourceReader({ rule, id, consumers }: { rule?: RuleNode; id: string; co
   </section>;
 }
 
-export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, onViewChange, scopeLabel, truncated, runReady, scenario, graphControls, onOverview, valueOf, hasRun, stale, renderInput, onRun, running, members = [], run = null, explanationTrail = [], onExplanationTrailChange, roles, runUnavailableReason = null }: {
+export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, onViewChange, scopeLabel, truncated, runReady, scenario, graphControls, onOverview, valueOf, hasRun, stale, renderInput, onRun, running, members = [], run = null, explanationTrail = [], onExplanationTrailChange, roles, runUnavailableReason = null, onRunCheckRetry }: {
   graph: ProgramGraph; rootTarget?: string; selectedId: string; onSelect: (id: string) => void;
   view: WorkspaceView; onViewChange: (view: WorkspaceView) => void;
   scopeLabel: string; truncated: boolean; runReady: boolean; scenario: ReactNode;
@@ -113,6 +113,8 @@ export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, o
   /** Why this scope cannot run (the runtime's or the gate's own words);
    *  shown wherever the Run affordance would otherwise just vanish. */
   runUnavailableReason?: string | null;
+  /** Set when the run check got no answer (an outage): the notice offers a retry. */
+  onRunCheckRetry?: () => void;
   onOverview?: () => void;
   valueOf: (id: string) => unknown; hasRun: boolean; stale: boolean;
 }) {
@@ -260,7 +262,7 @@ export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, o
         </> : <button ref={searchButtonRef} className="workspace-nav-search" onClick={() => setNavigatorOpen(true)} aria-expanded={false}><Search size={16} /> Find a rule</button>}
       </div>
     </nav>
-    {!runReady && runUnavailableReason && <p className="workspace-run-unavailable" role="status"><Play size={14} aria-hidden /><span><strong>Run unavailable.</strong> {runUnavailableReason}</span></p>}
+    {!runReady && runUnavailableReason && <p className="workspace-run-unavailable" role="status"><Play size={14} aria-hidden /><span><strong>Run unavailable.</strong> {runUnavailableReason}{onRunCheckRetry && <button type="button" className="status-retry" onClick={onRunCheckRetry}>Retry</button>}</span></p>}
     <div className="workspace-subject">
       <div className="workspace-return-actions">
         {onOverview && <button type="button" className="workspace-button" data-testid="back-to-overview" onClick={onOverview} title="Back to the corpus overview">Overview</button>}
