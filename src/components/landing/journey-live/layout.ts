@@ -151,7 +151,7 @@ export const CAPTION_AT = [0.3, 4.4, 9.5, 12.9, 14.65];
 // has not started. A deck stops here after each step (journey-deck.tsx).
 // The encoder step (its drafts, the check that sends one back) plays at
 // this share of a deck's pace: there is more to read in it.
-export const ENCODER_PACE = 0.6;
+export const ENCODER_PACE = 0.5;
 export const REST_AT = [
   2.2, // Title 7 is off the shelf, closed; its cover opens from 2.3
   3.8, // the page is captured; the pull back to the corpus starts at 4.0

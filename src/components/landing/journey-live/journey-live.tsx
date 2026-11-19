@@ -80,35 +80,43 @@ const TCX = TARGET_CELL.x + TARGET_CELL.w / 2;
 const TCY = TARGET_CELL.y + TARGET_CELL.h / 2;
 
 // draft card: where it is and which draft it holds, at u
+// Draft 2 goes from encode to AI review in one move, not gate by gate:
+// 0 at encode, 1/3 at checks, 2/3 at compare, 1 at AI review. Mostly even,
+// with a soft start and stop, so it does not halt at each gate.
+const GLIDE = [2.45, 3.5] as const;
+function glide2(u: number) {
+  const p = seg(u, GLIDE[0], GLIDE[1]);
+  return lerp(p, easeInOut(p), 0.35);
+}
+
 function draftAt(u: number) {
   if (u < U.draft1[0] || (u >= U.draft1[1] && u < U.draft2[0])) return null;
   if (u < U.draft2[0]) {
     const form = easeOut(seg(u, 0.6, 0.8));
-    const x = lerp(draftX(0), draftX(1), easeInOut(seg(u, 0.8, 1.15)));
-    const drop = easeOut(seg(u, 1.35, 1.6));
-    return { n: 1, x, y: DRAFT.y + 28 * drop, o: form * (1 - drop), test: u >= 1.15 };
+    const x = lerp(draftX(0), draftX(1), easeInOut(seg(u, 0.8, 1.2)));
+    const drop = easeOut(seg(u, 1.38, 1.6));
+    return { n: 1, x, y: DRAFT.y + 28 * drop, o: form * (1 - drop), test: u >= 1.2 };
   }
-  const form = easeOut(seg(u, 2.2, 2.4));
-  let x = draftX(0);
-  x = lerp(x, draftX(1), easeInOut(seg(u, 2.4, 2.65)));
-  x = lerp(x, draftX(2), easeInOut(seg(u, 2.85, 3.05)));
-  x = lerp(x, draftX(3), easeInOut(seg(u, 3.1, 3.3)));
-  return { n: 2, x, y: DRAFT.y, o: form, test: u >= 2.7 };
+  const form = easeOut(seg(u, 2.2, 2.45));
+  const g = glide2(u);
+  return { n: 2, x: lerp(draftX(0), draftX(3), g), y: DRAFT.y, o: form, test: g >= 1 / 3 };
 }
 
 // each gate's state at u
 function gateAt(i: number, u: number): { state: string; text: string } {
+  const g = glide2(u);
   if (i === 0) {
-    const on = (u >= 0.55 && u < 0.85) || (u >= 2.05 && u < 2.45);
+    const on = (u >= 0.55 && u < 0.85) || (u >= 2.05 && u < GLIDE[0] + 0.05);
     return { state: on ? "active" : u >= 0.6 ? "done" : "idle", text: u < 0.6 ? "waiting" : u < 2.2 ? "draft 1" : "draft 2" };
   }
   if (i === 1) {
-    if (u >= 1.15 && u < 2.2) return { state: "fail", text: u < 1.6 ? "test 1 fails" : "sent back" };
-    if (u >= 2.7) return { state: "pass", text: "passes" };
-    return { state: u >= 2.55 ? "active" : "idle", text: "—" };
+    if (u >= 1.2 && u < 2.2) return { state: "fail", text: u < 1.6 ? "test 1 fails" : "sent back" };
+    if (g >= 1 / 3) return { state: "pass", text: "passes" };
+    return { state: g >= 0.17 ? "active" : "idle", text: "—" };
   }
-  if (i === 2) return u >= 3.0 ? { state: "pass", text: "compared" } : { state: u >= 2.9 ? "active" : "idle", text: "—" };
-  return u >= 3.25 ? { state: "pass", text: "read" } : { state: u >= 3.15 ? "active" : "idle", text: "—" };
+  // a gate is at work as the draft comes up to it, and done as it arrives
+  if (i === 2) return g >= 2 / 3 ? { state: "pass", text: "compared" } : { state: g >= 0.5 ? "active" : "idle", text: "—" };
+  return g >= 0.999 ? { state: "pass", text: "read" } : { state: g >= 0.84 ? "active" : "idle", text: "—" };
 }
 
 // text with the words beat 5 marks on their own (rule.ts) wrapped;
