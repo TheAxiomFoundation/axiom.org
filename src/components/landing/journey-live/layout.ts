@@ -228,18 +228,17 @@ export const PROGRAMS: Array<{ name: string; x: number; y: number; r: number }> 
   { name: "Child Nutrition Act", x: 150, y: 470, r: 62 },
 ];
 
-// ── beat 8: one source, five kinds of user ──
+// ── beat 8: one source, four kinds of tool ──
 export const SOURCE_CARD = { x: 60, y: 140, w: 380, h: 300 };
-export const USER_CARD = { x: 760, w: 480, h: 100, gap: 114, y0: 20 };
+export const USER_CARD = { x: 760, w: 480, h: 112, gap: 138, y0: 37 };
 
-// After the RaC Guild deck's OneSourceSlide, as the 3D beat 8 draws it
+// The four kinds of tool, in the words of the journey film's last slide
 // (style-frames/lamplight2.ts GROUPS).
 export const USERS: Array<{ who: string; items: string[]; href: string }> = [
-  { who: "Individuals & navigators", items: ["Benefits screeners, calculators and navigation tools", "Benefit-cliff explorers", "Legal aid assistance"], href: "/demos" },
-  { who: "Governments", items: ["The eligibility rules engine inside a state system", "A test oracle to check current rules and workflows", "Policy dashboards and microsimulation"], href: "/validation" },
-  { who: "AI systems", items: ["Assistants that call the rules through MCP", "Benefits chatbots grounded in the law", "Model evaluation and rewards"], href: "/docs" },
-  { who: "Builders", items: ["A hosted API behind any product", "Embedded libraries — Rust, Python, npm", "Zero-PII WASM, running in the browser"], href: "/docs" },
-  { who: "Researchers", items: ["Reproducible analysis, pinned to a dated release", "Reform modeling and forecasting", "Open rules to study and cite"], href: "/coverage" },
+  { who: "AI tools", items: ["The chatbots and assistants residents and staff already ask"], href: "/docs" },
+  { who: "Government tools", items: ["Eligibility systems, caseworker guidance and training, and policy changes tested before they land"], href: "/validation" },
+  { who: "Navigation tools", items: ["Community screeners and navigators that say what to apply for"], href: "/demos" },
+  { who: "Research tools", items: ["Microsimulation and policy analysis that show how a change reaches households and budgets"], href: "/coverage" },
 ];
 
 // ── time helpers ──
