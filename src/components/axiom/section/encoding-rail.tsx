@@ -30,6 +30,8 @@ export interface RailChunk {
 }
 
 import { programFamily } from "@/lib/axiom/runtime/families";
+import type { SourceConflict } from "@/lib/axiom/source-conflicts-normalize";
+import { SourceConflictList } from "@/components/axiom/graph-viewer/source-conflicts";
 
 /** Short jurisdiction chip: "us-co" → "CO", "us" → "US", "uk" → "UK". */
 function jurisdictionChip(jurisdiction: string): string {
@@ -95,7 +97,10 @@ export function EncodingRail({
   citedByFiles = [],
   citedByOverflow = 0,
   citedByOverflowUnit = "rules",
+  sourceConflicts = [],
 }: {
+  /** Known source conflicts that touch this section. */
+  sourceConflicts?: SourceConflict[];
   /** Rule the visitor navigated from — its card is spotlighted. */
   highlightRule?: string | null;
   encoding: RuleEncodingData | null;
@@ -213,6 +218,8 @@ export function EncodingRail({
       >
         {activeChunk ? activeChunk.label : "Whole section"}
       </p>
+
+      <SourceConflictList conflicts={sourceConflicts} citationPath={citationPath} />
 
       {nodeRules.length > 0 && (
         <section data-testid="rail-encodings" className="mt-4">

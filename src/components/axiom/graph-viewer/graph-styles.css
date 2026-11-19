@@ -10,13 +10,16 @@
  
 
 .graph-viewer-root{
-  --f-display: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --f-body: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --f-mono: "Geist Mono", ui-monospace, "SF Mono", monospace;
+  /* The site loads Geist through next/font, which registers it under a
+     generated family name exposed as --font-geist-sans; naming "Geist"
+     literally matched no loaded face and fell back to the system font. */
+  --f-display: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --f-body: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --f-mono: var(--font-mono), ui-monospace, "SF Mono", monospace;
   /* Serif aliased onto Geist sans — see apps/builder/src/styles.css for
      the rationale. Mono reserved for code-like spans (legal IDs, formula
      text in the popover). */
-  --f-serif: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --f-serif: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 
   /* One row height for every control in the frame's header band, and
      one footprint for the two controls that take turns ending it (the

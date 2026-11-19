@@ -1,0 +1,70 @@
+/* Known source conflicts: shared by the graph viewer and the section
+   reader, so the component brings its own styles. */
+/* ── Known source conflicts ────────────────────────────────────────
+   Where the law's own sources disagree. Amber marks what is still open;
+   ruled entries stay quiet ink. */
+.source-conflict-badge { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border: 1px solid var(--color-rule); border-radius: 999px; background: var(--color-paper-elevated); color: var(--color-ink-secondary); font: 500 12px/1.4 var(--f-body); cursor: default; }
+button.source-conflict-badge { cursor: pointer; }
+button.source-conflict-badge:hover { border-color: var(--color-ink-muted); color: var(--color-ink); }
+.source-conflict-badge.is-open { border-color: color-mix(in srgb, var(--color-warning) 40%, var(--color-rule)); color: var(--color-warning); background: color-mix(in srgb, var(--color-warning) 6%, var(--color-paper)); }
+.source-conflicts { margin: 16px 0; padding: 14px 16px; border: 1px solid var(--color-rule); border-left: 3px solid var(--color-warning); border-radius: 6px; background: var(--color-paper-elevated); scroll-margin-top: 80px; }
+.source-conflicts > h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 13px; font-weight: 600; color: var(--color-ink); }
+.source-conflicts > h3 > span { margin-left: auto; padding: 0 7px; border-radius: 999px; background: var(--color-rule-subtle); color: var(--color-ink-secondary); font-size: 11px; font-weight: 500; }
+.source-conflict { border-top: 1px solid var(--color-rule); }
+.source-conflicts > h3 + .source-conflict { margin-top: 10px; }
+.source-conflict > summary { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; align-items: baseline; padding: 10px 0; cursor: pointer; list-style: none; font-size: 13px; line-height: 1.45; }
+.source-conflict > summary::-webkit-details-marker { display: none; }
+.source-conflict > summary:hover .source-conflict-question { color: var(--color-accent); }
+.source-conflict-status { padding: 1px 6px; border-radius: 4px; background: var(--color-rule-subtle); color: var(--color-ink-secondary); font: 600 10px/1.5 var(--f-body); letter-spacing: .04em; text-transform: uppercase; }
+.source-conflict[data-status="open"] .source-conflict-status { background: color-mix(in srgb, var(--color-warning) 12%, var(--color-paper)); color: var(--color-warning); }
+/* Nothing is clamped: each quote shows its key passage whole, and its
+   own "Full text" button shows the rest of that quote. */
+.source-conflict-readings { display: grid; gap: 6px; }
+.source-conflict-reading { padding: 7px 10px; border: 1px solid var(--color-rule); border-radius: 5px; background: var(--color-paper); }
+.source-conflict-reading.is-adopted { border-color: color-mix(in srgb, var(--color-accent) 35%, var(--color-rule)); background: color-mix(in srgb, var(--color-accent) 4%, var(--color-paper)); }
+.source-conflict-reading-label { display: inline-flex; align-items: center; gap: 4px; margin-bottom: 2px; font: 600 10px/1.5 var(--f-body); letter-spacing: .05em; text-transform: uppercase; color: var(--color-ink-muted); }
+.source-conflict-reading.is-adopted .source-conflict-reading-label { color: var(--color-accent); }
+.source-conflict-reading p { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--color-ink); overflow-wrap: anywhere; }
+.source-conflict-reading p.source-conflict-effect { margin-top: 4px; font-size: 12px; color: var(--color-ink-secondary); font-style: italic; }
+.source-conflict-reading-label em { margin-left: 6px; padding: 0 5px; border-radius: 3px; background: var(--color-rule-subtle); color: var(--color-ink-secondary); font-style: normal; font-weight: 500; letter-spacing: 0; text-transform: none; }
+/* The size of the difference: the register's money case, which a pinned
+   test computes. */
+.source-conflict-money { margin-top: 12px; }
+.source-conflict-money p { margin: 0 0 4px; font-size: 12.5px; line-height: 1.5; color: var(--color-ink-secondary); overflow-wrap: anywhere; }
+.source-conflict-money p.source-conflict-money-amount { font-size: 15px; font-weight: 600; color: var(--color-ink); font-variant-numeric: tabular-nums; }
+.source-conflict-money-amount span { font-size: 12px; font-weight: 500; color: var(--color-ink-secondary); }
+.source-conflict-money p.source-conflict-money-test { font-size: 11.5px; color: var(--color-ink-muted); }
+.source-conflict-money code { font-family: var(--f-mono); font-size: 11px; overflow-wrap: anywhere; }
+.source-conflict-heading { margin: 4px 0 6px; font: 600 10px/1.5 var(--f-body); letter-spacing: .05em; text-transform: uppercase; color: var(--color-ink-muted); }
+.source-conflict-texts + .source-conflict-heading { margin-top: 12px; }
+.source-conflict-texts { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.source-conflict-text { padding: 6px 0 6px 10px; border-left: 2px solid var(--color-rule); }
+.source-conflict-text.is-here { border-left-color: var(--color-accent); }
+.source-conflict-text-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; font-size: 12px; line-height: 1.45; }
+.source-conflict-text-head a { display: inline-flex; align-items: center; gap: 2px; color: var(--color-ink); font-weight: 500; text-decoration: none; }
+.source-conflict-text-head a:hover { color: var(--color-accent); text-decoration: underline; }
+.source-conflict-kind { font: 600 10px/1.5 var(--f-body); letter-spacing: .04em; text-transform: uppercase; color: var(--color-ink-muted); }
+.source-conflict-here { padding: 0 6px; border-radius: 999px; background: color-mix(in srgb, var(--color-accent) 10%, var(--color-paper)); color: var(--color-accent); font-size: 11px; }
+.source-conflict-text blockquote { margin: 3px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--color-ink); overflow-wrap: anywhere; }
+.source-conflict-text blockquote.is-full { white-space: pre-line; color: var(--color-ink-secondary); }
+.source-conflict-text blockquote::before { content: "“"; }
+.source-conflict-text blockquote::after { content: "”"; }
+.source-conflicts .source-conflict-quote-toggle, .source-conflict-why > summary { display: inline-flex; align-items: center; gap: 4px; margin-top: 3px; padding: 0; border: 0; background: none; color: var(--color-accent); font: 500 11.5px/1.4 var(--f-body); cursor: pointer; list-style: none; }
+.source-conflict-why > summary::-webkit-details-marker { display: none; }
+.source-conflicts .source-conflict-quote-toggle:hover, .source-conflict-why > summary:hover { text-decoration: underline; }
+.source-conflict-quote-toggle[aria-expanded="true"] svg, .source-conflict-why[open] > summary svg { transform: rotate(180deg); }
+.source-conflict-why { margin-top: 10px; }
+.source-conflict-why p { margin: 6px 0 0; font-size: 12.5px; line-height: 1.55; color: var(--color-ink); overflow-wrap: anywhere; }
+.source-conflict-why p.source-conflict-ruling { font-size: 12px; color: var(--color-ink-secondary); }
+.source-conflict-why a, .source-conflict-register { color: var(--color-accent); text-decoration: none; }
+.source-conflict-why a:hover, .source-conflict-register:hover { text-decoration: underline; }
+.source-conflict-footer { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 8px 0 12px; }
+.source-conflict-register { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; white-space: nowrap; }
+.node-inspector .source-conflicts { margin: 12px 0; padding: 12px; }
+/* The short form beside the graph: questions only, and a way to the Read
+   view, where the quoted texts have room. */
+.source-conflicts-summary ul { margin: 10px 0 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.source-conflicts-summary li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; align-items: baseline; font-size: 12.5px; line-height: 1.45; color: var(--color-ink); overflow-wrap: anywhere; }
+.source-conflicts-summary li[data-status="open"] .source-conflict-status { background: color-mix(in srgb, var(--color-warning) 12%, var(--color-paper)); color: var(--color-warning); }
+.source-conflicts .source-conflict-open { display: inline-flex; align-items: center; gap: 4px; margin-top: 10px; padding: 0; border: 0; background: none; color: var(--color-accent); font: 500 12px/1.4 var(--f-body); cursor: pointer; }
+.source-conflicts .source-conflict-open:hover { text-decoration: underline; }

@@ -1,7 +1,8 @@
 "use client";
 
 import { Fragment, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
-import { ArrowLeft, ArrowRight, BookOpen, GitBranch, LoaderCircle, Network, Play, Search, X } from "lucide-react";
+import { createPortal } from "react-dom";
+import { ArrowLeft, ArrowRight, BookOpen, CircleAlert, GitBranch, LoaderCircle, Network, Play, Search, X } from "lucide-react";
 import { axiomAppUrlForCitation, humanizeRuleName, humanizeSource, readableLawTarget } from "./citations";
 import type { ProgramGraph, RuleNode } from "./types";
 import { MemberCountBreakdown } from "./member-count-breakdown";
@@ -99,7 +100,7 @@ function SourceReader({ rule, id, consumers }: { rule?: RuleNode; id: string; co
   </section>;
 }
 
-export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, onViewChange, scopeLabel, truncated, runReady, scenario, graphControls, onOverview, valueOf, hasRun, stale, renderInput, onRun, running, members = [], run = null, explanationTrail = [], onExplanationTrailChange, roles, runUnavailableReason = null }: {
+export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, onViewChange, scopeLabel, truncated, runReady, scenario, graphControls, onOverview, valueOf, hasRun, stale, renderInput, onRun, running, members = [], run = null, explanationTrail = [], onExplanationTrailChange, roles, runUnavailableReason = null, headerSlot = null, subjectExtras = null, conflictsPanel = null }: {
   graph: ProgramGraph; rootTarget?: string; selectedId: string; onSelect: (id: string) => void;
   view: WorkspaceView; onViewChange: (view: WorkspaceView) => void;
   scopeLabel: string; truncated: boolean; runReady: boolean; scenario: ReactNode;
@@ -113,6 +114,14 @@ export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, o
   /** Why this scope cannot run (the runtime's or the gate's own words);
    *  shown wherever the Run affordance would otherwise just vanish. */
   runUnavailableReason?: string | null;
+  /** The app header's slot for the view tabs: given, the tabs render
+   *  there, so the header and the tabs are one row. */
+  headerSlot?: HTMLElement | null;
+  /** Extra marks beside the rule's citation (source-conflict badge). */
+  subjectExtras?: ReactNode;
+  /** The selected rule's known source conflicts, shown in Read and
+   *  Relationships (the graph view's inspector carries its own). */
+  conflictsPanel?: ReactNode;
   onOverview?: () => void;
   valueOf: (id: string) => unknown; hasRun: boolean; stale: boolean;
 }) {
@@ -244,12 +253,9 @@ export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, o
   };
   const results = [...entries.values()].filter((entry) => `${label(entry.legalId)} ${entry.legalId}`.toLowerCase().includes(query.toLowerCase()));
   const roots = [...new Set([...graph.terminalOutputs, ...graph.ownOutputs])].filter((id) => entries.has(id));
-  return <div className="rule-workspace">
-    <nav className="workspace-views" aria-label="Workspace views">
-      <button className="workspace-graph-button" aria-current={view === "map" ? "page" : undefined} onClick={() => changeView("map")}><Network size={16} />Graph</button>
-      {([ ["read", "Read", BookOpen], ["structure", "Relationships", GitBranch], ["run", "Run", Play] ] as const).filter(([mode]) => mode !== "run" || runReady).map(([mode, title, Icon]) =>
-        <button key={mode} aria-current={view === mode ? "page" : undefined} onClick={() => changeView(mode)}><Icon size={16} />{title}</button>)}
-      {truncated && <small className="workspace-partial">Partial graph</small>}
+  const views = <nav className="workspace-views" aria-label="Workspace views">
+      {([ ["map", "Graph", Network], ["read", "Read", BookOpen], ["structure", "Relationships", GitBranch], ["run", "Run", Play] ] as const).filter(([mode]) => mode !== "run" || runReady).map(([mode, title, Icon]) =>
+        <button key={mode} className="workspace-view-tab" aria-current={view === mode ? "page" : undefined} onClick={() => changeView(mode)}><Icon size={15} aria-hidden="true" />{title}</button>)}
       <div className="workspace-nav-finder" onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); closeSearch(); } }} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setNavigatorOpen(false); }}>
         {navigatorOpen ? <>
           <label className="workspace-nav-search-field"><Search size={16} /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Find a rule…" aria-label="Search this scope" /><button type="button" aria-label="Close rule search" onClick={closeSearch}><X size={16} /></button></label>
@@ -257,21 +263,24 @@ export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, o
             <div className="workspace-search-results">{(query ? results.map((entry) => entry.legalId) : roots).slice(0, 50).map((id) => <button key={id} aria-label={`${label(id)} ${entries.get(id)?.kind}`} onClick={() => { navigate(id); closeSearch(); }}><span>{label(id)}</span><small>{entries.get(id)?.kind}</small></button>)}</div>
             {query && <p>{results.length} matches{results.length > 50 ? " · Showing the first 50; refine your search" : ""}</p>}
           </section>
-        </> : <button ref={searchButtonRef} className="workspace-nav-search" onClick={() => setNavigatorOpen(true)} aria-expanded={false}><Search size={16} /> Find a rule</button>}
+        </> : <button ref={searchButtonRef} className="workspace-nav-search" onClick={() => setNavigatorOpen(true)} aria-expanded={false}><Search size={15} /> Find a rule</button>}
       </div>
-    </nav>
-    {!runReady && runUnavailableReason && <p className="workspace-run-unavailable" role="status"><Play size={14} aria-hidden /><span><strong>Run unavailable.</strong> {runUnavailableReason}</span></p>}
+    </nav>;
+  return <div className="rule-workspace">
+    {headerSlot ? createPortal(views, headerSlot) : views}
     <div className="workspace-subject">
-      <div className="workspace-return-actions">
-        {onOverview && <button type="button" className="workspace-button" data-testid="back-to-overview" onClick={onOverview} title="Back to the corpus overview">Overview</button>}
-      <button className="workspace-button" disabled={!trail.past.length && !onOverview} aria-label={trail.past.at(-1)?.view !== undefined && trail.past.at(-1)?.view !== view ? "Back to previous view" : trail.past.length ? "Back to previous rule" : onOverview ? "Back to library" : "Back to previous rule"} onClick={back}><ArrowLeft size={16} /> Back</button>
-      </div>
-      <div><h1>{label(selectedId)}</h1>
-        <p className="workspace-citation">{rule?.source ? humanizeSource(rule.source) : "Source not specified"}</p>
+      <button className="workspace-back" disabled={!trail.past.length && !onOverview} aria-label={trail.past.at(-1)?.view !== undefined && trail.past.at(-1)?.view !== view ? "Back to previous view" : trail.past.length ? "Back to previous rule" : onOverview ? "Back to library" : "Back to previous rule"} title="Back" onClick={back}><ArrowLeft size={16} /></button>
+      <div className="workspace-subject-text"><h1>{label(selectedId)}</h1>
+        <div className="workspace-citation"><span>{rule?.source ? humanizeSource(rule.source) : "Source not specified"}</span>
+          {truncated && <small className="workspace-partial" title="This graph is partial; more relationships may exist.">Partial graph</small>}
+          {!runReady && runUnavailableReason && <details className="workspace-run-unavailable" role="status"><summary><CircleAlert size={13} aria-hidden="true" />Run unavailable</summary><div className="workspace-run-unavailable-reason"><strong>Run unavailable.</strong> {runUnavailableReason}</div></details>}
+          {subjectExtras}
+        </div>
       </div>
       {graphControls}
     </div>
     {view !== "run" && view !== "structure" && hasRun && stale && <p className="workspace-stale" role="status">Inputs have changed since the last run. Run again to update the results.</p>}
+    {view === "read" && conflictsPanel}
     {view === "read" && <SourceReader key={selectedId} rule={rule} id={selectedId} consumers={consumers} />}
     {view === "structure" && <section className="workspace-structure" aria-label="Immediate dependencies">
       <div className="workspace-section-heading"><h2>Direct relationships</h2>{onRun && runReady && <div className="workspace-run-actions">{hasRun && stale && <span className="workspace-stale-inline" role="status">Inputs changed · run again to update</span>}<button className={`workspace-button${hasRun && stale && !running ? " workspace-run-needed" : ""}`} disabled={running} onClick={onRun}>{running ? "Running…" : hasRun ? "Run again" : "Run household"}</button></div>}</div>
@@ -286,6 +295,7 @@ export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, o
           <button onClick={() => changeView("read")}>Read this rule <ArrowRight size={14} /></button></div>
         <NeighborColumn title="Used by" ids={consumers.map((item) => item.legalId)} entries={entries} label={label} onSelect={navigate} hasRun={hasRun} value={value} activeId={activeDependency} onHighlight={setActiveDependency} empty="No consumers recorded in this scope." />
       </div></RelationshipDiagram>
+      {conflictsPanel}
       <NodeMetadata key={selectedId} id={selectedId} entry={rule ?? graph.inputs.find(item => item.legalId === selectedId) ?? graph.relations.find(item => item.legalId === selectedId) ?? {}} />
       <MemberCountBreakdown graph={graph} selectedId={selectedId} members={members} run={run} stale={stale} renderInput={renderInput} valueOf={valueOf} onSelect={navigate} roles={roles} />
       {truncated && <p className="workspace-footnote">This graph is partial; additional relationships may exist.</p>}
