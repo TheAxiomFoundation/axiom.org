@@ -39,7 +39,7 @@ const ALT = [
   "Section 2017(a) beside its encoding in rulespec-us, us/statutes/7/2017/a.yaml. Numbered threads join each phrase to the line that encodes it; “30 per centum” joins 0.30.",
   "The rules of section 2017(a) as a graph of cards. Test case 1’s values run along the wires to snap_regular_month_allotment, $182.",
   "The runtime registry’s packages as clusters of light, with their counts; the eight rules of section 2017(a) are a small amber cluster in front.",
-  "One source card, one open set of rules, sends beams to four kinds of tool: AI tools, government tools, navigation tools, and researchers.",
+  "One source card, one open set of rules, sends beams to four kinds of tool: AI tools, government tools, navigation tools, and research tools.",
 ];
 
 function ExploreCards({ compact = false }: { compact?: boolean }) {
