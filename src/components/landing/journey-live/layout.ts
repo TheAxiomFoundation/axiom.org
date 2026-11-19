@@ -27,6 +27,15 @@ export const O = {
   pullBack: [4.0, 5.0],
   labels: [5.0, 5.5],
 } as const;
+// The walk down the aisle fills the clock from 0 to WALK, but it takes only
+// WALK - WALK_CUT screens of scroll: the walk plays faster than the rest,
+// and every later moment keeps its place on the clock.
+export const WALK = 1.45;
+export const WALK_CUT = 0.7;
+/** screens of scroll → the story's clock */
+export const toClock = (x: number) => (x < WALK - WALK_CUT ? (x * WALK) / (WALK - WALK_CUT) : x + WALK_CUT);
+/** the story's clock → screens of scroll */
+export const toScroll = (s: number) => (s < WALK ? (s * (WALK - WALK_CUT)) / WALK : s - WALK_CUT);
 // where the opening's captions (CAPTIONS[0..2]) take over
 export const CAPTION_OPEN = [0, 2.3, 4.1];
 

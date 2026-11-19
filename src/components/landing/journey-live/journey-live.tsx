@@ -26,7 +26,7 @@ import { CODE, EXPLORE, GRAPH_EDGES, GRAPH_NODES, MARKS, STATUTE, CASE, type Gra
 import { CAPTIONS } from "../journey-lamplight/captions";
 import {
   AMBER, CAPTION_AT, CAPTION_OPEN, CODE_BAR, CODE_CARD, CODE_PAD, DH, DRAFT, DW, GATE_H, GATE_W, GATE_X, GATE_Y,
-  GATES, GRID, HERO, LOOP_D, NODE_AT, NODE_FIRE, NODE_H, NODE_W, O, OPEN, PAGE, PROGRAMS, RAIL_Y, REGIONS, REGION_LEAD, ROW_H, SHELF, SHELVES,
+  GATES, GRID, HERO, LOOP_D, NODE_AT, NODE_FIRE, NODE_H, NODE_W, O, OPEN, PAGE, PROGRAMS, RAIL_Y, REGIONS, REGION_LEAD, ROW_H, SHELF, SHELVES, WALK, WALK_CUT, toClock, toScroll,
   SOURCE_CARD, SPINE7, SPINES, STATUTE_CARD, TARGET_CELL, U, USER_CARD, USERS, cellAt, clamp01, draftX,
   easeInOut, easeOut, lerp, panFor, rowTop, seg, shelfBase,
 } from "./layout";
@@ -36,6 +36,8 @@ import "../journey-lamplight/journey-lamplight.css";
 import "./journey-live.css";
 
 const TOTAL_S = OPEN + U.end;
+// the scroll run is shorter than the clock by the cut in the walk
+const RUN_S = TOTAL_S - WALK_CUT;
 const CAPTION_ALL = [...CAPTION_OPEN, ...CAPTION_AT.map((a) => a + OPEN)];
 // from this stage width the words move into a column on the left
 // (journey-live.css uses the same width)
@@ -321,7 +323,7 @@ export function LiveStory({ base = "" }: { base?: string }) {
       if (!aisle || !aisleGl || show <= 0) return heroBox;
       const w = aisleCanvas.clientWidth;
       const h = aisleCanvas.clientHeight;
-      const t = seg(o, 0, 1.45);
+      const t = seg(o, 0, WALK);
       const turn = 0;
       const key = `${w}x${h}:${t.toFixed(4)}:${turn.toFixed(4)}`;
       if (key !== aisleKey) {
@@ -651,7 +653,7 @@ export function LiveStory({ base = "" }: { base?: string }) {
     const navH = () => Math.round(document.querySelector("header.nav-bar")?.getBoundingClientRect().height ?? 0);
     const size = () => {
       track.style.setProperty("--nav-h", `${navH()}px`);
-      track.style.setProperty("--jl-run", `${Math.round(window.innerHeight * TOTAL_S)}px`);
+      track.style.setProperty("--jl-run", `${Math.round(window.innerHeight * RUN_S)}px`);
     };
     size();
 
@@ -663,13 +665,13 @@ export function LiveStory({ base = "" }: { base?: string }) {
     const st = ScrollTrigger.create({
       trigger: track,
       start: () => `top ${navH()}px`,
-      end: () => `+=${Math.round(window.innerHeight * TOTAL_S)}`,
+      end: () => `+=${Math.round(window.innerHeight * RUN_S)}`,
     });
     // draw only while the story is on screen or near it
     const frame = () => {
       const r = track.getBoundingClientRect();
       if (r.bottom < -window.innerHeight || r.top > window.innerHeight * 2) return;
-      render(clamp01(st.progress) * TOTAL_S);
+      render(toClock(clamp01(st.progress) * RUN_S));
     };
     gsap.ticker.add(frame);
     render(0);
@@ -698,7 +700,7 @@ export function LiveStory({ base = "" }: { base?: string }) {
     // dev only: jump the story to a point (s, in screens from the pin)
     if (process.env.NODE_ENV !== "production") {
       Object.assign(window, {
-        __jvSeek: (s: number) => lenis.scrollTo(st.start + (s / TOTAL_S) * (st.end - st.start), { immediate: true }),
+        __jvSeek: (s: number) => lenis.scrollTo(st.start + (toScroll(s) / RUN_S) * (st.end - st.start), { immediate: true }),
         __jvTotal: { open: OPEN, total: TOTAL_S },
       });
     }

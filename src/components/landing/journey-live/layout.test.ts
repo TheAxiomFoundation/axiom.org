@@ -3,7 +3,7 @@ import { CAPTIONS } from "../journey-lamplight/captions";
 import { CODE, GRAPH_NODES, MARKS } from "../journey-digital/data";
 import { CLUSTERS } from "../registry-snapshot";
 import {
-  CAPTION_OPEN, OPEN, PAGE, SPINE7, SPINES, TARGET_CELL, cellAt, GRID,
+  CAPTION_OPEN, OPEN, WALK, WALK_CUT, toClock, toScroll, PAGE, SPINE7, SPINES, TARGET_CELL, cellAt, GRID,
   AMBER, CAPTION_AT, CODE_CARD, DH, DRAFT, DW, GATE_X, HERO, NODE_AT, NODE_FIRE, NODE_H, NODE_W, SOURCE_CARD,
   STATUTE_CARD, U, USER_CARD, USERS, clusterAt, draftX, panFor, rowIndex, seg,
 } from "./layout";
@@ -101,5 +101,25 @@ describe("journey-live layout", () => {
     expect(seg(-1, 0, 1)).toBe(0);
     expect(seg(0.5, 0, 1)).toBe(0.5);
     expect(seg(2, 0, 1)).toBe(1);
+  });
+});
+
+describe("the walk's faster clock", () => {
+  it("plays the walk in fewer screens and leaves the rest in place", () => {
+    expect(WALK_CUT).toBeGreaterThan(0);
+    expect(WALK_CUT).toBeLessThan(WALK);
+    expect(toClock(0)).toBe(0);
+    expect(toClock(WALK - WALK_CUT)).toBeCloseTo(WALK);
+    expect(toClock(OPEN - WALK_CUT)).toBeCloseTo(OPEN);
+  });
+  it("is continuous, rising, and has an inverse", () => {
+    let last = -0.01;
+    for (let x = 0; x <= 8; x += 0.05) {
+      const s = toClock(x);
+      expect(s).toBeGreaterThan(last);
+      expect(s - last).toBeLessThan(0.2);
+      expect(toScroll(s)).toBeCloseTo(x);
+      last = s;
+    }
   });
 });
