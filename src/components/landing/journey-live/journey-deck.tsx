@@ -18,8 +18,10 @@
 // talks to the page around it (the axiom-slides deck does this):
 //
 //   in   { type: "axiom-walkthrough:go", step, play }
-//          step 0 is the start of the story, 1–7 the stops after it (the
-//          first is the captured page, the last the end of the story);
+//          step 0 is the start of the story, 1–8 the rest of that step
+//          (1 the end of the walk down the aisle, 2 the captured page,
+//          8 the end of the story). `at`, a time on the story's clock,
+//          can stand in for `step`, so a deck can pick its own stops;
 //          play moves there as a clip, otherwise it is a cut
 //   in   { type: "axiom-walkthrough:play" }
 //          the whole story from the start, with a short hold on each step
@@ -40,10 +42,10 @@ import "./journey-deck.css";
 
 export type DeckMode = "video" | "scroll";
 
-// Where a "next" stops. The first one runs the whole opening as one clip:
-// down the aisle, the book off the shelf, and the page captured. The walk
-// alone is not a stop.
-const STOPS = REST_AT.slice(1);
+// Where a "next" stops: the rest of each step. The first stop is the end
+// of the walk down the aisle; the second takes the book off the shelf and
+// captures the page.
+const STOPS = REST_AT;
 const STEPS = CAPTION_ALL.length;
 // clock units (screens of the landing page's scroll) a second
 const PLAY_RATE = 0.62;
@@ -184,7 +186,7 @@ export function JourneyDeck({ mode = "video", base = "", embed = false }: { mode
   useEffect(() => {
     if (!embed) return;
     const onMessage = (e: MessageEvent) => {
-      const d = e.data as { type?: string; step?: number; play?: boolean } | null;
+      const d = e.data as { type?: string; step?: number; at?: number; play?: boolean } | null;
       if (e.source !== window.parent || !d) return;
       if (d.type === `${MSG}:play`) {
         jump(0);
@@ -194,8 +196,11 @@ export function JourneyDeck({ mode = "video", base = "", embed = false }: { mode
         setPlaying(true);
         return;
       }
-      if (d.type !== `${MSG}:go` || typeof d.step !== "number") return;
-      const to = d.step <= 0 ? 0 : STOPS[Math.min(STOPS.length, Math.round(d.step)) - 1];
+      if (d.type !== `${MSG}:go`) return;
+      let to: number;
+      if (typeof d.at === "number" && Number.isFinite(d.at)) to = Math.max(0, Math.min(TOTAL_S, d.at));
+      else if (typeof d.step === "number") to = d.step <= 0 ? 0 : STOPS[Math.min(STOPS.length, Math.round(d.step)) - 1];
+      else return;
       stopAuto();
       setTouched(true);
       if (d.play && to > clock.current) goTo(to, PLAY_RATE);
