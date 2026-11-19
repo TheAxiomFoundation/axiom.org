@@ -18,6 +18,10 @@
 .jv-steps {
   display: none;
 }
+/* a slide that frames the story writes the words itself */
+.jv-stage[data-bare] .jv-side {
+  display: none;
+}
 
 /* ── the words for each beat ──
    Narrower screens: the title alone, over the stage (the shared caption

@@ -3,10 +3,11 @@ import { CAPTIONS } from "../journey-lamplight/captions";
 import { CODE, GRAPH_NODES, MARKS } from "../journey-digital/data";
 import { CLUSTERS } from "../registry-snapshot";
 import {
-  CAPTION_OPEN, OPEN, WALK, WALK_CUT, toClock, toScroll, PAGE, SPINE7, SPINES, TARGET_CELL, cellAt, GRID,
+  CAPTION_OPEN, OPEN, REST_AT, WALK, WALK_CUT, toClock, toScroll, PAGE, SPINE7, SPINES, TARGET_CELL, cellAt, GRID,
   AMBER, CAPTION_AT, CODE_CARD, DH, DRAFT, DW, GATE_X, HERO, NODE_AT, NODE_FIRE, NODE_H, NODE_W, SOURCE_CARD,
   STATUTE_CARD, U, USER_CARD, USERS, clusterAt, draftX, panFor, rowIndex, seg,
 } from "./layout";
+import { nextStop, prevStop, stepAt } from "./deck-clock";
 
 describe("journey-live layout", () => {
   it("finds every marked line and every graph node's line in the code card", () => {
@@ -121,5 +122,26 @@ describe("the walk's faster clock", () => {
       expect(toScroll(s)).toBeCloseTo(x);
       last = s;
     }
+  });
+});
+
+describe("the deck's rests", () => {
+  const starts = [...CAPTION_OPEN, ...CAPTION_AT.map((a) => a + OPEN)];
+  it("has one rest for each step, inside that step, before its words go", () => {
+    expect(REST_AT).toHaveLength(starts.length);
+    REST_AT.forEach((at, j) => {
+      expect(at).toBeGreaterThan(starts[j] + 0.25);
+      if (j < starts.length - 1) expect(at).toBeLessThanOrEqual(starts[j + 1] - 0.2);
+      expect(stepAt(starts, at)).toBe(j);
+    });
+    expect(REST_AT[REST_AT.length - 1]).toBe(OPEN + U.end);
+  });
+  it("steps forward and back through the rests", () => {
+    expect(nextStop(REST_AT, 0)).toBe(REST_AT[0]);
+    expect(nextStop(REST_AT, REST_AT[0])).toBe(REST_AT[1]);
+    expect(nextStop(REST_AT, REST_AT[7])).toBe(REST_AT[7]);
+    expect(prevStop(REST_AT, REST_AT[0])).toBe(0);
+    expect(prevStop(REST_AT, REST_AT[3])).toBe(REST_AT[2]);
+    expect(prevStop(REST_AT, REST_AT[3] - 0.5)).toBe(REST_AT[2]);
   });
 });

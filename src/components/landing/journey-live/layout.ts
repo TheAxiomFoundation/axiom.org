@@ -144,6 +144,20 @@ export const U = {
 // where each live caption (CAPTIONS[3..7]) takes over
 export const CAPTION_AT = [0.3, 4.4, 9.5, 12.9, 14.65];
 
+// Where each of the eight steps is at rest, on the story's clock (OPEN + u
+// from beat 4 on): its picture is complete and the move to the next step
+// has not started. A deck stops here after each step (journey-deck.tsx).
+export const REST_AT = [
+  1.38, // the walk down the aisle has stopped at Title 7
+  3.8, // the page is captured; the pull back to the corpus starts at 4.0
+  5.85, // the corpus, its regions and the address; the field goes at OPEN
+  OPEN + 3.85, // draft 2 is through the checks; t45 starts at 4.0
+  OPEN + 9.0, // every part of the rule is traced; t56 starts at 9.1
+  OPEN + 12.4, // the graph has run; t67 starts at 12.5
+  OPEN + 14.25, // every body of law is named; t78 starts at 14.3
+  OPEN + U.end,
+];
+
 // ── beat 4: the gates ──
 export const STATUTE_CARD = { x: 40, y: 30, w: 460 };
 export const GATES = [

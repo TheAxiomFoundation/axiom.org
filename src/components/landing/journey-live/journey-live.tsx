@@ -35,10 +35,11 @@ import { PHRASE_PARENT, RULE_LINES, RULE_ROW_H, RULE_STEPS, RULE_THREADS, SUB_PH
 import "../journey-lamplight/journey-lamplight.css";
 import "./journey-live.css";
 
-const TOTAL_S = OPEN + U.end;
+export const TOTAL_S = OPEN + U.end;
 // the scroll run is shorter than the clock by the cut in the walk
 const RUN_S = TOTAL_S - WALK_CUT;
-const CAPTION_ALL = [...CAPTION_OPEN, ...CAPTION_AT.map((a) => a + OPEN)];
+/** where each of the eight steps starts, on the story's clock */
+export const CAPTION_ALL = [...CAPTION_OPEN, ...CAPTION_AT.map((a) => a + OPEN)];
 // from this stage width the words move into a column on the left
 // (journey-live.css uses the same width)
 const SPLIT_MIN = 1100;
@@ -154,7 +155,14 @@ const links = (base: string) => ({
 });
 
 // `base` makes the page's own links absolute (the standalone preview page)
-export function LiveStory({ base = "" }: { base?: string }) {
+/**
+ * The scroll-driven story. On the landing page the window's scroll drives
+ * it. Given a `clock`, it reads the story's time from that instead and
+ * takes no scroll of its own: a deck (journey-deck.tsx) owns the clock.
+ * `bare` leaves the words out and gives the whole stage to the picture:
+ * a slide that frames the story writes the words itself.
+ */
+export function LiveStory({ base = "", clock, bare = false }: { base?: string; clock?: { current: number }; bare?: boolean }) {
   const { href, away } = links(base);
   const trackRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -259,9 +267,9 @@ export function LiveStory({ base = "" }: { base?: string }) {
     const fit = () => {
       // on a wide screen the side column takes the left; the stage fits
       // the rest, centred in it
-      const split = stage.clientWidth >= SPLIT_MIN;
-      const sideW = split ? side.offsetLeft + side.offsetWidth + SIDE_GAP : 0;
-      const padR = split ? SIDE_GAP : 0;
+      const split = bare || stage.clientWidth >= SPLIT_MIN;
+      const sideW = bare ? 0 : split ? side.offsetLeft + side.offsetWidth + SIDE_GAP : 0;
+      const padR = bare ? 0 : split ? SIDE_GAP : 0;
       // beside the column, fit the band the beats draw in, not the whole
       // design height, and centre that band on the stage; without it, the
       // caption over the stage keeps the space below the band
@@ -653,33 +661,36 @@ export function LiveStory({ base = "" }: { base?: string }) {
     const navH = () => Math.round(document.querySelector("header.nav-bar")?.getBoundingClientRect().height ?? 0);
     const size = () => {
       track.style.setProperty("--nav-h", `${navH()}px`);
-      track.style.setProperty("--jl-run", `${Math.round(window.innerHeight * RUN_S)}px`);
+      track.style.setProperty("--jl-run", clock ? "0px" : `${Math.round(window.innerHeight * RUN_S)}px`);
     };
     size();
 
-    const lenis = new Lenis({ autoRaf: false, lerp: 0.085, wheelMultiplier: 0.9 });
-    lenis.on("scroll", ScrollTrigger.update);
-    const raf = (time: number) => lenis.raf(time * 1000);
+    const lenis = clock ? null : new Lenis({ autoRaf: false, lerp: 0.085, wheelMultiplier: 0.9 });
+    lenis?.on("scroll", ScrollTrigger.update);
+    const raf = (time: number) => lenis?.raf(time * 1000);
     gsap.ticker.add(raf);
-    gsap.ticker.lagSmoothing(0);
-    const st = ScrollTrigger.create({
-      trigger: track,
-      start: () => `top ${navH()}px`,
-      end: () => `+=${Math.round(window.innerHeight * RUN_S)}`,
-    });
+    if (lenis) gsap.ticker.lagSmoothing(0);
+    const st = clock
+      ? null
+      : ScrollTrigger.create({
+          trigger: track,
+          start: () => `top ${navH()}px`,
+          end: () => `+=${Math.round(window.innerHeight * RUN_S)}`,
+        });
     // draw only while the story is on screen or near it
     const frame = () => {
+      if (clock) return render(Math.min(TOTAL_S, Math.max(0, clock.current)));
       const r = track.getBoundingClientRect();
       if (r.bottom < -window.innerHeight || r.top > window.innerHeight * 2) return;
-      render(toClock(clamp01(st.progress) * RUN_S));
+      render(toClock(clamp01(st!.progress) * RUN_S));
     };
     gsap.ticker.add(frame);
-    render(0);
+    render(clock ? clock.current : 0);
 
     const onResize = () => {
       size();
       fit();
-      ScrollTrigger.refresh();
+      if (!clock) ScrollTrigger.refresh();
     };
     window.addEventListener("resize", onResize);
     // The stage's place depends on the size of the words' column. That
@@ -700,7 +711,8 @@ export function LiveStory({ base = "" }: { base?: string }) {
     // dev only: jump the story to a point (s, in screens from the pin)
     if (process.env.NODE_ENV !== "production") {
       Object.assign(window, {
-        __jvSeek: (s: number) => lenis.scrollTo(st.start + (toScroll(s) / RUN_S) * (st.end - st.start), { immediate: true }),
+        __jvSeek: (s: number) =>
+          clock ? (clock.current = s) : lenis!.scrollTo(st!.start + (toScroll(s) / RUN_S) * (st!.end - st!.start), { immediate: true }),
         __jvTotal: { open: OPEN, total: TOTAL_S },
       });
     }
@@ -710,18 +722,18 @@ export function LiveStory({ base = "" }: { base?: string }) {
       refit.disconnect();
       gsap.ticker.remove(frame);
       gsap.ticker.remove(raf);
-      st.kill();
-      lenis.destroy();
+      st?.kill();
+      lenis?.destroy();
       gone = true;
       aisle?.dispose();
       aisleGl?.dispose();
     };
-  }, []);
+  }, [clock, bare]);
 
   return (
     <>
       <div ref={trackRef} className="jl-track jl--paper jv-track">
-        <div ref={stageRef} className="jl-stage jl-stage--paper jv-stage">
+        <div ref={stageRef} className="jl-stage jl-stage--paper jv-stage" data-bare={bare ? "" : undefined}>
           {/* beat 1: the library aisle, a 3D scene that fades into the page on every side */}
           <canvas data-aisle className="jv-aisle" aria-hidden />
           <div ref={liveRef} className="jv-live" role="img" aria-label="A law book comes off the shelf, opens on section 2017(a) and becomes one addressed cell of the corpus; the section is encoded and checked, each value cites its words, the rules run as a graph to $182 for test case 1, join the runtime registry, and become one source for every kind of tool.">
