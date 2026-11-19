@@ -37,7 +37,9 @@ export const toClock = (x: number) => (x < WALK - WALK_CUT ? (x * WALK) / (WALK 
 /** the story's clock → screens of scroll */
 export const toScroll = (s: number) => (s < WALK ? (s * (WALK - WALK_CUT)) / WALK : s - WALK_CUT);
 // where the opening's captions (CAPTIONS[0..2]) take over
-export const CAPTION_OPEN = [0, 2.3, 4.1];
+// (the second waits until the book is off the shelf and starts to open:
+// a deck rests on the closed book, with the first words still up)
+export const CAPTION_OPEN = [0, 2.45, 4.1];
 
 // beat 1: the library. An old law library in the story's own hand: a
 // bookcase that is a card, walnut shelves with a name plate each, and
@@ -147,8 +149,11 @@ export const CAPTION_AT = [0.3, 4.4, 9.5, 12.9, 14.65];
 // Where each of the eight steps is at rest, on the story's clock (OPEN + u
 // from beat 4 on): its picture is complete and the move to the next step
 // has not started. A deck stops here after each step (journey-deck.tsx).
+// The encoder step (its drafts, the check that sends one back) plays at
+// this share of a deck's pace: there is more to read in it.
+export const ENCODER_PACE = 0.5;
 export const REST_AT = [
-  1.38, // the walk down the aisle has stopped at Title 7
+  2.2, // Title 7 is off the shelf, closed; its cover opens from 2.3
   3.8, // the page is captured; the pull back to the corpus starts at 4.0
   5.85, // the corpus, its regions and the address; the field goes at OPEN
   OPEN + 3.85, // draft 2 is through the checks; t45 starts at 4.0

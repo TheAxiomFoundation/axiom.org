@@ -19,7 +19,7 @@
 //
 //   in   { type: "axiom-walkthrough:go", step, play }
 //          step 0 is the start of the story, 1–8 the rest of that step
-//          (1 the end of the walk down the aisle, 2 the captured page,
+//          (1 Title 7 off the shelf and closed, 2 the captured page,
 //          8 the end of the story). `at`, a time on the story's clock,
 //          can stand in for `step`, so a deck can pick its own stops;
 //          play moves there as a clip, otherwise it is a cut
@@ -37,14 +37,13 @@ import { CAPTIONS } from "../journey-lamplight/captions";
 import { EXPLORE } from "../journey-digital/data";
 import { CAPTION_ALL, LiveStory, TOTAL_S } from "./journey-live";
 import { nextStop, prevStop, stepAt } from "./deck-clock";
-import { REST_AT, WALK, WALK_CUT } from "./layout";
+import { ENCODER_PACE, REST_AT, WALK, WALK_CUT } from "./layout";
 import "./journey-deck.css";
 
 export type DeckMode = "video" | "scroll";
 
-// Where a "next" stops: the rest of each step. The first stop is the end
-// of the walk down the aisle; the second takes the book off the shelf and
-// captures the page.
+// Where a "next" stops: the rest of each step. The first stop is Title 7
+// off the shelf, still closed; the second opens it and captures the page.
 const STOPS = REST_AT;
 const STEPS = CAPTION_ALL.length;
 // clock units (screens of the landing page's scroll) a second
@@ -148,7 +147,10 @@ export function JourneyDeck({ mode = "video", base = "", embed = false }: { mode
       let isMoving = false;
       if (r) {
         const d = r.to - clock.current;
-        const stepBy = r.rate * dt * (clock.current < WALK && d > 0 ? WALK_GAIN : 1);
+        // a clip of the encoder step (between the rests of steps 3 and 4)
+        // plays slower; a glide does not
+        const inEncoder = r.rate <= PLAY_RATE && clock.current >= REST_AT[2] && clock.current < REST_AT[3];
+        const stepBy = r.rate * dt * (clock.current < WALK && d > 0 ? WALK_GAIN : 1) * (inEncoder ? ENCODER_PACE : 1);
         if (Math.abs(d) <= stepBy) {
           clock.current = r.to;
           run.current = null;
