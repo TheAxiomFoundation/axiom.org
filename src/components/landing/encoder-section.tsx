@@ -1,6 +1,6 @@
 import { ArrowRightIcon } from "@/components/icons";
 import { axiomAppHref } from "@/lib/urls";
-import { JourneyLamplight } from "./journey-lamplight/journey-lamplight";
+import { JourneyLive } from "./journey-live/journey-live";
 import { Reveal } from "./reveal";
 
 export function EncoderSection() {
@@ -37,9 +37,11 @@ export function EncoderSection() {
       </div>
     </section>
 
-    {/* The journey, full-bleed: a law book off the shelf to the systems
-        that run on the rules, scrubbed by scroll (journey-lamplight). */}
-    <JourneyLamplight />
+    {/* The journey, full-bleed: a law book off the shelf (3D), then the
+        encoding, the cited code, the graph, the registry and the systems
+        that run on the rules as live components, scrubbed by scroll
+        (journey-live). */}
+    <JourneyLive />
 
     <section className="section-tint-cream relative z-1 pt-20 pb-32 px-8">
       <div className="max-w-[1280px] mx-auto">

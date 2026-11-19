@@ -1,0 +1,171 @@
+/* The walkthrough as a slide (journey-deck.tsx): one fixed screen, the
+   story's stage inside it, a quiet bar of controls at the foot. */
+
+.jd {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  overflow: hidden;
+  background: var(--color-paper, #faf9f6);
+  color: var(--color-ink, #1c1917);
+  overscroll-behavior: none;
+  touch-action: none;
+}
+.jd[data-mode="scroll"] {
+  cursor: ns-resize;
+}
+.jd[data-mode="scroll"] a,
+.jd[data-mode="scroll"] button {
+  cursor: pointer;
+}
+/* the story's own track is one screen tall here: the deck owns the clock */
+.jd .jv-track {
+  height: 100%;
+}
+.jd .jv-stage {
+  position: relative;
+  top: 0;
+  height: 100%;
+}
+
+.jd-bar {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  transform: translateX(-50%);
+  border: 1px solid color-mix(in srgb, var(--color-ink, #1c1917) 12%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-paper, #faf9f6) 88%, transparent);
+  backdrop-filter: blur(8px);
+  font: 500 12px/1 var(--font-geist-sans, system-ui), system-ui, sans-serif;
+  color: color-mix(in srgb, var(--color-ink, #1c1917) 70%, transparent);
+  opacity: 0.55;
+  transition: opacity 0.25s ease;
+  white-space: nowrap;
+}
+.jd-bar:hover,
+.jd-bar:focus-within {
+  opacity: 1;
+}
+/* out of the picture while a step plays */
+.jd[data-mode="video"][data-moving="1"] .jd-bar:not(:hover):not(:focus-within) {
+  opacity: 0.18;
+}
+.jd-btn {
+  min-width: 30px;
+  height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.jd-btn--text {
+  padding: 0 12px;
+}
+.jd-btn:hover,
+.jd-btn:focus-visible {
+  background: color-mix(in srgb, var(--color-accent, #b45309) 12%, transparent);
+  color: var(--color-accent-hover, #92400e);
+  outline: none;
+}
+.jd-dots {
+  display: flex;
+  gap: 2px;
+  margin: 0 4px;
+  padding: 0;
+  list-style: none;
+}
+.jd-dot {
+  display: block;
+  width: 18px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.jd-dot::before {
+  content: "";
+  display: block;
+  width: 7px;
+  height: 7px;
+  margin: 0 auto;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--color-ink, #1c1917) 22%, transparent);
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+.jd-dot[aria-current]::before {
+  background: var(--color-accent, #b45309);
+  transform: scale(1.35);
+}
+.jd-dot:hover::before,
+.jd-dot:focus-visible::before {
+  background: var(--color-accent-hover, #92400e);
+}
+.jd-dot:focus-visible {
+  outline: none;
+}
+.jd-count {
+  min-width: 34px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.jd-modes {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-ink, #1c1917) 6%, transparent);
+}
+.jd-modes a {
+  padding: 6px 10px;
+  border-radius: 999px;
+  color: inherit;
+  text-decoration: none;
+}
+.jd-modes a[aria-current] {
+  background: var(--color-paper, #faf9f6);
+  color: var(--color-ink, #1c1917);
+  box-shadow: 0 1px 2px rgba(28, 25, 23, 0.12);
+}
+
+.jd-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 74px;
+  z-index: 5;
+  margin: 0;
+  transform: translateX(-50%);
+  font: 400 13px/1.3 var(--font-geist-sans, system-ui), system-ui, sans-serif;
+  color: color-mix(in srgb, var(--color-ink, #1c1917) 55%, transparent);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* a frame inside another deck: no mode switch, no full screen */
+@media (max-height: 520px) {
+  .jd-hint {
+    display: none;
+  }
+}
+
+/* in a frame (?embed=1): the picture alone, on a clear ground, so the
+   slide around it shows its own paper */
+.jd[data-embed] {
+  background: transparent;
+}
+.jd[data-embed] .jv-track,
+.jd[data-embed] .jv-track .jv-stage {
+  background: transparent;
+}
+.jd-bar[hidden] {
+  display: none;
+}

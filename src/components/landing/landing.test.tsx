@@ -66,20 +66,29 @@ describe('Landing sections', () => {
     // The terminal animation gave way to the journey film (scroll-
     // scrubbed on wide viewports, self-running elsewhere).
     expect(screen.queryByText(/axiom encode/i)).not.toBeInTheDocument()
-    // The journey opens on the law library (jsdom has no WebGL, so it
-    // renders the poster sequence) and ends on links to each step.
+    // The journey opens on the law library (jsdom matches no wide,
+    // motion-allowed screen, so it renders the story at rest) and ends on
+    // links to each step.
     expect(
       screen.getByRole('img', { name: /a law library/i }),
     ).toBeInTheDocument()
     // each step links to the real page behind it, under its caption and
     // again on the end cards
-    for (const link of screen.getAllByRole('link', { name: /explore § 2017/i })) {
-      expect(link).toHaveAttribute('href', '/app?compose=us:statutes/7/2017/a')
+    for (const link of screen.getAllByRole('link', { name: /read § 2017/i })) {
+      expect(link).toHaveAttribute('href', '/us/statute/7/2017/a')
     }
-    // the corpus reader is never linked from the journey: its steps open
-    // the app (or the coverage page) instead
+    // two steps link a citation path: step 2 is about the text of the
+    // law, so its button opens § 2017(a) to read, and step 3 is about the
+    // provisions' addresses, so its button opens the list of Title 7. No
+    // other step does; they open the app (or the coverage page) instead
+    for (const link of screen.getAllByRole('link', { name: /browse title 7/i })) {
+      expect(link).toHaveAttribute('href', '/us/statute/7')
+    }
+    const readerLinks = ['/us/statute/7/2017/a', '/us/statute/7']
     for (const link of screen.getAllByRole('link')) {
-      expect(link.getAttribute('href') ?? '').not.toMatch(/^\/(us|uk|ca|nz)(-[a-z]+)?\//)
+      const href = link.getAttribute('href') ?? ''
+      if (readerLinks.includes(href)) continue
+      expect(href).not.toMatch(/^\/(us|uk|ca|nz)(-[a-z]+)?\//)
     }
     // The Read / Encode / Verify step cards stay removed.
     for (const step of ['Read', 'Encode', 'Verify']) {
@@ -100,7 +109,9 @@ describe('Landing sections', () => {
     const { container } = render(<EncoderSection />)
     // the journey alone (the section's own copy may name the signed
     // apply manifest; the story's captions claim no signature)
-    const journey = container.querySelector('.jl-posters, .jl-track')
+    const journey = container.querySelector('.js-story, .jv-track')?.cloneNode(true) as HTMLElement | undefined
+    // quotations of the statute keep its own words ("certified as eligible")
+    journey?.querySelectorAll('[data-quote]').forEach((q) => q.remove())
     const text = journey?.textContent ?? ''
     // the encode step names its deterministic checks
     expect(text).toMatch(/automated encoding, deterministic checks, transparent validation/i)

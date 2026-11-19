@@ -3,7 +3,7 @@
 import { usePathname } from "next/navigation";
 
 /** Paths that render without the site nav and footer: full-screen event pages. */
-const BARE_PREFIXES = ["/aspen"];
+const BARE_PREFIXES = ["/aspen", "/present"];
 
 export function isBarePath(pathname: string | null): boolean {
   if (!pathname) return false;

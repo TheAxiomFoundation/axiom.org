@@ -40,6 +40,9 @@ type Waypoint = {
   lookAt: Vec3;
   focusCluster: number;
   cxFrac: number;
+  // projection scale: the hero draws the graph smaller, inside the
+  // right half, so the headline and buttons stay clear on the left
+  zoom: number;
 };
 
 /* ─────────────────────────── Labels by source type ───────────────────────
@@ -268,18 +271,19 @@ function pickFocusNode(nodes: Node3[], clusters: Cluster[]): Vec3 {
 function buildWaypoints(nodes: Node3[], clusters: Cluster[]): Waypoint[] {
   const focus = pickFocusNode(nodes, clusters);
   return [
-    { scroll: 0.00, camPos: { x: 0, y: 0, z: 10 }, lookAt: { x: 0, y: 0, z: 0 }, focusCluster: 0, cxFrac: 0.72 },
+    { scroll: 0.00, camPos: { x: 0, y: 0, z: 10 }, lookAt: { x: 0, y: 0, z: 0 }, focusCluster: 0, cxFrac: 0.75, zoom: 0.76 },
     {
       scroll: 0.18,
       camPos: { x: focus.x * 0.4, y: focus.y * 0.6, z: focus.z + 5 },
       lookAt: focus,
       focusCluster: 0,
       cxFrac: 0.5,
+      zoom: 1,
     },
-    { scroll: 0.42, camPos: { x: 5, y: -1.5, z: 6 }, lookAt: { x: 0, y: 0, z: 0 }, focusCluster: 0, cxFrac: 0.5 },
-    { scroll: 0.65, camPos: { x: -5, y: 1.5, z: 6 }, lookAt: { x: 0, y: 0, z: 0 }, focusCluster: 0, cxFrac: 0.5 },
-    { scroll: 0.90, camPos: { x: 0, y: 1, z: 16 }, lookAt: { x: 0, y: 0, z: 0 }, focusCluster: 0, cxFrac: 0.5 },
-    { scroll: 1.00, camPos: { x: 0, y: 0, z: 60 }, lookAt: { x: 0, y: 0, z: 0 }, focusCluster: 0, cxFrac: 0.5 },
+    { scroll: 0.42, camPos: { x: 5, y: -1.5, z: 6 }, lookAt: { x: 0, y: 0, z: 0 }, focusCluster: 0, cxFrac: 0.5, zoom: 1 },
+    { scroll: 0.65, camPos: { x: -5, y: 1.5, z: 6 }, lookAt: { x: 0, y: 0, z: 0 }, focusCluster: 0, cxFrac: 0.5, zoom: 1 },
+    { scroll: 0.90, camPos: { x: 0, y: 1, z: 16 }, lookAt: { x: 0, y: 0, z: 0 }, focusCluster: 0, cxFrac: 0.5, zoom: 1 },
+    { scroll: 1.00, camPos: { x: 0, y: 0, z: 60 }, lookAt: { x: 0, y: 0, z: 0 }, focusCluster: 0, cxFrac: 0.5, zoom: 1 },
   ];
 }
 
@@ -310,6 +314,7 @@ function interpolateCamera(waypoints: Waypoint[], scroll: number) {
     },
     focusCluster: t > 0.5 ? b.focusCluster : a.focusCluster,
     cxFrac: a.cxFrac + (b.cxFrac - a.cxFrac) * t,
+    zoom: a.zoom + (b.zoom - a.zoom) * t,
   };
 }
 
@@ -380,6 +385,9 @@ let nextSpawnMs = 800;
 
 const PAUSE_AT_NODE_MS = 180;
 const SEGMENTS_PER_SEC = 0.65;
+// the last segment, into the root, runs at this share of the speed and
+// eases out, so the pulse settles into the node instead of hitting it
+const LAST_SEGMENT_SPEED = 0.4;
 const FADE_OUT_MS = 1300; // longer "absorption" at the root
 const TAIL_LENGTH = 0.7;
 
@@ -390,6 +398,9 @@ const TAIL_LENGTH = 0.7;
 const GRAPH_BASE_OPACITY = 0.6;
 
 const projected: { sx: number; sy: number; z: number; nodeIdx: number }[] = new Array(nodes.length);
+
+// labels snap to the device pixel grid, so their glyphs stay sharp
+const snap = (v: number) => Math.round(v * effectiveDpr) / effectiveDpr;
 
 function applyEffectiveDpr() {
   if (!canvas || !ctx) return;
@@ -408,7 +419,8 @@ function decideQuality() {
   else qualityTier = 3;
   qualityDecided = true;
 
-  if (qualityTier >= 1 && effectiveDpr > 1) {
+  // tier 1 keeps full resolution; only tier 2+ gives up resolution
+  if (qualityTier >= 2 && effectiveDpr > 1) {
     effectiveDpr = 1;
     applyEffectiveDpr();
   }
@@ -468,12 +480,12 @@ function drawFrame() {
   const now = performance.now();
   const t = reducedMotion ? 0 : (now - startT) / 1000;
 
-  const { camPos, lookAt, focusCluster, cxFrac } = interpolateCamera(waypoints, smoothScroll);
+  const { camPos, lookAt, focusCluster, cxFrac, zoom } = interpolateCamera(waypoints, smoothScroll);
   const basis = computeViewBasis(camPos, lookAt);
 
   const w = cssW;
   const h = cssH;
-  const FOCAL = Math.min(w, h) * 0.9;
+  const FOCAL = Math.min(w, h) * 0.9 * (w < 900 ? 1 : zoom);
   const cx = w * (w < 900 ? 0.5 : cxFrac);
   const cy = h / 2;
 
@@ -547,16 +559,17 @@ function drawFrame() {
     })
     .sort((x, y) => y.avgZ - x.avgZ);
 
+  // edges: near ones darker and heavier, far ones fade into the paper
+  ctx.lineCap = "round";
   for (const eo of edgeOrder) {
     const e = edges[eo.idx];
     const pa = projected[e.a];
     const pb = projected[e.b];
     if (pa.z <= 0 || pb.z <= 0) continue;
-    const depthFactor = 1 / Math.max(1, eo.avgZ * 0.4);
-    const alpha = Math.max(0.04, Math.min(0.55, depthFactor * 0.5));
-    ctx.strokeStyle = `rgba(146,64,14,${alpha})`;
-    ctx.lineWidth = Math.max(0.3, depthFactor * 1.2);
-    ctx.lineCap = "round";
+    const depthFactor = 1 / Math.max(1, eo.avgZ * 0.35);
+    const alpha = Math.max(0.05, Math.min(0.7, depthFactor * 0.62));
+    ctx.strokeStyle = depthFactor > 0.3 ? `rgba(124,45,18,${alpha})` : `rgba(168,98,52,${alpha})`;
+    ctx.lineWidth = Math.max(0.45, Math.min(2.2, depthFactor * 1.9));
     ctx.beginPath();
     ctx.moveTo(pa.sx, pa.sy);
     ctx.lineTo(pb.sx, pb.sy);
@@ -606,9 +619,10 @@ function drawFrame() {
    * "foreground" nodes get their label revealed naturally as the camera
    * approaches. Hovered nodes always get a fully-opaque label even if
    * they're farther back, so visitors can probe individual citations. */
-  ctx.font = '500 10px ui-monospace, monospace';
+  ctx.font = '500 11px ui-monospace, "SF Mono", Menlo, monospace';
   ctx.textBaseline = "middle";
   ctx.textAlign = "left";
+  ctx.lineJoin = "round";
   // Anything past LABEL_FAR is invisible; anything closer than LABEL_NEAR is full
   const LABEL_NEAR = 5;
   const LABEL_FAR = 9;
@@ -628,10 +642,16 @@ function drawFrame() {
     if (opacity < 0.04) continue;
     const sizeFactor = 1 / Math.max(1, p.z * 0.4);
     const r = Math.max(1.4, sizeFactor * 3.5);
+    const lx = snap(p.sx + r + 7);
+    const ly = snap(p.sy + 0.5);
+    // a thin halo of paper lifts the label off the lines behind it
+    ctx.strokeStyle = `rgba(250,249,246,${Math.min(0.9, opacity * 1.1)})`;
+    ctx.lineWidth = 3;
+    ctx.strokeText(text, lx, ly);
     ctx.fillStyle = isHover
-      ? `rgba(146,64,14,${opacity})`
-      : `rgba(28,25,23,${opacity * 0.8})`;
-    ctx.fillText(text, p.sx + r + 6, p.sy + 0.5);
+      ? `rgba(124,45,18,${opacity})`
+      : `rgba(28,25,23,${Math.min(1, opacity * 0.95)})`;
+    ctx.fillText(text, lx, ly);
   }
 
   // Comet "firing" animations — skipped on quality tier 2+
@@ -663,11 +683,14 @@ function drawFrame() {
         fire.pauseMs -= 16;
         continue;
       }
-      fire.progress += dtSec * SEGMENTS_PER_SEC;
+      const last = fire.idx === fire.path.length - 2;
+      fire.progress += dtSec * SEGMENTS_PER_SEC * (last ? LAST_SEGMENT_SPEED : 1);
       if (fire.progress >= 1) {
         fire.idx++;
         if (fire.idx >= fire.path.length - 1) {
-          fire.progress = 1;
+          // park the head exactly on the root (idx is the root's index)
+          fire.idx = fire.path.length - 1;
+          fire.progress = 0;
           fire.fadeOutMs = FADE_OUT_MS;
           continue;
         }
@@ -685,7 +708,9 @@ function drawFrame() {
        * then accelerate — reads as "drawn into" the node. */
       const easeIn = (x: number) => x * x;
       const effectiveTail = isAbsorbing ? TAIL_LENGTH * easeIn(fadeRatio) : TAIL_LENGTH;
-      const headPath = fire.idx + fire.progress;
+      const onLast = fire.idx === fire.path.length - 2;
+      const easeOut = (x: number) => 1 - (1 - x) * (1 - x);
+      const headPath = fire.idx + (onLast ? easeOut(fire.progress) : fire.progress);
       const tailPath = Math.max(0, headPath - effectiveTail);
       const totalLen = headPath - tailPath;
 
@@ -762,7 +787,7 @@ self.onmessage = (ev: MessageEvent<Msg>) => {
       cssW = msg.w;
       cssH = msg.h;
       requestedDpr = msg.dpr;
-      effectiveDpr = qualityTier >= 1 ? 1 : Math.min(2, requestedDpr);
+      effectiveDpr = qualityTier >= 2 ? 1 : Math.min(2, requestedDpr);
       applyEffectiveDpr();
       if (stopped) {
         // Quality tier 3 — re-render the single static frame at the new size
