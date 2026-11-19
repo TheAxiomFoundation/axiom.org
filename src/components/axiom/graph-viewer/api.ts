@@ -14,6 +14,113 @@ import type {
 // request, so no CORS dependency. Override the proxy base only for testing.
 export const API_BASE = "/api/axiom";
 
+/** Why a request to the API failed, as the visitor needs to know it:
+ *  "unavailable" is on our side and passes (a 5xx such as 503
+ *  `mirror_unavailable`, a rate limit, a network error, a timeout);
+ *  "not_found" is a real absence; "client" is a request the API refused. */
+export type ApiFailureKind = "unavailable" | "not_found" | "client";
+
+export const UNAVAILABLE_MESSAGE =
+  "The rules service is not reachable right now. This is on our side. Please try again in a few minutes.";
+export const MIRROR_UNAVAILABLE_MESSAGE =
+  "The rules database is not reachable right now. This is on our side. Please try again in a few minutes.";
+
+/** A failed API request. `message` is always a sentence written for the
+ *  visitor: it never carries a response body. `status`, `code` and
+ *  `requestId` are for support (a details line, the console). */
+export class ApiRequestError extends Error {
+  readonly kind: ApiFailureKind;
+  readonly status: number | null;
+  readonly code: string | null;
+  readonly requestId: string | null;
+  constructor(
+    kind: ApiFailureKind,
+    message: string,
+    detail: { status?: number | null; code?: string | null; requestId?: string | null } = {},
+  ) {
+    super(message);
+    this.name = "ApiRequestError";
+    this.kind = kind;
+    this.status = detail.status ?? null;
+    this.code = detail.code ?? null;
+    this.requestId = detail.requestId ?? null;
+  }
+}
+
+const REQUEST_TIMEOUT_MS = 30_000;
+
+/** fetch that turns a network failure or a timeout into an "unavailable"
+ *  ApiRequestError, so a caller never sees a raw TypeError. */
+async function apiFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch (error) {
+    // A DOMException is not always an Error instance; read the name directly.
+    const name = String((error as { name?: unknown } | null)?.name ?? "");
+    throw new ApiRequestError("unavailable", UNAVAILABLE_MESSAGE, {
+      code: name === "TimeoutError" || name === "AbortError" ? "timeout" : "network_error",
+    });
+  }
+}
+
+/** The typed failure for a non-2xx response. Reads the error envelope for
+ *  the code and request id only; the body itself is never shown. */
+async function failureFrom(
+  response: Response,
+  messages: { notFound: string; client: string },
+): Promise<ApiRequestError> {
+  const json = (await response.json().catch(() => null)) as {
+    error?: { code?: unknown };
+    meta?: { request_id?: unknown };
+  } | null;
+  const code = typeof json?.error?.code === "string" ? json.error.code : null;
+  const requestId =
+    typeof json?.meta?.request_id === "string"
+      ? json.meta.request_id
+      : response.headers.get("x-request-id");
+  const detail = { status: response.status, code, requestId };
+  if (response.status === 404) return new ApiRequestError("not_found", messages.notFound, detail);
+  if (response.status >= 500 || response.status === 408 || response.status === 429) {
+    return new ApiRequestError(
+      "unavailable",
+      code === "mirror_unavailable" ? MIRROR_UNAVAILABLE_MESSAGE : UNAVAILABLE_MESSAGE,
+      detail,
+    );
+  }
+  return new ApiRequestError("client", messages.client, detail);
+}
+
+/** What the viewer shows for a failed load: a sentence for the visitor
+ *  and a short reference for support. */
+export interface LoadFailure {
+  kind: ApiFailureKind | "unknown";
+  message: string;
+  /** For example "HTTP 503 · mirror_unavailable · request 4f0c…". */
+  reference: string | null;
+}
+
+export function toLoadFailure(error: unknown): LoadFailure {
+  if (error instanceof ApiRequestError) {
+    const parts = [
+      error.status != null ? `HTTP ${error.status}` : null,
+      error.code,
+      error.requestId ? `request ${error.requestId}` : null,
+    ].filter(Boolean);
+    return {
+      kind: error.kind,
+      message: error.message,
+      reference: parts.length ? parts.join(" · ") : null,
+    };
+  }
+  // Anything else is a defect in the response or the viewer. The visitor
+  // gets a plain sentence; the real error stays in the console.
+  return {
+    kind: "unknown",
+    message: "This could not be shown. Please try again.",
+    reference: null,
+  };
+}
+
 // Friendly country labels. Any jurisdiction whose prefix is missing here falls
 // back to the upper-cased prefix, so a new country still renders — the map is
 // cosmetic, never a gate.
@@ -53,9 +160,14 @@ export function countryShortLabel(country: Country): string {
 }
 
 export async function fetchAllPrograms(): Promise<ProgramSummary[]> {
-  const response = await fetch(`${trimSlash(API_BASE)}/runtime/packages`);
+  const response = await apiFetch(`${trimSlash(API_BASE)}/runtime/packages`, {
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
   if (!response.ok) {
-    throw new Error(`packages request failed (${response.status}): ${await response.text()}`);
+    throw await failureFrom(response, {
+      notFound: "The list of programs is not available.",
+      client: "The list of programs could not be loaded.",
+    });
   }
   const json = (await response.json()) as { data?: { packages?: ApiPackage[] } };
   const packages = json.data?.packages ?? [];
@@ -75,9 +187,12 @@ export async function fetchProgramGraph(program: ProgramRef): Promise<ProgramGra
   const url = `${trimSlash(API_BASE)}/runtime/packages/${encodeURIComponent(
     program.jurisdiction,
   )}/${encodeURIComponent(program.programId)}/graph`;
-  const response = await fetch(url);
+  const response = await apiFetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
   if (!response.ok) {
-    throw new Error(`graph request failed (${response.status}): ${await response.text()}`);
+    throw await failureFrom(response, {
+      notFound: "This program's graph is not available.",
+      client: "This program's graph could not be loaded.",
+    });
   }
   const json = (await response.json()) as { data?: { graph?: ProgramGraph } };
   if (!json.data?.graph) {
@@ -144,12 +259,15 @@ export async function fetchComposedGraph(focus: string): Promise<ComposedGraph> 
   // `v` versions the browser cache: bump when the graph SHAPE changes
   // (relation kinds, v2) so stale cached graphs can't poison runs.
   const url = `${trimSlash(API_BASE)}/graph/compose?focus=${encodeURIComponent(focus)}&v=2`;
-  const response = await fetch(url, { cache: "no-store" });
-  if (response.status === 404) {
-    throw new Error("This encoding is not available in the graph viewer yet.");
-  }
+  const response = await apiFetch(url, {
+    cache: "no-store",
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
   if (!response.ok) {
-    throw new Error(`compose request failed (${response.status}): ${await response.text()}`);
+    throw await failureFrom(response, {
+      notFound: "This encoding is not available in the graph viewer yet.",
+      client: "This rule graph could not be loaded.",
+    });
   }
   const json = (await response.json()) as {
     data?: { graph?: ProgramGraph; files?: LegalId[]; truncated?: boolean };
@@ -197,11 +315,25 @@ export async function fetchRootInputs(root: string): Promise<RootInputSlot[]> {
 
 export async function fetchRootCatalog(root: string): Promise<RootCatalog> {
   const url = `${trimSlash(API_BASE)}/runtime/root-inputs?root=${encodeURIComponent(root)}`;
-  const response = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(30_000) });
+  const response = await apiFetch(url, { cache: "no-store", signal: AbortSignal.timeout(30_000) });
   const json = await response.json().catch(() => null) as {
     data?: { inputs?: RootInputSlot[]; relations?: RelationDecl[]; relation_membership?: string };
     error?: { code?: string; message?: string };
+    meta?: { request_id?: string };
   } | null;
+  // An outage is not a verdict on the source: it gets the calm sentence and
+  // the "unavailable" kind, never the server's text.
+  if (response.status >= 500 || response.status === 408 || response.status === 429) {
+    throw new ApiRequestError(
+      "unavailable",
+      json?.error?.code === "mirror_unavailable" ? MIRROR_UNAVAILABLE_MESSAGE : UNAVAILABLE_MESSAGE,
+      {
+        status: response.status,
+        code: typeof json?.error?.code === "string" ? json.error.code : null,
+        requestId: typeof json?.meta?.request_id === "string" ? json.meta.request_id : null,
+      },
+    );
+  }
   if (!response.ok) {
     const reason = json?.error;
     const fallback: Record<string, string> = {
