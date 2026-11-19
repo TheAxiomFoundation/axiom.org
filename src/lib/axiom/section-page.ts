@@ -28,6 +28,7 @@ import {
   getSectionEncoding,
   type SectionEncoding,
 } from "@/lib/axiom/section-encoding";
+import { docTypeCrosswalk } from "@/lib/axiom/ops-citations";
 
 /**
  * Data assembly for the v2 server-rendered section page: one reading
@@ -934,18 +935,9 @@ export function joinedSegmentPaths(
   return paths;
 }
 
-/** Document classes the corpus files interchangeably for policy-adjacent
- *  material. An encoding under policies/ may live in the corpus as
- *  manual/ or guidance/ — same document, different classification. */
-const DOC_TYPE_SIBLINGS: Record<string, string[]> = {
-  policy: ["manual", "guidance"],
-  manual: ["policy", "guidance"],
-  guidance: ["policy", "manual"],
-};
-
-export function docTypeCrosswalk(docType: string | undefined): string[] {
-  return docType ? (DOC_TYPE_SIBLINGS[docType] ?? []) : [];
-}
+// The document-class crosswalk lives in ops-citations (no I/O), so the
+// bundle collector can use it too.
+export { docTypeCrosswalk };
 
 /**
  * The corpus home an encoding module attests for itself:
