@@ -82,6 +82,40 @@ export const CITATIONS: Citation[] = [
       alt: "Things That Caught My Attention, issue s21e19 card",
     },
   },
+  {
+    id: "zargham-axiom-verification-chain-2026-08",
+    kind: "product",
+    title: "axiom-verification-chain",
+    by: "Michael Zargham",
+    source: "github.com/mzargham",
+    date: "2026-08-01",
+    href: "https://github.com/mzargham/axiom-verification-chain",
+    summary:
+      "Ten re-runnable experiments, under Apache-2.0, that test the chain by which axiom-corpus source text becomes executable and machine-verifiable through the Axiom Foundation's encoding stack, with every result recorded as a W3C EARL assertion — the repository's own report counts 8 assertions passed, 0 failed, 1 indeterminate, and 4 untested, the last deferred behind toolchain alignment and unprovisioned R2 and PolicyEngine dependencies.",
+    image: {
+      src: "/citations/zargham-axiom-verification-chain-2026-08.png",
+      width: 1200,
+      height: 600,
+      alt: "GitHub repository card: mzargham/axiom-verification-chain",
+    },
+  },
+  {
+    id: "marci-harris-every-new-law-to-do-list-2026-07",
+    kind: "article",
+    title: "What if every new law came with a to-do list?",
+    by: "Marci Harris",
+    source: "marcidale.substack.com",
+    date: "2026-07-14",
+    href: "https://marcidale.substack.com/p/what-if-every-new-law-came-with-a",
+    summary:
+      "A prototype implementation dashboard built from a newly enacted law's text, which points to the Axiom Foundation's open rules-as-code infrastructure — statutes, regulations, and policy rules as machine-readable encodings that keep their citations and effective dates — as the shared layer that could let the law be encoded once and reused across many public tools.",
+    image: {
+      src: "/citations/marci-harris-every-new-law-to-do-list-2026-07.jpg",
+      width: 1200,
+      height: 675,
+      alt: "Marci Harris post card: What if every new law came with a to-do list?",
+    },
+  },
 ];
 
 /** Entries newest first. */
