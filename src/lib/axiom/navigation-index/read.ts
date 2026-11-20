@@ -7,6 +7,7 @@ import type {
   NavigationIndexPrefixRowsParams,
   NavigationNodeRow,
 } from "./types";
+import { NAVIGATION_NODES_VIEW } from "./table";
 
 const NAVIGATION_PAGE_SIZE = 100;
 const NAVIGATION_QUERY_TIMEOUT_MS = 5000;
@@ -80,7 +81,7 @@ async function scanNavigationDocTypes(
   encodedOnly: boolean
 ): Promise<string[] | null> {
   let query = supabaseCorpus
-    .from("navigation_nodes")
+    .from(NAVIGATION_NODES_VIEW)
     .select("doc_type,path,has_rulespec,encoded_descendant_count")
     .eq("jurisdiction", jurisdiction)
     .is("parent_path", null)
@@ -116,7 +117,7 @@ async function probeNavigationDocTypes(
   const outcomes = await Promise.all(
     DOC_TYPE_DISCOVERY_CANDIDATES.map(async (docType) => {
       let query = supabaseCorpus
-        .from("navigation_nodes")
+        .from(NAVIGATION_NODES_VIEW)
         .select("doc_type,path,has_rulespec,encoded_descendant_count")
         .eq("jurisdiction", jurisdiction)
         .eq("doc_type", docType)
@@ -224,7 +225,7 @@ export async function getNavigationIndexChildren({
   const to = from + NAVIGATION_PAGE_SIZE - 1;
 
   let query = supabaseCorpus
-    .from("navigation_nodes")
+    .from(NAVIGATION_NODES_VIEW)
     .select("*", { count: "exact" })
     .eq("jurisdiction", jurisdiction)
     .eq("doc_type", docType)
@@ -265,7 +266,7 @@ export async function getNavigationIndexNode(
   // the duplicate itself is an upstream corpus bug.
   const result = await withTimeout(
     supabaseCorpus
-      .from("navigation_nodes")
+      .from(NAVIGATION_NODES_VIEW)
       .select("*")
       .eq("path", path)
       .order("sort_key", { ascending: false })
@@ -285,7 +286,7 @@ export async function getNavigationIndexPrefixRows({
   encodedOnly,
 }: NavigationIndexPrefixRowsParams): Promise<NavigationNodeRow[]> {
   let query = supabaseCorpus
-    .from("navigation_nodes")
+    .from(NAVIGATION_NODES_VIEW)
     .select("*")
     .eq("jurisdiction", jurisdiction)
     .eq("doc_type", docType)

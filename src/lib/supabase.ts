@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { getLandingJurisdictions } from '@/lib/axiom/landing-jurisdictions'
+import { NAVIGATION_NODES_VIEW } from '@/lib/axiom/navigation-index/table'
 import {
   isAppReadableJurisdiction,
   ruleSpecRawFileUrlForLocation,
@@ -874,7 +875,7 @@ async function getNavigationJurisdictionCounts(
   const rows = await Promise.all(
     jurisdictions.map(async (jurisdiction) => {
       const { count, error } = await supabaseCorpus
-        .from('navigation_nodes')
+        .from(NAVIGATION_NODES_VIEW)
         .select('id', { count: 'exact', head: true })
         .eq('jurisdiction', jurisdiction)
 

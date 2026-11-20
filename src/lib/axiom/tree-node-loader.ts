@@ -42,7 +42,8 @@ export interface TreeNodeLoadResult {
 }
 
 /**
- * Load browse-tree nodes from the precomputed corpus.navigation_nodes index.
+ * Load browse-tree nodes from the precomputed navigation index, read through
+ * the served corpus.current_navigation_nodes view.
  *
  * The legal text still lives in corpus.current_provisions. This loader only uses
  * provisions for the exact current/leaf rule detail after the navigation

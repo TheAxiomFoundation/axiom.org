@@ -1,4 +1,5 @@
 import { supabaseCorpus, supabaseEncodings } from "@/lib/supabase";
+import { NAVIGATION_NODES_VIEW } from "@/lib/axiom/navigation-index/table";
 import {
   excludeGatedRows,
   isGatedJurisdiction,
@@ -15,14 +16,15 @@ import {
  *
  * Sources, all release-pointer-backed and cheap:
  * - corpus.get_corpus_stats RPC — provision totals per jurisdiction.
- * - corpus.get_root_document_counts RPC — root rows of
- *   navigation_nodes (parent_path IS NULL) grouped by jurisdiction and
- *   doc_type in one call; roots are the documents (a USC title, a CFR
- *   part, a state act, an agency manual). Until that function exists
- *   the page falls back to one paged root query per jurisdiction. The
- *   per-jurisdiction queries are slow for the largest jurisdictions
- *   (us, us-il) and time out under fan-out, so a failed jurisdiction
- *   keeps its last good counts rather than reading as zero.
+ * - corpus.get_root_document_counts RPC — root rows of the served
+ *   current_navigation_nodes view (parent_path IS NULL) grouped by
+ *   jurisdiction and doc_type in one call; roots are the documents (a
+ *   USC title, a CFR part, a state act, an agency manual). Until that
+ *   function exists the page falls back to one paged root query per
+ *   jurisdiction on the same view. The per-jurisdiction queries are
+ *   slow for the largest jurisdictions (us, us-il) and time out under
+ *   fan-out, so a failed jurisdiction keeps its last good counts rather
+ *   than reading as zero.
  * - encodings.rulespec_files — jurisdiction column sweep, counted
  *   locally (PostgREST aggregates are disabled). Also contributes
  *   jurisdictions that have encodings but no corpus release yet.
@@ -167,7 +169,7 @@ async function loadRootDocCounts(
   const counts: Record<string, number> = {};
   for (let page = 0; page < MAX_ROOT_DOC_PAGES; page++) {
     const { data, error } = await supabaseCorpus
-      .from("navigation_nodes")
+      .from(NAVIGATION_NODES_VIEW)
       .select("doc_type")
       .is("parent_path", null)
       .eq("jurisdiction", slug)

@@ -198,7 +198,8 @@ describe("navigation index read helpers", () => {
       docTypes: ["legislation", "statute"],
     });
 
-    expect(mockFrom).toHaveBeenCalledWith("navigation_nodes");
+    expect(mockFrom).toHaveBeenCalledWith("current_navigation_nodes");
+    expect(mockFrom).not.toHaveBeenCalledWith("navigation_nodes");
     expect(calls(probes.legislation, "eq")).toContainEqual([
       "jurisdiction",
       "uk",
@@ -429,6 +430,8 @@ describe("navigation index read helpers", () => {
     });
 
     expect(result).toEqual({ rows: [row], total: 201, hasMore: true });
+    expect(mockFrom).toHaveBeenCalledWith("current_navigation_nodes");
+    expect(mockFrom).not.toHaveBeenCalledWith("navigation_nodes");
     expect(calls(builder, "eq")).toContainEqual(["doc_type", "statute"]);
     expect(calls(builder, "eq")).toContainEqual([
       "parent_path",
@@ -470,6 +473,8 @@ describe("navigation index read helpers", () => {
     });
 
     expect(result).toEqual([row]);
+    expect(mockFrom).toHaveBeenCalledWith("current_navigation_nodes");
+    expect(mockFrom).not.toHaveBeenCalledWith("navigation_nodes");
     expect(calls(builder, "eq")).toContainEqual(["jurisdiction", "us"]);
     expect(calls(builder, "eq")).toContainEqual(["doc_type", "guidance"]);
     expect(calls(builder, "gte")).toContainEqual([
@@ -502,6 +507,8 @@ describe("navigation index read helpers", () => {
 
     await expect(getNavigationIndexNode("us/statute/26")).resolves.toEqual(row);
 
+    expect(mockFrom).toHaveBeenCalledWith("current_navigation_nodes");
+    expect(mockFrom).not.toHaveBeenCalledWith("navigation_nodes");
     expect(calls(builder, "eq")).toContainEqual(["path", "us/statute/26"]);
     // Ordered list query, not maybeSingle(): the index has shipped
     // duplicate rows for one path, which maybeSingle() escalates to
