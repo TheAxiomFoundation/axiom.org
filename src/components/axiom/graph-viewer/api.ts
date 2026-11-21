@@ -191,10 +191,6 @@ export interface RootCatalog {
   relationMembership: "explicit" | "convention";
 }
 
-export async function fetchRootInputs(root: string): Promise<RootInputSlot[]> {
-  return (await fetchRootCatalog(root)).inputs;
-}
-
 export async function fetchRootCatalog(root: string): Promise<RootCatalog> {
   const url = `${trimSlash(API_BASE)}/runtime/root-inputs?root=${encodeURIComponent(root)}`;
   const response = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(30_000) });

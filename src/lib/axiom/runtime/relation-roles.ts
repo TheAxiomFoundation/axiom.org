@@ -383,12 +383,16 @@ export function upstreamAllocatesInstances(body: unknown, relations: RelationDec
   return kinds.every((kind) => entities.has(kind));
 }
 
+/** One answer as it travels to the runtime: a number, a boolean, or text
+ *  for a text slot (a district-plan zone code such as "MUZ"). */
+export type ScenarioValue = number | boolean | string;
+
 /** A scenario's per-request instances, as the calculate route takes them
  *  from the client: kind → key → answers. Every kind the scope's
  *  relations need is present (an empty object allocates none), keys follow
  *  the kind's pattern, at most MAX_KIND_INSTANCES per kind; anything else
  *  is refused, never dropped. Answers are passed through `sanitize`. */
-export type InstanceAnswers = Record<string, Record<string, Record<string, number | boolean>>>;
+export type InstanceAnswers = Record<string, Record<string, Record<string, ScenarioValue>>>;
 export type InstancesResult =
   | { ok: true; instances: InstanceAnswers; keys: InstanceKeys; dropped: string[] }
   | { ok: false; error: "unknown_instance_kind" | "unknown_instance"; detail: string };
@@ -396,7 +400,7 @@ export type InstancesResult =
 export function scenarioInstances(
   relations: RelationDecl[],
   raw: unknown,
-  sanitize: (values: unknown) => { sanitized: Record<string, number | boolean>; rejected: string[] },
+  sanitize: (values: unknown) => { sanitized: Record<string, ScenarioValue>; rejected: string[] },
 ): InstancesResult {
   const kinds = instanceKindsOf(relations);
   if (raw !== undefined && (!raw || typeof raw !== "object" || Array.isArray(raw))) {
