@@ -29,7 +29,7 @@ import { CODE, EXPLORE, GRAPH_EDGES, GRAPH_NODES, MARKS, STATUTE } from "../jour
 import { CAPTIONS } from "../journey-lamplight/captions";
 import {
   AMBER, ASIDE, ASIDES, CAPTION_AT, CAPTION_OPEN, CODE_BAR, CODE_CARD, CODE_PAD, DH, DRAFT, DW, GATE_H, GATE_W, GATE_X, GATE_Y,
-  GATES, GRID, LAST_GATE, LOOP_D, NODE_AT, NODE_FIRE, O, OPEN, PAGE, PROGRAMS, RAIL, RAIL_Y, REGIONS, REGION_LEAD, ROW_H, SHELF, SHELVES, WALK, WALK_CUT, toClock, toScroll,
+  BAND, GATES, GRID, LAST_GATE, LOOP_D, NODE_AT, NODE_FIRE, O, OPEN, PAGE, PROGRAMS, RAIL, RAIL_Y, REGIONS, REGION_LEAD, ROW_H, SHELF, SHELVES, WALK, WALK_CUT, toClock, toScroll,
   SOURCE_CARD, SPINE7, SPINES, STATUTE_CARD, TARGET_CELL, U, USER_CARD, USERS, USES_Y, asideAt, asideY, cellAt, clamp01, draftAt, draftX,
   easeInOut, easeOut, edgeD, gateAt, lerp, nodeBox, panFor, rowTop, seg, shelfBase,
 } from "./layout";
@@ -49,9 +49,6 @@ export const CAPTION_ALL = [...CAPTION_OPEN, ...CAPTION_AT.map((a) => a + OPEN)]
 const SPLIT_MIN = 1100;
 // the space between the column and the stage, and at the stage's right
 const SIDE_GAP = 40;
-// the band of the design height that the beats draw in (shelf, page,
-// corpus, cards and graph all sit inside it)
-const BAND = [10, 600] as const;
 
 const phraseOf = (id: string) => {
   for (const s of STATUTE) if (typeof s === "object" && "mark" in s && s.mark === id) return s.text;
@@ -552,7 +549,8 @@ export function LiveStory({ base = "", clock, bare = false }: { base?: string; c
         const g = easeInOut(seg(u, U.t67[0] + 0.04 * j, U.t67[0] + 0.45 + 0.04 * j));
         const b = nodeBox(nd.id);
         const x0 = CODE_CARD.x + 64;
-        // each node starts from the rule card, down its left side
+        // each node starts from the rule card, down its left side; the
+        // last start near its foot, as the card fades out
         const y0 = CODE_CARD.y + CODE_BAR + 24 + j * 44;
         let x = lerp(x0, at.x, a);
         let y = lerp(y0, at.y, a);

@@ -205,11 +205,15 @@ export const GRAPH_EDGES: Array<[GraphNodeId, GraphNodeId]> = [
 // The about lines for steps 4 to 8 state what the encoder and the rules do,
 // read from code on 2026-11-24 (axiom-encode caa46624, rulespec-us
 // fbc74a69, axiom-rules-engine 82cf3aa6):
-// - encode applies a draft only after it passes the RuleSpec CI run,
-//   whose own docstring reads "Run RuleSpec compile, executable tests, and
-//   source-grounding checks" (validator_pipeline _run_rulespec_ci), in
-//   cmd_encode's overlay validation, built with oracles off and reviewers
-//   skipped. The line names those checks, not what they prove: grounding
+// - encode applies a draft only after it passes the RuleSpec CI run
+//   (validator_pipeline _run_rulespec_ci; its _run_rulespec_ci_impl reads
+//   "Run RuleSpec compile, executable tests, and source-grounding checks"),
+//   in cmd_encode's overlay validation, built with oracles off and
+//   reviewers skipped. The draft passes in full; dependents written with it
+//   need only add no new failures. The companion-test check passes a module
+//   with no assertable rules and no tests, and apply-time repair can add
+//   default output tests that already pass. The line names those checks,
+//   not what they prove: grounding
 //   skips some numbers, such as 0.5 in half-up rounding, small integers
 //   (GROUNDING_ALLOWED_VALUES) and structural table keys, so it never
 //   matches the § 2017(a) minimum's + 0.5 to its source. One AI model
@@ -233,8 +237,9 @@ export const GRAPH_EDGES: Array<[GraphNodeId, GraphNodeId]> = [
 //   them under pending_texts, Minnesota Supplemental Aid's guardian fee
 //   among them), so no line claims every program or state; step 7's title
 //   says the corpus. /ops follows runs of the targeted re-encode workflow
-//   from dispatch to merge (scripts/collect-encoding-pipeline.mjs), and no
-//   other encoder run.
+//   from dispatch to merge (scripts/collect-encoding-pipeline.mjs); from
+//   the merge on it also lists modules merged outside that workflow (pr:
+//   rows) and modules a run wrote for another citation (dep: rows).
 //
 // The walkthrough's worked example is § 2017(a), so step 5, where the code
 // card quotes the published module, carries the same kind of dated waiver
@@ -255,6 +260,6 @@ export const EXPLORE: Array<{ n: number; name: string; go: string; href: string;
   { n: 4, name: "Encode", go: "How the encoder works", href: "/encoder", about: "The encoder applies a draft only after it passes compile, companion-test and source-grounding checks. By default, any AI review of it advises and stops nothing." },
   { n: 5, name: "Cited code", go: "Explore this encoding", href: "https://github.com/TheAxiomFoundation/rulespec-us/blob/main/us/statutes/7/2017/a.yaml#L105-L128", about: `Each rule cites the words it encodes. ${WAIVER_LINE}` },
   { n: 6, name: "The graph", go: "Explore the rule graph", href: "/app?compose=us:statutes/7/2017/a", about: "The rules of a program form one executable graph: each node is a rule, and each line is a value one rule reads from another." },
-  { n: 7, name: "All the law", go: "Watch the pipeline", href: "/ops", about: "A public page follows targeted encoder runs from dispatch to merge." },
+  { n: 7, name: "At scale", go: "Watch the pipeline", href: "/ops", about: "A public page follows targeted encoder runs from dispatch to merge." },
   { n: 8, name: "Potential uses", go: "Build on it", href: "/docs", about: "The rules are open and versioned, so any tool can build on them." },
 ];

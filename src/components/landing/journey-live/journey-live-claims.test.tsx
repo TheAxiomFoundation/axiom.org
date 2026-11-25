@@ -13,9 +13,10 @@ import { LiveStory, StaticStory } from "./journey-live";
 // What the encoder walkthrough (the landing page, /present/encoder and the
 // decks that embed it) may say, read from code on 2026-11-24:
 // - `axiom-encode encode --apply` applies a draft only after it passes the
-//   RuleSpec CI run, whose docstring reads "Run RuleSpec compile, executable
-//   tests, and source-grounding checks" (axiom-encode caa46624:
-//   validator_pipeline _run_rulespec_ci, inside cmd_encode's overlay
+//   RuleSpec CI run (axiom-encode caa46624: validator_pipeline
+//   _run_rulespec_ci, whose _run_rulespec_ci_impl reads "Run RuleSpec
+//   compile, executable tests, and source-grounding checks", inside
+//   cmd_encode's overlay
 //   validation, which builds its pipeline with enable_oracles=False and
 //   calls validate with skip_reviewers=True). A draft that fails goes back
 //   to the model. So the rail holds encode and checks, and only checks can
@@ -65,8 +66,10 @@ import { LiveStory, StaticStory } from "./journey-live";
 //   refuses one with no active match (corpus_resolver
 //   CorpusSourceNotFoundError), and the release lacks some provisions
 //   (rulespec-us fbc74a69 known-source-conflicts.yaml, pending_texts), so no
-//   words claim any program in any state. /ops follows only the targeted
-//   re-encode workflow's runs (scripts/collect-encoding-pipeline.mjs).
+//   words claim any program in any state. /ops follows the targeted
+//   re-encode workflow's runs from dispatch to merge, and from the merge on
+//   also lists modules merged outside it (scripts/collect-encoding-
+//   pipeline.mjs pr: and dep: rows).
 // - The four branches of step 8 are kinds of tool the rules could serve.
 
 const NBSP = String.fromCharCode(0xa0);
@@ -132,6 +135,7 @@ const RETIRED = [
   /\bthe same (process|checks)\b/i,
   /\blaw by law\b/i,
   /\bany program\b/i,
+  /\ball the law\b/i,
   /\bnumbers and quotes\b/i,
   /\bruntime registry\b/i,
   TICK_BESIDE_ASIDE,
@@ -336,6 +340,8 @@ describe("step 6: the graph", () => {
     expect(expected).toContain("impUsda > before");
   });
 
+  // A structural pin: the markup maps GRAPH_EDGES one to one, and each
+  // path's geometry comes from layout.ts edgeD (layout.test.ts).
   it("gives the stage one line, base and lit, for each graph edge", () => {
     expect(stage().querySelectorAll("[data-edge-base]")).toHaveLength(GRAPH_EDGES.length);
     expect(stage().querySelectorAll("[data-edge-lit]")).toHaveLength(GRAPH_EDGES.length);
@@ -347,7 +353,9 @@ describe("step 6: the graph", () => {
   it("gives each node the value a.yaml's formula yields for test case 1", () => {
     const value = (id: string) => GRAPH_NODES.find((n) => n.id === id)!.value;
     const num = (id: string) => Number(value(id).replace(/[$,]/g, "").split(" ")[0]);
+    // test case 1's inputs (a.test.yaml) and the module's parameters
     const household = 1;
+    expect([num("imp2014"), num("rate30"), num("rate8"), num("size2"), num("impUsda"), num("impTfp")]).toEqual([386.5, 0.3, 0.08, 2, 298, 298]);
     const net = num("imp2014");
     const contrib = num("rate30") * net;
     const before = Math.floor(Math.max(0, num("impUsda") - contrib));
@@ -355,6 +363,7 @@ describe("step 6: the graph", () => {
     const money = (v: number) => "$" + (Number.isInteger(v) ? String(v) : v.toFixed(2));
     expect(num("net")).toBe(net);
     expect(value("contrib")).toBe(money(contrib));
+    expect(value("contrib")).toBe("$115.95");
     expect(value("before")).toBe(money(before));
     expect(value("minimum")).toBe(money(minimum));
     expect(value("regular")).toBe(money(Math.max(before, minimum)));

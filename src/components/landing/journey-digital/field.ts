@@ -350,7 +350,7 @@ export function drawConstellation(
     k.heroDots.forEach(([x, y]) => ctx.fillRect(sx(x) - 2, sy(y) - 2, 4, 4));
     ctx.globalAlpha = ha * smooth(0.85, 1, pull);
     ctx.fillStyle = COLORS.amberHex;
-    ctx.fillText("us/statute/7/2017/a · 8 rules", heroScreen.x, heroScreen.y + 40);
+    ctx.fillText("us/statute/7/2017/a · 8 rules + 3 imported", heroScreen.x, heroScreen.y + 40);
   }
   ctx.restore();
 }

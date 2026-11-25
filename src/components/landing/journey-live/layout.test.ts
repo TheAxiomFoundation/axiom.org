@@ -4,7 +4,7 @@ import { CODE, GRAPH_EDGES, GRAPH_NODES, MARKS } from "../journey-digital/data";
 import { CLUSTERS } from "../registry-snapshot";
 import {
   CAPTION_OPEN, OPEN, REST_AT, WALK, WALK_CUT, toClock, toScroll, PAGE, SPINE7, SPINES, TARGET_CELL, cellAt, GRID,
-  AMBER, ASIDE, ASIDES, CAPTION_AT, CODE_CARD, DH, DRAFT, DW, GATE_H, GATE_W, GATE_X, GATE_Y, NODE_AT, NODE_FIRE, RAIL, SOURCE_CARD,
+  AMBER, ASIDE, ASIDES, BAND, CAPTION_AT, CODE_CARD, DH, DRAFT, DW, GATE_H, GATE_W, GATE_X, GATE_Y, NODE_AT, NODE_FIRE, RAIL, SOURCE_CARD,
   STATUTE_CARD, U, USER_CARD, USERS, USES_Y, asideY, clusterAt, draftX, edgeD, nodeBox, panFor, rowIndex, seg,
 } from "./layout";
 import { nextStop, prevStop, stepAt } from "./deck-clock";
@@ -62,6 +62,13 @@ describe("journey-live layout", () => {
     ASIDES.forEach((_, i) => {
       if (i > 0) expect(asideY(i)).toBeGreaterThanOrEqual(asideY(i - 1) + ASIDE.h);
     });
+  });
+
+  it("keeps every graph node inside the band the beats draw in", () => {
+    for (const n of GRAPH_NODES) {
+      expect(NODE_AT[n.id].y, n.id).toBeGreaterThanOrEqual(BAND[0]);
+      expect(NODE_AT[n.id].y + nodeBox(n.id).h, n.id).toBeLessThanOrEqual(BAND[1]);
+    }
   });
 
   it("sets the potential uses heading above the first branch", () => {

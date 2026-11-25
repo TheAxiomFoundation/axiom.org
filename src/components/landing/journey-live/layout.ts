@@ -167,7 +167,8 @@ export const REST_AT = [
 // The rail holds the steps a draft must pass before the encoder applies
 // it, and only those (axiom-encode caa46624, 2026-11-24): encode writes the
 // draft, and checks run the RuleSpec CI run's compile, executable-test and
-// source-grounding checks on it (validator_pipeline _run_rulespec_ci, in
+// source-grounding checks on it (validator_pipeline _run_rulespec_ci, whose
+// _run_rulespec_ci_impl carries that docstring, in
 // the overlay validation in cmd_encode, built with oracles off and
 // reviewers skipped). A draft that fails checks goes back to encode. The
 // gate names the checks, not what they prove: grounding skips some numbers
@@ -284,13 +285,16 @@ export const rowTop = (line: number, pan: number) => CODE_CARD.y + CODE_BAR + CO
 export const NODE_W = 210;
 export const NODE_H = 64;
 export const HERO = { w: 190, h: 140 };
+// The band of the design height the beats draw in: shelf, page, corpus,
+// cards and graph all sit inside it, and a split or bare stage fits it.
+export const BAND = [10, 600] as const;
 export const NODE_AT: Record<GraphNodeId, { x: number; y: number }> = {
   imp2014: { x: 30, y: 20 },
-  rate30: { x: 30, y: 125 },
-  impUsda: { x: 30, y: 230 },
-  impTfp: { x: 30, y: 335 },
-  size2: { x: 30, y: 440 },
-  rate8: { x: 30, y: 545 },
+  rate30: { x: 30, y: 120 },
+  impUsda: { x: 30, y: 220 },
+  impTfp: { x: 30, y: 320 },
+  size2: { x: 30, y: 420 },
+  rate8: { x: 30, y: 520 },
   net: { x: 300, y: 20 },
   minimum: { x: 300, y: 405 },
   contrib: { x: 570, y: 75 },

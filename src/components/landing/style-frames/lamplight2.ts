@@ -1130,7 +1130,7 @@ export function lamplightBeat6(ctx: BeatCtx): BeatSpec {
     const out = HERO_IDS[i] === "regular";
     scene.add(dot(p, out ? 0.035 : 0.022, out ? 3.5 : 2.4));
   });
-  const heroLabel = ctx.label(heroP.clone().add(new THREE.Vector3(0, -0.55, 0)), "us/statute/7/2017/a · 8 rules", "sf-label--addr");
+  const heroLabel = ctx.label(heroP.clone().add(new THREE.Vector3(0, -0.55, 0)), "us/statute/7/2017/a · 8 rules + 3 imported", "sf-label--addr");
   ctx.hotspot(heroP.clone(), "/app?compose=us:statutes/7/2017/a", "These 8 rules in the app", { when: [0.1, 1.4] });
   {
     const big = CLUSTERS.reduce((m, c) => (c.count > m.count ? c : m));

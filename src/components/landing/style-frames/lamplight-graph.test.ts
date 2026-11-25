@@ -9,15 +9,18 @@ const IDS = GRAPH_NODES.map((n) => n.id).sort();
 describe("the Lamplight film's rule graph", () => {
   // The graph scene once read a local position table and crashed on a
   // node it did not list; every scene now takes its places from here.
+  // The tables' types already require every node; this pins that no table
+  // carries a node the graph has dropped.
   it("places every node of the shared graph in each scene, and no other", () => {
     for (const table of [LEVEL, P2, RULE_LINES, HERO_DOT]) expect(Object.keys(table).sort()).toEqual(IDS);
-    expect([...HERO_IDS].sort()).toEqual(IDS);
   });
 
+  // No scene file keys a table of its own by a node id, quoted or not.
   it("reads node places only from lamplight-graph.ts", () => {
+    const key = new RegExp(`["']?\\b(${IDS.join("|")})\\b["']?\\s*:`);
     for (const file of ["lamplight.ts", "lamplight2.ts"]) {
       const src = readFileSync(join(process.cwd(), "src/components/landing/style-frames", file), "utf8");
-      expect(src, file).not.toMatch(/\b(imp2014|impUsda|impTfp)\s*:/);
+      expect(src, file).not.toMatch(key);
     }
   });
 
@@ -46,9 +49,11 @@ describe("the Lamplight film's rule graph", () => {
     }
   });
 
+  // HERO_EDGES is built from GRAPH_EDGES; this pins the index mapping, so a
+  // reordered HERO_IDS cannot rewire the cluster.
   it("wires the registry's cluster as the graph is wired", () => {
-    expect(HERO_EDGES).toEqual(GRAPH_EDGES.map(([a, b]) => [HERO_INDEX[a], HERO_INDEX[b]]));
     expect(HERO_EDGES.map(([a, b]) => [HERO_IDS[a], HERO_IDS[b]])).toEqual(GRAPH_EDGES);
+    for (const id of IDS) expect(HERO_IDS[HERO_INDEX[id]]).toBe(id);
   });
 
   // A wire that crossed a dot it does not join would read as passing
