@@ -166,14 +166,16 @@ export const REST_AT = [
 // ── beat 4: the gates ──
 // The rail holds the steps a draft must pass before the encoder applies
 // it, and only those (axiom-encode caa46624, 2026-11-24): encode writes the
-// draft, and checks compile it, find its numbers and quotes in its source
-// and run its tests (the overlay validation in cmd_encode, built with
-// oracles off and reviewers skipped). A draft that fails checks goes back
-// to encode.
+// draft, and checks run the RuleSpec CI run's compile, executable-test and
+// source-grounding checks on it (validator_pipeline _run_rulespec_ci, in
+// the overlay validation in cmd_encode, built with oracles off and
+// reviewers skipped). A draft that fails checks goes back to encode. The
+// gate names the checks, not what they prove: grounding skips some numbers
+// (see data.ts).
 export const STATUTE_CARD = { x: 40, y: 30, w: 460 };
 export const GATES = [
   { name: "encode", about: "An AI model drafts the rule" },
-  { name: "checks", about: "It compiles, its sources ground, its tests pass" },
+  { name: "checks", about: "It passes compile, grounding and test checks" },
 ] as const;
 // Two more steps sit off the rail, so neither reads as one the draft must
 // pass, and neither ever shows a pass. The AI review reads a draft once

@@ -11,6 +11,7 @@
 
 import * as THREE from "three";
 import { CODE, STATUTE, type MarkId } from "../journey-digital/data";
+import { HERO_DOT, HERO_EDGES, HERO_IDS, RULE_LINES } from "./lamplight-graph";
 import { CLUSTERS } from "../registry-snapshot";
 import {
   canvasTexture,
@@ -1009,10 +1010,7 @@ export function lamplightBeat4(ctx: BeatCtx): BeatSpec {
     });
   };
   // the way out: each rule block of the code floats to its card in the graph
-  const RULE_LINES: Record<string, [number, number]> = {
-    imp2014: [10, 10], impUsda: [11, 11], rate30: [13, 27], rate8: [29, 43], size2: [45, 59],
-    net: [61, 84], contrib: [86, 103], before: [105, 128], minimum: [130, 154], regular: [158, 176],
-  };
+  // (RULE_LINES, lamplight-graph.ts)
   const pxY = (py: number) => (0.5 - py / cf.h) * PH;
   const pxX = (px: number) => (px / cf.w - 0.5) * cW;
   const strips = Object.entries(RULE_LINES).map(([id, [l0, l1]]) => {
@@ -1121,14 +1119,17 @@ export function lamplightBeat6(ctx: BeatCtx): BeatSpec {
   });
   if (!THEME.paper) fx.add(new THREE.Points(ghost, particleMaterial({ focus, aperture: 2.4 })));
 
-  // § 2017(a)'s eight rules: small, amber, in the foreground
-  const heroNodes: THREE.Vector3[] = [
-    [-0.42, 0.18], [-0.42, -0.1], [-0.22, 0.24], [-0.22, 0.1], [-0.22, -0.12], [-0.22, -0.24],
-    [0.0, 0.2], [0.0, -0.16], [0.2, 0.04], [0.32, -0.18],
-  ].map(([x, y]) => heroP.clone().add(new THREE.Vector3(x, y, 0)));
-  const E = [[0, 2], [2, 6], [3, 6], [1, 8], [6, 8], [1, 7], [4, 7], [5, 7], [8, 9], [7, 9]];
-  E.forEach(([a, b]) => scene.add(wire(new THREE.LineCurve3(heroNodes[a], heroNodes[b]), 0.004, "#ffb45c", 1.8)));
-  heroNodes.forEach((p, i) => scene.add(dot(p, i === 9 ? 0.035 : 0.022, i === 9 ? 3.5 : 2.4)));
+  // § 2017(a)'s eight rules and the three rules they import: small, amber,
+  // in the foreground, wired as the graph is (lamplight-graph.ts)
+  const heroNodes: THREE.Vector3[] = HERO_IDS.map((id) => {
+    const [x, y] = HERO_DOT[id];
+    return heroP.clone().add(new THREE.Vector3(x, y, 0));
+  });
+  HERO_EDGES.forEach(([a, b]) => scene.add(wire(new THREE.LineCurve3(heroNodes[a], heroNodes[b]), 0.004, "#ffb45c", 1.8)));
+  heroNodes.forEach((p, i) => {
+    const out = HERO_IDS[i] === "regular";
+    scene.add(dot(p, out ? 0.035 : 0.022, out ? 3.5 : 2.4));
+  });
   const heroLabel = ctx.label(heroP.clone().add(new THREE.Vector3(0, -0.55, 0)), "us/statute/7/2017/a · 8 rules", "sf-label--addr");
   ctx.hotspot(heroP.clone(), "/app?compose=us:statutes/7/2017/a", "These 8 rules in the app", { when: [0.1, 1.4] });
   {

@@ -205,10 +205,15 @@ export const GRAPH_EDGES: Array<[GraphNodeId, GraphNodeId]> = [
 // The about lines for steps 4 to 8 state what the encoder and the rules do,
 // read from code on 2026-11-24 (axiom-encode caa46624, rulespec-us
 // fbc74a69, axiom-rules-engine 82cf3aa6):
-// - encode applies a draft only once it compiles, its numbers and quotes are
-//   found in its source and its tests pass (cmd_encode's overlay validation,
-//   built with oracles off and reviewers skipped). One AI model reviews a
-//   draft once its first compile and CI checks pass, before the overlay
+// - encode applies a draft only after it passes the RuleSpec CI run,
+//   whose own docstring reads "Run RuleSpec compile, executable tests, and
+//   source-grounding checks" (validator_pipeline _run_rulespec_ci), in
+//   cmd_encode's overlay validation, built with oracles off and reviewers
+//   skipped. The line names those checks, not what they prove: grounding
+//   skips some numbers, such as 0.5 in half-up rounding, small integers
+//   (GROUNDING_ALLOWED_VALUES) and structural table keys, so it never
+//   matches the § 2017(a) minimum's + 0.5 to its source. One AI model
+//   reviews a draft once its first compile and CI checks pass, before the overlay
 //   validation; its verdict blocks apply only under --require-review,
 //   which is off by default and set by no signed or CI workflow, and a
 //   draft the first checks reject, or one encoded with --skip-reviewers,
@@ -221,9 +226,15 @@ export const GRAPH_EDGES: Array<[GraphNodeId, GraphNodeId]> = [
 //   exempt, and CI skips the check for waived modules). Every rule in the
 //   § 2017(a) module and its two imports has both, so step 8 speaks of
 //   those rules. Citations sit on rules, not values.
-// - the encoder takes one corpus citation at a time, in any jurisdiction;
-//   /ops follows runs of the targeted re-encode workflow from dispatch to
-//   merge (scripts/collect-encoding-pipeline.mjs), and no other encoder run.
+// - the encoder takes one corpus citation at a time and resolves it against
+//   the pinned corpus release before it drafts, refusing a citation with no
+//   active match (corpus_resolver CorpusSourceNotFoundError). The release
+//   lacks some provisions (rulespec-us known-source-conflicts.yaml lists
+//   them under pending_texts, Minnesota Supplemental Aid's guardian fee
+//   among them), so no line claims every program or state; step 7's title
+//   says the corpus. /ops follows runs of the targeted re-encode workflow
+//   from dispatch to merge (scripts/collect-encoding-pipeline.mjs), and no
+//   other encoder run.
 //
 // The walkthrough's worked example is § 2017(a), so step 5, where the code
 // card quotes the published module, carries the same kind of dated waiver
@@ -241,9 +252,9 @@ export const EXPLORE: Array<{ n: number; name: string; go: string; href: string;
   { n: 1, name: "Off the shelf", go: "See what is covered", href: "/coverage", about: "Primary sources: the statutes, regulations and agency manuals that legislatures and agencies publish." },
   { n: 2, name: "The law, as published", go: "Read § 2017(a)", href: "/us/statute/7/2017/a", about: "The official text is captured word for word and stored in the corpus: a database of the law, exactly as published." },
   { n: 3, name: "The corpus", go: "Browse Title 7", href: "/us/statute/7", about: "The corpus splits each document into its provisions. Each one has its own address, which follows its legal citation." },
-  { n: 4, name: "Encode", go: "How the encoder works", href: "/encoder", about: "The encoder applies a draft only once it compiles, its tests pass, and its source holds its numbers and quotes. By default, any AI review of it advises and stops nothing." },
+  { n: 4, name: "Encode", go: "How the encoder works", href: "/encoder", about: "The encoder applies a draft only after it passes compile, companion-test and source-grounding checks. By default, any AI review of it advises and stops nothing." },
   { n: 5, name: "Cited code", go: "Explore this encoding", href: "https://github.com/TheAxiomFoundation/rulespec-us/blob/main/us/statutes/7/2017/a.yaml#L105-L128", about: `Each rule cites the words it encodes. ${WAIVER_LINE}` },
   { n: 6, name: "The graph", go: "Explore the rule graph", href: "/app?compose=us:statutes/7/2017/a", about: "The rules of a program form one executable graph: each node is a rule, and each line is a value one rule reads from another." },
-  { n: 7, name: "All the law", go: "Watch the pipeline", href: "/ops", about: "The same encoder takes provisions one at a time, from any program in any state. A public page follows targeted encoder runs from dispatch to merge." },
+  { n: 7, name: "All the law", go: "Watch the pipeline", href: "/ops", about: "A public page follows targeted encoder runs from dispatch to merge." },
   { n: 8, name: "Potential uses", go: "Build on it", href: "/docs", about: "The rules are open and versioned, so any tool can build on them." },
 ];

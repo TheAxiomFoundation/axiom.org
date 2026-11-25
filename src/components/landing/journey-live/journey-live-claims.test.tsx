@@ -12,12 +12,16 @@ import { LiveStory, StaticStory } from "./journey-live";
 
 // What the encoder walkthrough (the landing page, /present/encoder and the
 // decks that embed it) may say, read from code on 2026-11-24:
-// - `axiom-encode encode --apply` applies a draft only once it compiles, its
-//   numbers and quotes are found in its source and its companion tests pass
-//   (axiom-encode caa46624: cmd_encode's overlay validation builds its
-//   pipeline with enable_oracles=False and calls validate with
-//   skip_reviewers=True). A draft that fails goes back to the model. So the
-//   rail holds encode and checks, and only checks can pass.
+// - `axiom-encode encode --apply` applies a draft only after it passes the
+//   RuleSpec CI run, whose docstring reads "Run RuleSpec compile, executable
+//   tests, and source-grounding checks" (axiom-encode caa46624:
+//   validator_pipeline _run_rulespec_ci, inside cmd_encode's overlay
+//   validation, which builds its pipeline with enable_oracles=False and
+//   calls validate with skip_reviewers=True). A draft that fails goes back
+//   to the model. So the rail holds encode and checks, and only checks can
+//   pass. Grounding skips some numbers (0.5 in half-up rounding, the small
+//   integers in GROUNDING_ALLOWED_VALUES, structural table keys), so step 4
+//   names the checks and never says the source holds every number.
 // - One AI model reviews a draft once its first compile and CI checks pass,
 //   before apply-time repairs and the overlay validation check it again
 //   (cli.py: run_model_eval, then the overlay), so the overlay can still
@@ -56,9 +60,13 @@ import { LiveStory, StaticStory } from "./journey-live";
 //   where the code card quotes that module, carries a dated waiver line, as
 //   the journey film does, and so does the stage label.
 // - So nothing here says every rule went through the same encoder or the
-//   same checks: step 7 says what one encoder can take, and /ops follows
-//   only the targeted re-encode workflow's runs
-//   (scripts/collect-encoding-pipeline.mjs).
+//   same checks. Step 7's title says the encoder takes provisions from the
+//   corpus: it resolves each citation against the pinned corpus release and
+//   refuses one with no active match (corpus_resolver
+//   CorpusSourceNotFoundError), and the release lacks some provisions
+//   (rulespec-us fbc74a69 known-source-conflicts.yaml, pending_texts), so no
+//   words claim any program in any state. /ops follows only the targeted
+//   re-encode workflow's runs (scripts/collect-encoding-pipeline.mjs).
 // - The four branches of step 8 are kinds of tool the rules could serve.
 
 const NBSP = String.fromCharCode(0xa0);
@@ -95,12 +103,11 @@ const WAIVER =
 // journey-film-claims.test.tsx pins its captions: an overclaim in new words
 // would pass the retired-word sweep below, so each edit has to land here.
 const ENCODE_ABOUT =
-  "The encoder applies a draft only once it compiles, its tests pass, and its source holds its numbers and quotes. By default, any AI review of it advises and stops nothing.";
+  "The encoder applies a draft only after it passes compile, companion-test and source-grounding checks. By default, any AI review of it advises and stops nothing.";
 const CITED_ABOUT = `Each rule cites the words it encodes. ${WAIVER}`;
 const GRAPH_ABOUT =
   "The rules of a program form one executable graph: each node is a rule, and each line is a value one rule reads from another.";
-const SCALE_ABOUT =
-  "The same encoder takes provisions one at a time, from any program in any state. A public page follows targeted encoder runs from dispatch to merge.";
+const SCALE_ABOUT = "A public page follows targeted encoder runs from dispatch to merge.";
 const SCALE_TITLE = "One encoder takes provisions from the corpus, one at a time.";
 const USES_TITLE = "One open set of rules that many kinds of tool can build on.";
 
@@ -124,6 +131,8 @@ const RETIRED = [
   /\bpowers every\b/i,
   /\bthe same (process|checks)\b/i,
   /\blaw by law\b/i,
+  /\bany program\b/i,
+  /\bnumbers and quotes\b/i,
   /\bruntime registry\b/i,
   TICK_BESIDE_ASIDE,
   /2014\(e\)\(6\)/,
@@ -143,6 +152,8 @@ describe("step 4: the gates", () => {
     expect(compare.about).toContain("on selected outputs, where another calculator covers them");
     expect(compare.about).not.toMatch(/whole program/i);
     expect(ASIDES.find((a) => a.id === "review")!.about).toBe("One AI model reads the draft. By default, its verdict does not stop the draft.");
+    // the gate names its checks, not what they prove
+    expect(GATES.map((g) => g.about)).toEqual(["An AI model drafts the rule", "It passes compile, grounding and test checks"]);
   });
 
   it("never shows a pass for the AI review or the comparison, at any moment", () => {
@@ -296,9 +307,12 @@ describe("step 6: the graph", () => {
   });
 
   // Each line is a name the target's formula reads. The formula of a rule
-  // is its rows in the code card after its name row, up to the next rule.
-  // A name counts only whole, so snap_net_income is not read where the
-  // formula says snap_net_income_for_allotment.
+  // is its rows in CODE (data.ts's transcription of a.yaml, which the code
+  // card quotes in part) after its name row, up to the next rule. A name
+  // counts only whole, so snap_net_income is not read where the formula
+  // says snap_net_income_for_allotment. The stage draws its lines from
+  // GRAPH_EDGES (one pair of paths each, below), so this checks the edge
+  // list against the transcription, not pixels.
   it("draws a line into each rule from every drawn rule its formula reads, and no other", () => {
     const formula = (line: number) => {
       const rows: string[] = [];
@@ -320,6 +334,31 @@ describe("step 6: the graph", () => {
     expect(expected).toContain("impTfp > minimum");
     expect(expected).not.toContain("impUsda > minimum");
     expect(expected).toContain("impUsda > before");
+  });
+
+  it("gives the stage one line, base and lit, for each graph edge", () => {
+    expect(stage().querySelectorAll("[data-edge-base]")).toHaveLength(GRAPH_EDGES.length);
+    expect(stage().querySelectorAll("[data-edge-lit]")).toHaveLength(GRAPH_EDGES.length);
+  });
+
+  // The stage writes each node's value from GRAPH_NODES once it fires, and
+  // the scroll version prints them, so the values are checked here against
+  // a.yaml's formulas, run on test case 1's inputs (a household of one).
+  it("gives each node the value a.yaml's formula yields for test case 1", () => {
+    const value = (id: string) => GRAPH_NODES.find((n) => n.id === id)!.value;
+    const num = (id: string) => Number(value(id).replace(/[$,]/g, "").split(" ")[0]);
+    const household = 1;
+    const net = num("imp2014");
+    const contrib = num("rate30") * net;
+    const before = Math.floor(Math.max(0, num("impUsda") - contrib));
+    const minimum = household <= num("size2") ? Math.floor(num("impTfp") * num("rate8") + 0.5) : 0;
+    const money = (v: number) => "$" + (Number.isInteger(v) ? String(v) : v.toFixed(2));
+    expect(num("net")).toBe(net);
+    expect(value("contrib")).toBe(money(contrib));
+    expect(value("before")).toBe(money(before));
+    expect(value("minimum")).toBe(money(minimum));
+    expect(value("regular")).toBe(money(Math.max(before, minimum)));
+    expect([before, minimum, Math.max(before, minimum)]).toEqual([182, 24, 182]);
   });
 });
 
