@@ -81,7 +81,8 @@ describe("journey-live layout", () => {
   // output's two inputs, $182 and $24, must reach it at different points.
   it("draws every edge clear of the cards it does not join, and the output's two inputs apart", () => {
     const pts = (d: string) => {
-      // a missing operand would sample as NaN and miss every card
+      // one cubic; a missing operand would sample as NaN and miss every card
+      expect(d).toMatch(/^M (-?[\d.]+ ){2}C (-?[\d.]+ -?[\d.]+, ){2}-?[\d.]+ -?[\d.]+$/);
       const nums = d.match(/-?[\d.]+/g)!.map(Number);
       expect(nums, d).toHaveLength(8);
       for (const v of nums) expect(Number.isFinite(v), d).toBe(true);

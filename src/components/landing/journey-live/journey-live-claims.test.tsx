@@ -369,6 +369,16 @@ describe("step 6: the graph", () => {
     expect(value("regular")).toBe(money(Math.max(before, minimum)));
     expect([before, minimum, Math.max(before, minimum)]).toEqual([182, 24, 182]);
   });
+
+  it("prints each node's value beside its name in the scroll version", () => {
+    const rows = [...scroll().querySelectorAll(".js-nodes > li")];
+    expect(rows).toHaveLength(GRAPH_NODES.length);
+    for (const n of GRAPH_NODES) {
+      const row = rows.find((li) => li.querySelector(".js-node__label")!.firstChild!.textContent === NODE_NAME[n.id]);
+      expect(row, n.id).toBeDefined();
+      expect(textOf(row!.querySelector("b")), n.id).toBe(n.value);
+    }
+  });
 });
 
 describe("step 8: one source and its potential uses", () => {
@@ -411,6 +421,12 @@ describe("the words around the drawings", () => {
     expect(CAPTIONS[6].title).toBe(SCALE_TITLE);
     expect(CAPTIONS[7].title).toBe(USES_TITLE);
     expect(EXPLORE[6].about).toBe(SCALE_ABOUT);
+    // the step's short name, in the caption, the film's explore card and
+    // the style preview's kicker
+    expect(CAPTIONS[6].kicker).toBe("7 / 8 · At scale");
+    expect(EXPLORE[6].name).toBe("At scale");
+    const frame = readFileSync(join(process.cwd(), "src/components/landing/style-frames/style-frame.tsx"), "utf8");
+    expect(frame).toContain("kicker: `7 / 8 · At scale · ${snapshotMonth()} snapshot`,");
   });
 
   it("catches a tick on the same line as a step off the rail, before or after its name", () => {

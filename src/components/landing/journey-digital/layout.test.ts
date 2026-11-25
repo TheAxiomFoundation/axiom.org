@@ -7,9 +7,12 @@ import { TALL, WIDE, graphEdgeD, type Layout } from "./layout";
 // card it does not join reads as running through that rule. A card's size
 // here is an estimate from its longest line at the layout's monospace size
 // (journey-digital.css: 11 px wide, 9.5 px tall, 0.6 em a character), plus
-// its padding and border; its height is the two lines' rendered height,
-// rounded up. Cards keep a CLEAR gap and the stage's sides a GUTTER, and a
-// line stays LINE_CLEAR from any card it does not join.
+// its padding and border; its height covers its three lines (kind, label
+// and value, at line-height 1.1), the gaps between them, padding and
+// border, rounded up. Cards keep a CLEAR gap and the stage's sides a
+// GUTTER, and a line stays LINE_CLEAR from any card it does not join. All
+// of these are design pixels: the stage scales the whole layout to fit the
+// viewport, so on a small screen each gap shrinks with it.
 const CARD = { wide: { ch: 6.6, pad: 26, h: 62 }, tall: { ch: 5.7, pad: 20, h: 55 } } as const;
 const CLEAR = 8;
 const GUTTER = 20;
@@ -24,6 +27,8 @@ function box(L: Layout, id: GraphNodeId) {
 }
 
 function samples(d: string) {
+  // one cubic from the source's centre to the target's
+  expect(d).toMatch(/^M (-?[\d.]+ ){2}C (-?[\d.]+ -?[\d.]+, ){2}-?[\d.]+ -?[\d.]+$/);
   const nums = d.match(/-?[\d.]+/g)!.map(Number);
   expect(nums).toHaveLength(8);
   for (const v of nums) expect(Number.isFinite(v)).toBe(true);
