@@ -89,14 +89,29 @@ describe('Overview page', () => {
     const { container } = render(<OverviewPage />)
     const page = container.textContent ?? ''
     expect(page).toMatch(/encodings to the public domain under CC0 1\.0/)
-    expect(page).not.toMatch(/cc by|attribution/i)
+    // Each rulespec repo's incidental tooling stays Apache-2.0, so the MIT
+    // claim names its four projects instead of "our software".
+    expect(page).toMatch(/engine, encoder, oracles, and site under MIT/)
+    expect(page).toMatch(/keep its copyright and permission notices/)
+    expect(page).not.toMatch(/cc by|attribution|our software/i)
 
     const html = readFileSync(
       join(process.cwd(), 'pdf/overview/axiom-overview.html'),
       'utf8',
     ).replace(/<!--[\s\S]*?-->/g, '')
     expect(html).toMatch(/encodings to the public domain under CC0 1\.0/)
-    expect(html).not.toMatch(/cc by|attribution/i)
+    expect(html).toMatch(/engine, encoder, oracles, and site under MIT/)
+    expect(html).not.toMatch(/cc by|attribution|our software/i)
+  })
+
+  // The download button promises one page (pdf/overview/README.md). The text
+  // of the rendered PDF is compressed, so the render step checks it with
+  // pdftotext; this guards the page count of the copy we publish.
+  it('publishes a one-page overview PDF', () => {
+    const pdf = readFileSync(
+      join(process.cwd(), 'public/Axiom-Foundation-Overview.pdf'),
+    ).toString('latin1')
+    expect(pdf.match(/\/Type \/Pages\b[\s\S]{0,200}?\/Count (\d+)/)?.[1]).toBe('1')
   })
 
   it('anchors the sections the PDF links back to', () => {

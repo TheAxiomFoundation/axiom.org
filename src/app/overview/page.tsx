@@ -94,8 +94,11 @@ export default function OverviewPage() {
               licences differ by artefact and both are linked rather than
               asserted: the rulespec-* encoding repos carry CC0 1.0 (relicensed
               from CC BY 4.0 on 2026-11-25), and the engine, encoder, oracles,
-              and this site carry MIT. CC0 asks nothing of users; MIT asks that
-              copies keep its notice. LICENSE_LINKS records what was checked. */}
+              and this site carry MIT. The line names those four rather than
+              "our software", because each rulespec repo's incidental tooling
+              stays Apache-2.0. CC0 requires no attribution; MIT requires its
+              copyright and permission notices in copies and substantial
+              portions. LICENSE_LINKS records what was checked. */}
           <p className="serif-italic text-sm text-[var(--color-ink-muted)] leading-relaxed mt-6 mb-0">
             We dedicate our encodings to the public domain under{" "}
             <a
@@ -105,7 +108,7 @@ export default function OverviewPage() {
             >
               CC0 1.0
             </a>{" "}
-            and release our software under{" "}
+            and release our engine, encoder, oracles, and site under{" "}
             <a
               href={LICENSE_LINKS.code}
               target="_blank"
@@ -113,7 +116,8 @@ export default function OverviewPage() {
             >
               MIT
             </a>
-            , which asks only that copies keep its notice.
+            , which asks only that copies and substantial portions keep its
+            copyright and permission notices.
           </p>
         </section>
 
