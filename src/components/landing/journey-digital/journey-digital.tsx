@@ -575,7 +575,7 @@ function build(root: HTMLElement, L: Layout, k: number, reduced: boolean) {
   edgeEls.forEach((e, i) => {
     tl.to(e, { strokeDashoffset: 0, duration: 1.1, ease: "power1.inOut" }, 73.4 + i * 0.22);
   });
-  const depth: Record<string, number> = { imp2014: 0, impUsda: 0, rate30: 0, size2: 0, rate8: 0, net: 1, contrib: 2, minimum: 2, before: 3, regular: 4 };
+  const depth: Record<string, number> = { imp2014: 0, impUsda: 0, impTfp: 0, rate30: 0, size2: 0, rate8: 0, net: 1, contrib: 2, minimum: 2, before: 3, regular: 4 };
   GRAPH_EDGES.forEach(([a], i) => {
     const path = edgeEls[i];
     const dot = packets[i];

@@ -405,7 +405,7 @@
 .jv-gate[data-state="fail"] .jv-gate__mark::after {
   content: "✕";
 }
-/* a step off the rail (the AI review, program comparison): a dashed
+/* a step off the rail (the AI review, the comparison): a dashed
    border and no mark, so it never reads as a gate the draft must pass */
 .jv-aside {
   position: absolute;

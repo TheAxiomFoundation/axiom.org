@@ -13,7 +13,7 @@
 // Copy rules (journey-film.tsx, lamplight2.ts): the failed draft is an
 // illustration and says so (the draft's test strip is marked "example");
 // only encode and checks are on the rail and only they can pass; the AI
-// review is one AI model's read and advisory, and program comparison runs
+// review is one AI model's read and advisory, and the comparison runs
 // separately, both off the rail and with no mark (layout.ts ASIDES); the
 // registry numbers carry their snapshot month; nothing says certified,
 // signed or sealed. The words that state facts live in copy.ts.
@@ -411,8 +411,8 @@ export function LiveStory({ base = "", clock, bare = false }: { base?: string; c
         attr(g, "data-state", st.state);
         text(gateText[i], st.text);
       });
-      // the steps off the rail never pass: the review reads draft 2 once
-      // it has passed checks, and the comparison stands apart throughout
+      // the steps off the rail never pass: the review reads draft 2 while
+      // checks are at work on it, and the comparison stands apart throughout
       ASIDES.forEach((a, i) => attr(asides[i], "data-state", asideAt(a.id, u)));
       // the text runs into encode as each draft is written
       const streamDraw = Math.max(easeInOut(seg(u, 0.45, 0.75)) * (1 - seg(u, 0.85, 1.05)), easeInOut(seg(u, 2.05, 2.3)) * (1 - seg(u, 2.4, 2.6)));
@@ -806,7 +806,7 @@ export function LiveStory({ base = "", clock, bare = false }: { base?: string; c
             </article>
 
             {/* beat 4: the gates a draft must pass on the rail; the AI review
-                and program comparison beside it, off the rail and with no mark */}
+                and the comparison beside it, off the rail and with no mark */}
             <div data-gates className="jv-gates">
               <span className="jv-rail" style={{ top: RAIL_Y, left: RAIL.x0, width: RAIL.x1 - RAIL.x0 }} />
               {GATES.map((g, i) => (

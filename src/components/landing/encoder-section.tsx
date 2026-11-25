@@ -22,8 +22,8 @@ export function EncoderSection() {
           {/*
             No human sign-off clause here. The pipeline has no human review
             gate: the encoder applies a draft once its deterministic checks
-            pass, one AI model's review of it is advisory, and program
-            comparisons run separately in axiom-oracles; naming a human
+            pass, one AI model's review of it is advisory by default, and comparisons
+            with other calculators run separately in axiom-oracles; naming a human
             approver would describe a step that does not exist. The heading
             claims no blanket "verified": CI skips validation, companion tests and
             proof checks for modules on rulespec-us's waiver list (1,940 on

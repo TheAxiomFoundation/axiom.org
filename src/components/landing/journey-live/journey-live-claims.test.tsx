@@ -4,9 +4,9 @@ import { render } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { renderedText } from "@/test/claim-copy";
-import { EXPLORE, GRAPH_NODES, WAIVER_LINE } from "../journey-digital/data";
+import { CODE, EXPLORE, GRAPH_EDGES, GRAPH_NODES, WAIVER_LINE } from "../journey-digital/data";
 import { CAPTIONS } from "../journey-lamplight/captions";
-import { ASIDES, GATES, LAST_GATE, MOVE2, OPEN, REST_AT, REVIEW_READ, U, asideAt, draftAt, draftX, gateAt } from "./layout";
+import { ASIDES, CHECKS_PASS, GATES, LAST_GATE, MOVE2, OPEN, REST_AT, REVIEW_READ, U, asideAt, draftAt, draftX, gateAt } from "./layout";
 import { CODE_WAIVER_NOTE, NODE_NAME, OUTPUT_NOTE, SOURCE_ABOUT, STAGE_LABEL, USES_HEADING } from "./copy";
 import { LiveStory, StaticStory } from "./journey-live";
 
@@ -18,13 +18,19 @@ import { LiveStory, StaticStory } from "./journey-live";
 //   pipeline with enable_oracles=False and calls validate with
 //   skip_reviewers=True). A draft that fails goes back to the model. So the
 //   rail holds encode and checks, and only checks can pass.
-// - One AI model reviews a draft once its checks pass, and its verdict never
-//   blocks apply unless the encoder runs with --require-review, which is off
-//   by default and which no signed or CI workflow sets (evals.py: the encode
-//   loop "never gates apply on the reviewer"). So the review is labelled
-//   advisory, sits off the rail and never shows a pass.
-// - Program comparisons never run inside encode or apply; axiom-oracles runs
-//   them on whole programs, where another calculator covers the program. So
+// - One AI model reviews a draft once its first compile and CI checks pass,
+//   before apply-time repairs and the overlay validation check it again
+//   (cli.py: run_model_eval, then the overlay), so the overlay can still
+//   send a reviewed draft back. Its verdict never blocks apply unless the
+//   encoder runs with --require-review, which is off by default and which
+//   no signed or CI workflow sets (evals.py: the encode loop "never gates
+//   apply on the reviewer"). So the review is labelled advisory, sits off
+//   the rail, never shows a pass, reads draft 2 while checks are at work,
+//   and its words say "by default".
+// - Comparisons never run inside encode or apply; axiom-oracles runs them
+//   apart, each suite on the outputs it names (a whole benefit in some, one
+//   credit in others: axiom-oracles c599a7d8 us-savers-grid.yaml), where
+//   another calculator covers them. So
 //   comparison sits off the rail, says it runs separately and never passes.
 // - § 2017(a) reduces the thrifty food plan by 30 percent of income "as
 //   determined in accordance with section 2014(d) and (e)". The module the
@@ -33,11 +39,13 @@ import { LiveStory, StaticStory } from "./journey-live";
 //   deduction, whose own source reads "7 USC 2014(d) and (e)". Its output is
 //   max(allotment before the minimum, minimum allotment): $182 and $24 in
 //   test case 1.
-// - Every executable rule in a jurisdiction repo names its source (the
-//   encoder's CI refuses one without), and the engine will not compile a
-//   version with no effective date (axiom-rules-engine 82cf3aa6,
-//   MissingEffectiveFrom). Citations sit on rules, not on every value, and
-//   only program artifacts are published as releases.
+// - Every rule in the § 2017(a) module and its two imports names its source
+//   and dates every version. The engine requires a date only on parameter
+//   and derived versions (axiom-rules-engine 82cf3aa6, MissingEffectiveFrom),
+//   and the encoder's validator requires a source only on parameter, derived
+//   and derived_relation rules, so step 8 speaks of the § 2017(a) rules, not
+//   every rule. Citations sit on rules, not on every value, and only program
+//   artifacts are published as releases.
 // - The published § 2017(a) module is waived: at rulespec-us fbc74a69 (main
 //   on 2026-11-24) known-validation-gaps.yaml lists it among 1,930 modules
 //   with an active validate_failures waiver, and the shared workflow
@@ -72,12 +80,12 @@ const textOf = (el: Element | null | undefined) => (el?.textContent ?? "").repla
 // The stage's label, pinned whole: every edit to it changes a claim.
 const LABEL =
   "A law book comes off the shelf, opens on section 2017(a) and becomes one addressed cell of the corpus. " +
-  "The section is encoded: in an example, checks send a first draft back and pass the second, an AI review advises, and program comparisons run separately. " +
+  "An AI model drafts the section's rules. In an example, checks send its first draft back, an AI review advises on the second, checks then pass it, and comparisons with other calculators run separately. " +
   "Each rule in the code cites the words it encodes. " +
   "On November 24, 2026 the published § 2017(a) module was one of 1,930 rulespec-us modules on the validation waiver list, whose checks CI skipped. " +
-  "The rules run as a graph to $182 for test case 1, the greater of $182 and $24. " +
+  "For test case 1, an eligible household of one, the rules run as a graph to $182, the greater of $182 and $24. " +
   "The graph shrinks to section 2017(a) of the Food and Nutrition Act, among other bodies of law such as the Internal Revenue Code and state statutes. " +
-  "The rules carry source citations and effective dates, and four potential uses branch from them.";
+  "The section 2017(a) rules carry source citations and effective dates, and four potential uses branch from them.";
 
 // The waiver line, in the journey film's form, dated to the read above.
 const WAIVER =
@@ -87,18 +95,21 @@ const WAIVER =
 // journey-film-claims.test.tsx pins its captions: an overclaim in new words
 // would pass the retired-word sweep below, so each edit has to land here.
 const ENCODE_ABOUT =
-  "The encoder applies a draft only once it compiles, its numbers and quotes are found in its source, and its tests pass. An AI review of it is advisory.";
+  "The encoder applies a draft only once it compiles, its tests pass, and its source holds its numbers and quotes. By default, any AI review of it advises and stops nothing.";
 const CITED_ABOUT = `Each rule cites the words it encodes. ${WAIVER}`;
 const GRAPH_ABOUT =
   "The rules of a program form one executable graph: each node is a rule, and each line is a value one rule reads from another.";
 const SCALE_ABOUT =
-  "The same encoder works one provision at a time, in any program and any state. A public page follows targeted encoder runs from dispatch to merge.";
-const SCALE_TITLE = "One encoder can take any provision in the corpus, one at a time.";
+  "The same encoder takes provisions one at a time, from any program in any state. A public page follows targeted encoder runs from dispatch to merge.";
+const SCALE_TITLE = "One encoder takes provisions from the corpus, one at a time.";
 const USES_TITLE = "One open set of rules that many kinds of tool can build on.";
 
 // A tick anywhere on a line that names either step off the rail, before or
-// after the name (rendered text puts each list item on its own line).
-const TICK_BESIDE_ASIDE = /^(?=[^\n]*[✓✔])(?=[^\n]*\b(AI review|compare|program comparison)\b)[^\n]*$/im;
+// after the name (rendered text puts each list item on its own line). The
+// name takes no word boundary after it: rendered text joins inline spans,
+// so a name can run straight into the words after it ("Program
+// comparisonRuns separately").
+const TICK_BESIDE_ASIDE = /^(?=[^\n]*[✓✔])(?=[^\n]*\b(AI review|compar))[^\n]*$/im;
 
 // Words the walkthrough retired. They read words, not sense.
 const RETIRED = [
@@ -126,23 +137,36 @@ describe("step 4: the gates", () => {
   it("puts only encode and checks on the rail, and the review and comparison off it", () => {
     expect(GATES.map((g) => g.name)).toEqual(["encode", "checks"]);
     expect(LAST_GATE).toBe(1);
-    expect(ASIDES.map((a) => a.name)).toEqual(["AI review · advisory", "Program comparison"]);
+    expect(ASIDES.map((a) => a.name)).toEqual(["AI review · advisory", "Comparison"]);
     const compare = ASIDES.find((a) => a.id === "compare")!;
     expect(compare.about).toMatch(/^Runs separately\b/);
-    expect(compare.about).toContain("where another calculator covers them");
-    expect(ASIDES.find((a) => a.id === "review")!.about).toContain("does not stop the draft");
+    expect(compare.about).toContain("on selected outputs, where another calculator covers them");
+    expect(compare.about).not.toMatch(/whole program/i);
+    expect(ASIDES.find((a) => a.id === "review")!.about).toBe("One AI model reads the draft. By default, its verdict does not stop the draft.");
   });
 
-  it("never shows a pass for the AI review or program comparison, at any moment", () => {
+  it("never shows a pass for the AI review or the comparison, at any moment", () => {
     for (let u = -0.5; u <= U.end + 0.5; u += 0.005) {
       for (const a of ASIDES) expect(["idle", "active", "aside"], `${a.id} at ${u}`).toContain(asideAt(a.id, u));
       expect(["idle", "active", "done"], `encode at ${u}`).toContain(gateAt(0, u).state);
       expect(["idle", "active", "fail", "pass"], `checks at ${u}`).toContain(gateAt(1, u).state);
     }
-    // the review reads only the draft that passed checks, and is done before the step rests
+    // the review reads draft 2 once it reaches checks and while checks are
+    // still at work; checks pass only after it, and before the step rests
     expect(REVIEW_READ[0]).toBeGreaterThanOrEqual(MOVE2[1]);
-    expect(OPEN + REVIEW_READ[1]).toBeLessThanOrEqual(REST_AT[3]);
+    expect(REVIEW_READ[1]).toBeLessThanOrEqual(CHECKS_PASS);
+    expect(OPEN + CHECKS_PASS).toBeLessThanOrEqual(REST_AT[3]);
+    expect(CHECKS_PASS).toBeLessThan(U.t45[0]);
+    for (let u = REVIEW_READ[0]; u < CHECKS_PASS; u += 0.01) expect(gateAt(1, u).state, `checks at ${u}`).toBe("active");
+    expect(gateAt(1, CHECKS_PASS).state).toBe("pass");
+    // the review waits, reads draft 2, then stands aside; draft 1 never reaches it
     expect(asideAt("review", U.draft1[1] - 0.01)).toBe("idle");
+    expect(asideAt("review", REVIEW_READ[0] - 0.01)).toBe("idle");
+    expect(asideAt("review", (REVIEW_READ[0] + REVIEW_READ[1]) / 2)).toBe("active");
+    expect(asideAt("review", REVIEW_READ[1])).toBe("aside");
+    expect(asideAt("review", U.end)).toBe("aside");
+    // the comparison stands apart throughout
+    for (let u = -0.5; u <= U.end + 0.5; u += 0.05) expect(asideAt("compare", u)).toBe("aside");
   });
 
   it("ends draft 2 at checks, and turns it into the code only once checks pass", () => {
@@ -163,7 +187,7 @@ describe("step 4: the gates", () => {
       expect(a.classList.contains("jv-gate")).toBe(false);
       expect(a.closest(".jv-gate")).toBeNull();
       expect(a.querySelector(".jv-gate__mark")).toBeNull();
-      expect(a.textContent).not.toContain("✓");
+      expect(a.textContent).not.toMatch(/[✓✔]/);
     }
   });
 
@@ -202,7 +226,7 @@ describe("step 4: the gates", () => {
     expect(off.map((li) => textOf(li.querySelector(".js-aside")))).toEqual(ASIDES.map((a) => a.name));
     for (const li of off) {
       expect(li.querySelector(".js-gate__ok")).toBeNull();
-      expect(li.textContent).not.toContain("✓");
+      expect(li.textContent).not.toMatch(/[✓✔]/);
     }
     expect(root.querySelectorAll(".js-gate__ok")).toHaveLength(2);
   });
@@ -262,17 +286,46 @@ describe("step 6: the graph", () => {
     expect(EXPLORE[5].about).toBe(GRAPH_ABOUT);
   });
 
-  it("labels the output the greater of its two inputs, in both versions", () => {
-    expect(OUTPUT_NOTE).toBe("Greater of $182 and $24");
+  it("labels the output the eligible case's greater of its two inputs, in both versions", () => {
+    expect(OUTPUT_NOTE).toBe("Eligible, so the greater of $182 and $24");
     expect(textOf(stage().querySelector('[data-node="regular"] .jv-node__note'))).toBe(OUTPUT_NOTE);
     expect(stage().querySelectorAll(".jv-node__note")).toHaveLength(1);
     expect(textOf(scroll().querySelector(".js-node--hero .js-node__note"))).toBe(OUTPUT_NOTE);
+    // and the result the note explains is the one drawn
+    expect(textOf(scroll().querySelector(".js-node--hero b"))).toBe("$182");
+  });
+
+  // Each line is a name the target's formula reads. The formula of a rule
+  // is its rows in the code card after its name row, up to the next rule.
+  // A name counts only whole, so snap_net_income is not read where the
+  // formula says snap_net_income_for_allotment.
+  it("draws a line into each rule from every drawn rule its formula reads, and no other", () => {
+    const formula = (line: number) => {
+      const rows: string[] = [];
+      for (let i = CODE.findIndex((r) => "n" in r && r.n === line) + 1; i < CODE.length; i++) {
+        const r = CODE[i];
+        if (!("n" in r)) continue;
+        if (/^\s*- name:/.test(r.text)) break;
+        rows.push(r.text);
+      }
+      return rows.join("\n");
+    };
+    const reads = (text: string, rule: string) => new RegExp(`(^|[^A-Za-z0-9_])${rule}([^A-Za-z0-9_]|$)`).test(text);
+    const expected = GRAPH_NODES.filter((b) => b.kind === "derived" || b.kind === "output").flatMap((b) =>
+      GRAPH_NODES.filter((a) => a.id !== b.id && reads(formula(b.line), a.rule)).map((a) => `${a.id} > ${b.id}`),
+    );
+    expect(GRAPH_EDGES.map(([a, b]) => `${a} > ${b}`).sort()).toEqual(expected.sort());
+    // the minimum reads the one-person food plan cost, not the household's
+    // maximum allotment: two rules, both $298 for one person
+    expect(expected).toContain("impTfp > minimum");
+    expect(expected).not.toContain("impUsda > minimum");
+    expect(expected).toContain("impUsda > before");
   });
 });
 
 describe("step 8: one source and its potential uses", () => {
-  it("says the rules carry source citations and effective dates, in both versions", () => {
-    expect(SOURCE_ABOUT).toBe("The rules carry source citations and effective dates.");
+  it("says the § 2017(a) rules carry source citations and effective dates, in both versions", () => {
+    expect(SOURCE_ABOUT).toBe("The § 2017(a) rules carry source citations and effective dates.");
     expect(textOf(stage().querySelector(".jv-source__about"))).toBe(SOURCE_ABOUT);
     expect(textOf(scroll().querySelector(".js-source article p"))).toBe(SOURCE_ABOUT);
   });
@@ -316,7 +369,9 @@ describe("the words around the drawings", () => {
     const tick = TICK_BESIDE_ASIDE;
     expect(RETIRED).toContain(tick);
     expect("AI review · advisoryOne AI model reads the draft.✓").toMatch(tick);
-    expect("✓ Program comparison").toMatch(tick);
+    expect("✓ Comparison").toMatch(tick);
+    // inline spans run together in rendered text
+    expect("ComparisonRuns separately, on selected outputs✔").toMatch(tick);
     expect("checks\nIt compiles ✓\nAI review · advisory").not.toMatch(tick);
   });
 

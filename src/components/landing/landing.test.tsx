@@ -100,7 +100,7 @@ describe('Landing sections', () => {
 
   // The encoding pipeline has no human review gate. The encoder applies a
   // draft once its deterministic checks pass; one AI model's review is
-  // advisory, and program comparisons run separately, in axiom-oracles.
+  // advisory by default, and comparisons run separately, in axiom-oracles.
   // Claiming a human approver is comfort language for a step that does not
   // exist, and it has reached copy twice now — so it fails the build.
   // The journey's words: the encode beat names its checks, and nothing

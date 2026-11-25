@@ -176,15 +176,23 @@ export const GATES = [
   { name: "checks", about: "It compiles, its sources ground, its tests pass" },
 ] as const;
 // Two more steps sit off the rail, so neither reads as one the draft must
-// pass, and neither ever shows a pass. The AI review reads a draft only
-// once its checks pass, and its verdict stops nothing unless the encoder
-// runs with --require-review, which is off by default and which no signed
-// or CI workflow sets (evals.py, cli.py). Program comparisons never run
-// inside encode or apply: axiom-oracles runs them on whole programs, on a
-// schedule, where another calculator covers the program.
+// pass, and neither ever shows a pass. The AI review reads a draft once
+// its first compile and CI checks pass (evals.py), before apply-time
+// repairs and the overlay validation check the draft again (cli.py
+// _run_encode_attempt), so the overlay can still reject a reviewed draft.
+// Its verdict stops nothing unless the encoder runs with --require-review,
+// which is off by default and which no signed or CI workflow sets (cli.py),
+// so the aside says "by default". Comparisons never run inside
+// encode or apply (the overlay validation builds its pipeline with oracles
+// off). axiom-oracles runs them apart, each suite on the outputs it names:
+// a whole benefit in some, one credit or a tax before credits in others
+// (us-savers-grid.yaml compares the saver's credit before the section 26
+// limit). At axiom-oracles c599a7d8, 17 of its 192 suites run in the
+// weekly matrix and 6 in the weekly SNAP QC replay; the rest run by hand.
+// So the aside claims no scope and no schedule.
 export const ASIDES = [
-  { id: "review", name: "AI review · advisory", about: "One AI model reads the draft. Its verdict does not stop the draft." },
-  { id: "compare", name: "Program comparison", about: "Runs separately, on whole programs, where another calculator covers them" },
+  { id: "review", name: "AI review · advisory", about: "One AI model reads the draft. By default, its verdict does not stop the draft." },
+  { id: "compare", name: "Comparison", about: "Runs separately, on selected outputs, where another calculator covers them" },
 ] as const;
 export type AsideId = (typeof ASIDES)[number]["id"];
 export const GATE_X = [680, 830]; // centres
@@ -208,9 +216,14 @@ export const LOOP_D = `M ${GATE_X[1]} ${GATE_Y} C ${GATE_X[1]} 14, ${GATE_X[0]} 
 // stops there: once it passes checks it is applied, and at t45 it grows
 // into the code card from that gate.
 export const MOVE2 = [2.45, 2.95] as const;
-// The AI review reads draft 2 after it passes checks. Draft 1 never
-// reaches it: the encoder skips the review when checks reject a draft.
-export const REVIEW_READ = [3.05, 3.45] as const;
+// Draft 2's own tests pass as it reaches checks (its test strip), and the
+// AI review reads it while checks are still at work: encode runs the
+// review after the first compile and CI checks and before the overlay
+// checks the draft again, so checks pass only after the review has read
+// it. Draft 1 never reaches the review: the encoder skips it when the
+// first checks reject a draft.
+export const REVIEW_READ = [3.0, 3.4] as const;
+export const CHECKS_PASS = 3.55;
 
 /** the draft card at u: where it is, which draft it holds, and whether its test shows */
 export function draftAt(u: number) {
@@ -234,9 +247,10 @@ export function gateAt(i: number, u: number): { state: GateState; text: string }
     return { state: on ? "active" : u >= 0.6 ? "done" : "idle", text: u < 0.6 ? "waiting" : u < 2.2 ? "draft 1" : "draft 2" };
   }
   if (u >= 1.2 && u < 2.2) return { state: "fail", text: u < 1.6 ? "test 1 fails" : "sent back" };
-  // at work as draft 2 comes up to it, passed as it arrives
+  // at work as draft 2 comes up to it and while the review reads it,
+  // passed once the overlay's checks are through
+  if (u >= CHECKS_PASS) return { state: "pass", text: "passes" };
   const p = seg(u, MOVE2[0], MOVE2[1]);
-  if (p >= 1) return { state: "pass", text: "passes" };
   return { state: p >= 0.5 ? "active" : "idle", text: "—" };
 }
 
@@ -270,10 +284,11 @@ export const NODE_H = 64;
 export const HERO = { w: 190, h: 140 };
 export const NODE_AT: Record<GraphNodeId, { x: number; y: number }> = {
   imp2014: { x: 30, y: 20 },
-  rate30: { x: 30, y: 130 },
-  impUsda: { x: 30, y: 240 },
-  size2: { x: 30, y: 350 },
-  rate8: { x: 30, y: 460 },
+  rate30: { x: 30, y: 125 },
+  impUsda: { x: 30, y: 230 },
+  impTfp: { x: 30, y: 335 },
+  size2: { x: 30, y: 440 },
+  rate8: { x: 30, y: 545 },
   net: { x: 300, y: 20 },
   minimum: { x: 300, y: 405 },
   contrib: { x: 570, y: 75 },
@@ -297,9 +312,10 @@ export function edgeD(a: GraphNodeId, b: GraphNodeId) {
 // starts: inputs first, then each rule once what it reads is known
 export const NODE_FIRE: Record<GraphNodeId, number> = {
   imp2014: 0.0,
-  impUsda: 0.1,
-  rate30: 0.2,
-  size2: 0.3,
+  impUsda: 0.08,
+  impTfp: 0.16,
+  rate30: 0.24,
+  size2: 0.32,
   rate8: 0.4,
   net: 0.75,
   contrib: 1.05,

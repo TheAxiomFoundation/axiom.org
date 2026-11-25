@@ -144,9 +144,10 @@ describe("journey-live layout", () => {
   it("fires each graph node after the nodes it reads, within the flow", () => {
     expect(NODE_FIRE.net).toBeGreaterThan(NODE_FIRE.imp2014);
     expect(NODE_FIRE.contrib).toBeGreaterThan(Math.max(NODE_FIRE.net, NODE_FIRE.rate30));
-    expect(NODE_FIRE.minimum).toBeGreaterThan(Math.max(NODE_FIRE.impUsda, NODE_FIRE.size2, NODE_FIRE.rate8));
+    expect(NODE_FIRE.minimum).toBeGreaterThan(Math.max(NODE_FIRE.impTfp, NODE_FIRE.size2, NODE_FIRE.rate8));
     expect(NODE_FIRE.before).toBeGreaterThan(Math.max(NODE_FIRE.impUsda, NODE_FIRE.contrib));
     expect(NODE_FIRE.regular).toBeGreaterThan(Math.max(NODE_FIRE.before, NODE_FIRE.minimum));
+    for (const [a, b] of GRAPH_EDGES) expect(NODE_FIRE[b], `${a} → ${b}`).toBeGreaterThan(NODE_FIRE[a]);
     for (const f of Object.values(NODE_FIRE)) expect(U.flow[0] + f).toBeLessThan(U.flow[1]);
   });
 

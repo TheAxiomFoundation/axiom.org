@@ -42,7 +42,7 @@ export const CAPTIONS: Array<{ kicker: string; title: string }> = [
   { kicker: "4 / 8 · Encode and check", title: "Automated encoding, deterministic checks, transparent validation." },
   { kicker: "5 / 8 · Cited code", title: "Every part of a rule can be traced back to its primary source." },
   { kicker: "6 / 8 · The graph", title: "The rules run as one graph." },
-  { kicker: "7 / 8 · At scale", title: "One encoder can take any provision in the corpus, one at a time." },
+  { kicker: "7 / 8 · At scale", title: "One encoder takes provisions from the corpus, one at a time." },
   { kicker: "8 / 8 · Every system", title: "One open set of rules that many kinds of tool can build on." },
 ];
 
