@@ -1,4 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, it, expect } from 'vitest'
 
 import OverviewPage, { metadata } from '@/app/overview/page'
@@ -67,7 +69,7 @@ describe('Overview page', () => {
     render(<OverviewPage />)
     // The split is the point: encodings and code carry different licences,
     // and the PDF makes the same claim — they must not drift apart.
-    expect(screen.getByRole('link', { name: /cc by 4\.0/i })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /^cc0 1\.0$/i })).toHaveAttribute(
       'href',
       LICENSE_LINKS.encodings,
     )
@@ -75,6 +77,26 @@ describe('Overview page', () => {
       'href',
       LICENSE_LINKS.code,
     )
+  })
+
+  // The rulespec-* repos moved from CC BY 4.0 to CC0 1.0 on 2026-11-25. The
+  // page, its link and the PDF print source must all say CC0, and none may
+  // keep the old attribution condition for the encodings.
+  it('dedicates the encodings under CC0 1.0 on the page and in the PDF', () => {
+    expect(LICENSE_LINKS.encodings).toBe(
+      'https://creativecommons.org/publicdomain/zero/1.0/',
+    )
+    const { container } = render(<OverviewPage />)
+    const page = container.textContent ?? ''
+    expect(page).toMatch(/encodings to the public domain under CC0 1\.0/)
+    expect(page).not.toMatch(/cc by|attribution/i)
+
+    const html = readFileSync(
+      join(process.cwd(), 'pdf/overview/axiom-overview.html'),
+      'utf8',
+    ).replace(/<!--[\s\S]*?-->/g, '')
+    expect(html).toMatch(/encodings to the public domain under CC0 1\.0/)
+    expect(html).not.toMatch(/cc by|attribution/i)
   })
 
   it('anchors the sections the PDF links back to', () => {

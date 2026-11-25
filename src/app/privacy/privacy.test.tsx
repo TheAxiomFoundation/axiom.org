@@ -38,6 +38,16 @@ describe('PrivacyPage', () => {
     expect(link).toHaveAttribute('href', 'https://github.com/TheAxiomFoundation')
   })
 
+  // The rulespec-* repos moved from CC BY 4.0 to CC0 1.0 on 2026-11-25.
+  it('states the CC0 1.0 dedication for encodings and MIT for software', () => {
+    const { container } = render(<PrivacyPage />)
+    const text = (container.textContent ?? '').replace(/\s+/g, ' ')
+    expect(text).toMatch(/under the MIT License/)
+    expect(text).toMatch(/to the public domain under CC0 1\.0/)
+    expect(text).toMatch(/stay under the Apache License 2\.0/)
+    expect(text).not.toMatch(/cc by|attribution 4\.0/i)
+  })
+
   it('renders contact section with email', () => {
     render(<PrivacyPage />)
     expect(screen.getByRole('heading', { name: /contact/i })).toBeInTheDocument()

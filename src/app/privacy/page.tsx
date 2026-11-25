@@ -7,7 +7,7 @@ export default function PrivacyPage() {
             Privacy policy
           </h1>
           <p className="font-mono text-sm text-[var(--color-ink-muted)]">
-            Last updated: July 2026
+            Last updated: November 2026
           </p>
         </header>
 
@@ -69,12 +69,15 @@ export default function PrivacyPage() {
               >
                 github.com/TheAxiomFoundation
               </a>
-              . Our code &mdash; the engines,
-              tooling, and this site &mdash; is released under the MIT
-              License, and the published RuleSpec encodings are licensed
-              under Creative Commons Attribution 4.0 (CC BY 4.0). Both permit
-              commercial use, modification, and redistribution with
-              attribution.
+              . We release our software &mdash; the engines, tooling, and
+              this site &mdash; under the MIT License, which permits
+              commercial use, modification, and redistribution as long as
+              copies keep its notice. We dedicate the published RuleSpec
+              encodings, with their tests, parameter values, and provenance
+              metadata, to the public domain under CC0 1.0, so anyone may use
+              them for any purpose; we ask for a citation but don&rsquo;t
+              require one. The CI harnesses and conversion scripts inside each
+              RuleSpec repository stay under the Apache License 2.0.
             </p>
           </section>
 

@@ -92,25 +92,28 @@ export default function OverviewPage() {
           </div>
           {/* Same claim as the PDF's fine print under the three steps. The two
               licences differ by artefact and both are linked rather than
-              asserted — the corpus repos are CC BY 4.0, the code MIT. */}
+              asserted: the rulespec-* encoding repos carry CC0 1.0 (relicensed
+              from CC BY 4.0 on 2026-11-25), and the engine, encoder, oracles,
+              and this site carry MIT. CC0 asks nothing of users; MIT asks that
+              copies keep its notice. LICENSE_LINKS records what was checked. */}
           <p className="serif-italic text-sm text-[var(--color-ink-muted)] leading-relaxed mt-6 mb-0">
-            Encodings are published under{" "}
+            We dedicate our encodings to the public domain under{" "}
             <a
               href={LICENSE_LINKS.encodings}
               target="_blank"
               rel="noopener noreferrer"
             >
-              CC BY 4.0
+              CC0 1.0
             </a>{" "}
-            and the code under{" "}
+            and release our software under{" "}
             <a
               href={LICENSE_LINKS.code}
               target="_blank"
               rel="noopener noreferrer"
             >
               MIT
-            </a>{" "}
-            &mdash; free to use, modify, and redistribute, with attribution.
+            </a>
+            , which asks only that copies keep its notice.
           </p>
         </section>
 
