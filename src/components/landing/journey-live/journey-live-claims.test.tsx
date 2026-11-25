@@ -1,0 +1,327 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { render } from "@testing-library/react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it } from "vitest";
+import { renderedText } from "@/test/claim-copy";
+import { EXPLORE, GRAPH_NODES, WAIVER_LINE } from "../journey-digital/data";
+import { CAPTIONS } from "../journey-lamplight/captions";
+import { ASIDES, GATES, LAST_GATE, MOVE2, OPEN, REST_AT, REVIEW_READ, U, asideAt, draftAt, draftX, gateAt } from "./layout";
+import { CODE_WAIVER_NOTE, NODE_NAME, OUTPUT_NOTE, SOURCE_ABOUT, STAGE_LABEL, USES_HEADING } from "./copy";
+import { LiveStory, StaticStory } from "./journey-live";
+
+// What the encoder walkthrough (the landing page, /present/encoder and the
+// decks that embed it) may say, read from code on 2026-11-24:
+// - `axiom-encode encode --apply` applies a draft only once it compiles, its
+//   numbers and quotes are found in its source and its companion tests pass
+//   (axiom-encode caa46624: cmd_encode's overlay validation builds its
+//   pipeline with enable_oracles=False and calls validate with
+//   skip_reviewers=True). A draft that fails goes back to the model. So the
+//   rail holds encode and checks, and only checks can pass.
+// - One AI model reviews a draft once its checks pass, and its verdict never
+//   blocks apply unless the encoder runs with --require-review, which is off
+//   by default and which no signed or CI workflow sets (evals.py: the encode
+//   loop "never gates apply on the reviewer"). So the review is labelled
+//   advisory, sits off the rail and never shows a pass.
+// - Program comparisons never run inside encode or apply; axiom-oracles runs
+//   them on whole programs, where another calculator covers the program. So
+//   comparison sits off the rail, says it runs separately and never passes.
+// - § 2017(a) reduces the thrifty food plan by 30 percent of income "as
+//   determined in accordance with section 2014(d) and (e)". The module the
+//   graph draws (rulespec-us us/statutes/7/2017/a.yaml, 647a0648) imports
+//   that income from the rule filed under 2014(e)(6)(A), the excess shelter
+//   deduction, whose own source reads "7 USC 2014(d) and (e)". Its output is
+//   max(allotment before the minimum, minimum allotment): $182 and $24 in
+//   test case 1.
+// - Every executable rule in a jurisdiction repo names its source (the
+//   encoder's CI refuses one without), and the engine will not compile a
+//   version with no effective date (axiom-rules-engine 82cf3aa6,
+//   MissingEffectiveFrom). Citations sit on rules, not on every value, and
+//   only program artifacts are published as releases.
+// - The published § 2017(a) module is waived: at rulespec-us fbc74a69 (main
+//   on 2026-11-24) known-validation-gaps.yaml lists it among 1,930 modules
+//   with an active validate_failures waiver, and the shared workflow
+//   rulespec-us pins (TheAxiomFoundation/.github validate-rulespec.yml@
+//   882c5f11) skips their validate, companion-test and proof steps. Its
+//   apply manifest records the tool "axiom-encode deterministic/manual
+//   repair" and the model "manual-repair-v1". So step 5,
+//   where the code card quotes that module, carries a dated waiver line, as
+//   the journey film does, and so does the stage label.
+// - So nothing here says every rule went through the same encoder or the
+//   same checks: step 7 says what one encoder can take, and /ops follows
+//   only the targeted re-encode workflow's runs
+//   (scripts/collect-encoding-pipeline.mjs).
+// - The four branches of step 8 are kinds of tool the rules could serve.
+
+const NBSP = String.fromCharCode(0xa0);
+const plain = (s: string) => s.split(NBSP).join(" ");
+
+// The stage version is the scroll-driven picture; its effects need a real
+// browser, so it is rendered to markup, which holds every element and word
+// it draws. The scroll version renders as a phone or reduced motion gets it.
+function stage(): HTMLElement {
+  const host = document.createElement("div");
+  host.innerHTML = renderToStaticMarkup(<LiveStory />);
+  return host;
+}
+function scroll(): HTMLElement {
+  return render(<StaticStory />).container;
+}
+const textOf = (el: Element | null | undefined) => (el?.textContent ?? "").replace(/\s+/g, " ").trim();
+
+// The stage's label, pinned whole: every edit to it changes a claim.
+const LABEL =
+  "A law book comes off the shelf, opens on section 2017(a) and becomes one addressed cell of the corpus. " +
+  "The section is encoded: in an example, checks send a first draft back and pass the second, an AI review advises, and program comparisons run separately. " +
+  "Each rule in the code cites the words it encodes. " +
+  "On November 24, 2026 the published § 2017(a) module was one of 1,930 rulespec-us modules on the validation waiver list, whose checks CI skipped. " +
+  "The rules run as a graph to $182 for test case 1, the greater of $182 and $24. " +
+  "The graph shrinks to section 2017(a) of the Food and Nutrition Act, among other bodies of law such as the Internal Revenue Code and state statutes. " +
+  "The rules carry source citations and effective dates, and four potential uses branch from them.";
+
+// The waiver line, in the journey film's form, dated to the read above.
+const WAIVER =
+  "On November 24, 2026 the published § 2017(a) module was one of 1,930 rulespec-us modules on the validation waiver list, whose checks CI skipped.";
+
+// Each step's words beside the drawing that state a fact, pinned whole, as
+// journey-film-claims.test.tsx pins its captions: an overclaim in new words
+// would pass the retired-word sweep below, so each edit has to land here.
+const ENCODE_ABOUT =
+  "The encoder applies a draft only once it compiles, its numbers and quotes are found in its source, and its tests pass. An AI review of it is advisory.";
+const CITED_ABOUT = `Each rule cites the words it encodes. ${WAIVER}`;
+const GRAPH_ABOUT =
+  "The rules of a program form one executable graph: each node is a rule, and each line is a value one rule reads from another.";
+const SCALE_ABOUT =
+  "The same encoder works one provision at a time, in any program and any state. A public page follows targeted encoder runs from dispatch to merge.";
+const SCALE_TITLE = "One encoder can take any provision in the corpus, one at a time.";
+const USES_TITLE = "One open set of rules that many kinds of tool can build on.";
+
+// A tick anywhere on a line that names either step off the rail, before or
+// after the name (rendered text puts each list item on its own line).
+const TICK_BESIDE_ASIDE = /^(?=[^\n]*[✓✔])(?=[^\n]*\b(AI review|compare|program comparison)\b)[^\n]*$/im;
+
+// Words the walkthrough retired. They read words, not sense.
+const RETIRED = [
+  /\beach value cites\b/i,
+  /\bevery value\b/i,
+  /\bin versioned releases\b/i,
+  /\bevery kind of tool\b/i,
+  /\bone source for every\b/i,
+  /\bevery system\b/i,
+  /\bworks from the same set\b/i,
+  /\bAI judges?\b/i,
+  /\bpowers every\b/i,
+  /\bthe same (process|checks)\b/i,
+  /\blaw by law\b/i,
+  /\bruntime registry\b/i,
+  TICK_BESIDE_ASIDE,
+  /2014\(e\)\(6\)/,
+];
+
+// The walkthrough's own words: the step titles and about lines it shows
+// beside each step, and the stage label.
+const WALKTHROUGH_COPY = [STAGE_LABEL, ...CAPTIONS.map((c) => c.title), ...EXPLORE.flatMap((e) => [e.name, e.about])];
+
+describe("step 4: the gates", () => {
+  it("puts only encode and checks on the rail, and the review and comparison off it", () => {
+    expect(GATES.map((g) => g.name)).toEqual(["encode", "checks"]);
+    expect(LAST_GATE).toBe(1);
+    expect(ASIDES.map((a) => a.name)).toEqual(["AI review · advisory", "Program comparison"]);
+    const compare = ASIDES.find((a) => a.id === "compare")!;
+    expect(compare.about).toMatch(/^Runs separately\b/);
+    expect(compare.about).toContain("where another calculator covers them");
+    expect(ASIDES.find((a) => a.id === "review")!.about).toContain("does not stop the draft");
+  });
+
+  it("never shows a pass for the AI review or program comparison, at any moment", () => {
+    for (let u = -0.5; u <= U.end + 0.5; u += 0.005) {
+      for (const a of ASIDES) expect(["idle", "active", "aside"], `${a.id} at ${u}`).toContain(asideAt(a.id, u));
+      expect(["idle", "active", "done"], `encode at ${u}`).toContain(gateAt(0, u).state);
+      expect(["idle", "active", "fail", "pass"], `checks at ${u}`).toContain(gateAt(1, u).state);
+    }
+    // the review reads only the draft that passed checks, and is done before the step rests
+    expect(REVIEW_READ[0]).toBeGreaterThanOrEqual(MOVE2[1]);
+    expect(OPEN + REVIEW_READ[1]).toBeLessThanOrEqual(REST_AT[3]);
+    expect(asideAt("review", U.draft1[1] - 0.01)).toBe("idle");
+  });
+
+  it("ends draft 2 at checks, and turns it into the code only once checks pass", () => {
+    let furthest = -Infinity;
+    for (let u = U.draft2[0]; u < U.draft2[1]; u += 0.005) furthest = Math.max(furthest, draftAt(u)!.x);
+    expect(furthest).toBeCloseTo(draftX(LAST_GATE));
+    expect(draftAt(U.draft2[1] - 0.01)!.x).toBeCloseTo(draftX(LAST_GATE));
+    expect(gateAt(1, U.t45[0]).state).toBe("pass");
+    expect(gateAt(1, U.t45[0]).text).toBe("passes");
+  });
+
+  it("draws the review and comparison with no mark, in the stage version", () => {
+    const root = stage();
+    expect([...root.querySelectorAll(".jv-gate .jv-gate__name")].map(textOf)).toEqual(["encode", "checks"]);
+    const asides = [...root.querySelectorAll(".jv-aside")];
+    expect(asides.map((a) => textOf(a.querySelector(".jv-aside__name")))).toEqual(ASIDES.map((a) => a.name));
+    for (const a of asides) {
+      expect(a.classList.contains("jv-gate")).toBe(false);
+      expect(a.closest(".jv-gate")).toBeNull();
+      expect(a.querySelector(".jv-gate__mark")).toBeNull();
+      expect(a.textContent).not.toContain("✓");
+    }
+  });
+
+  // The stage draws its ticks in CSS: a gate's from its state, so only a
+  // gate on the rail can take one, and the draft's own test result. Comments
+  // are stripped first, so a note above a rule never joins its selector, and
+  // a tick in either quote, as a glyph or as an escape, counts.
+  it("ticks only gates on the rail, in the stylesheet", () => {
+    const raw = readFileSync(join(process.cwd(), "src/components/landing/journey-live/journey-live.css"), "utf8");
+    const css = raw.replace(/\/\*[\s\S]*?\*\//g, "");
+    const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({
+      selectors: m[1].split(",").map((s) => s.trim()),
+      body: m[2],
+    }));
+    const TICK = /(?<![-\w])content\s*:\s*["'](?:[✓✔]|\\0{0,2}271[34])/i;
+    const SETS_CONTENT = /(?<![-\w])content\s*:/i;
+    const ticked = rules.filter((r) => TICK.test(r.body)).flatMap((r) => r.selectors);
+    const allowed = [/^\.jv-gate\[data-state="(done|pass)"\] \.jv-gate__mark::after$/, /^\.jv-test b::before$/];
+    expect(ticked.length).toBeGreaterThan(0);
+    for (const sel of ticked) expect(allowed.some((r) => r.test(sel)), sel).toBe(true);
+    // a step off the rail takes no generated content at all, tick or not
+    for (const r of rules) {
+      if (r.selectors.some((s) => s.includes(".jv-aside"))) expect(SETS_CONTENT.test(r.body), r.selectors.join(", ")).toBe(false);
+    }
+    // the matcher itself sees each way of writing a tick
+    for (const body of ['content: "✓"', "content: '✔'", 'content:"\\2713"', "content: '\\002714'"]) expect(TICK.test(body), body).toBe(true);
+    expect(TICK.test('justify-content: "✓"')).toBe(false);
+  });
+
+  it("ticks encode and checks and nothing else, in the scroll version", () => {
+    const root = scroll();
+    const rail = [...root.querySelectorAll(".js-gates li")];
+    expect(rail.map((li) => textOf(li.querySelector(".js-gate")))).toEqual(["encode", "checks"]);
+    for (const li of rail) expect(textOf(li.querySelector(".js-gate__ok"))).toBe("✓");
+    const off = [...root.querySelectorAll(".js-asides li")];
+    expect(off.map((li) => textOf(li.querySelector(".js-aside")))).toEqual(ASIDES.map((a) => a.name));
+    for (const li of off) {
+      expect(li.querySelector(".js-gate__ok")).toBeNull();
+      expect(li.textContent).not.toContain("✓");
+    }
+    expect(root.querySelectorAll(".js-gate__ok")).toHaveLength(2);
+  });
+
+  it("says what gates apply and that the review is advisory, beside the step", () => {
+    expect(EXPLORE[3].about).toBe(ENCODE_ABOUT);
+  });
+});
+
+describe("step 5: the cited code", () => {
+  it("pins its words, with the waiver line for the published module", () => {
+    expect(WAIVER_LINE).toBe(WAIVER);
+    expect(EXPLORE[4].about).toBe(CITED_ABOUT);
+  });
+
+  it("shows the waiver line beside step 5, in both versions", () => {
+    const caps = [...stage().querySelectorAll(".jv-cap__about")].map(textOf);
+    expect(caps).toHaveLength(8);
+    expect(caps[4]).toBe(plain(CITED_ABOUT));
+    // only step 5 carries it, once
+    expect(caps.filter((c) => c.includes(plain(WAIVER)))).toHaveLength(1);
+    const abouts = [...scroll().querySelectorAll(".js-about")].map(textOf);
+    expect(abouts).toHaveLength(8);
+    expect(abouts[4]).toBe(plain(CITED_ABOUT));
+  });
+
+  it("names the waiver on the code card itself, which no width or framing slide hides", () => {
+    expect(CODE_WAIVER_NOTE).toBe("checks waived in CI");
+    const meta = stage().querySelector("[data-code] [data-code-meta]");
+    expect(textOf(meta)).toBe(`lines 105–128 · ${CODE_WAIVER_NOTE}`);
+    // the bar sits inside the card, not in the side column a slide or a
+    // narrower stage hides
+    expect(meta!.closest(".jv-side")).toBeNull();
+  });
+});
+
+describe("step 6: the graph", () => {
+  it("names the imported net income by the law it follows", () => {
+    expect(plain(NODE_NAME.imp2014)).toBe("Net income under 7 U.S.C. § 2014(d) and (e)");
+    // no-break spaces keep the citation on one line
+    expect(NODE_NAME.imp2014).toContain(["7", "U.S.C.", "§", "2014(d)"].join(NBSP));
+    for (const name of Object.values(NODE_NAME)) expect(name).not.toMatch(/2014\(e\)\(6\)/);
+    // the module's own import path stays the node's identifier
+    expect(GRAPH_NODES.find((n) => n.id === "imp2014")!.label).toBe("§ 2014(e)(6)(A) · snap_net_income");
+  });
+
+  it("draws that name on the node, in both versions", () => {
+    const NAME = "Net income under 7 U.S.C. § 2014(d) and (e)";
+    expect(textOf(stage().querySelector('[data-node="imp2014"] .jv-node__label'))).toBe(NAME);
+    // the scroll version lists the nodes in firing order, with no id
+    const labels = [...scroll().querySelectorAll(".js-node__label")].map(textOf);
+    expect(labels).toHaveLength(GRAPH_NODES.length);
+    expect(labels.filter((l) => l === NAME)).toHaveLength(1);
+  });
+
+  it("pins the step's words", () => {
+    expect(EXPLORE[5].about).toBe(GRAPH_ABOUT);
+  });
+
+  it("labels the output the greater of its two inputs, in both versions", () => {
+    expect(OUTPUT_NOTE).toBe("Greater of $182 and $24");
+    expect(textOf(stage().querySelector('[data-node="regular"] .jv-node__note'))).toBe(OUTPUT_NOTE);
+    expect(stage().querySelectorAll(".jv-node__note")).toHaveLength(1);
+    expect(textOf(scroll().querySelector(".js-node--hero .js-node__note"))).toBe(OUTPUT_NOTE);
+  });
+});
+
+describe("step 8: one source and its potential uses", () => {
+  it("says the rules carry source citations and effective dates, in both versions", () => {
+    expect(SOURCE_ABOUT).toBe("The rules carry source citations and effective dates.");
+    expect(textOf(stage().querySelector(".jv-source__about"))).toBe(SOURCE_ABOUT);
+    expect(textOf(scroll().querySelector(".js-source article p"))).toBe(SOURCE_ABOUT);
+  });
+
+  it("heads the four branches as potential uses, in both versions", () => {
+    expect(USES_HEADING).toBe("Potential uses");
+    const live = stage();
+    const heading = live.querySelector("[data-uses]")!;
+    expect(textOf(heading)).toBe("Potential uses");
+    const firstUse = live.querySelector("[data-user]")!;
+    expect(heading.compareDocumentPosition(firstUse) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const root = scroll();
+    const kids = [...root.querySelector(".js-source")!.children];
+    const at = kids.findIndex((el) => el.classList.contains("js-uses"));
+    expect(textOf(kids[at])).toBe("Potential uses");
+    expect(kids.slice(at + 1).every((el) => el.classList.contains("js-user"))).toBe(true);
+    expect(kids.slice(at + 1)).toHaveLength(4);
+  });
+});
+
+describe("the words around the drawings", () => {
+  it("describes the stage as it now draws, and nothing more", () => {
+    expect(STAGE_LABEL).toBe(LABEL);
+    expect(stage().querySelector(".jv-live")?.getAttribute("aria-label")).toBe(LABEL);
+  });
+
+  it("names step 8 for potential uses, not every system", () => {
+    expect(EXPLORE[7].name).toBe("Potential uses");
+    expect(EXPLORE[7].about).toBe("The rules are open and versioned, so any tool can build on them.");
+  });
+
+  // Steps 7 and 8 say what the encoder and the rules can do. Decks that
+  // frame the walkthrough compare these titles with their own copies.
+  it("pins the step 7 and step 8 titles and the step 7 words", () => {
+    expect(CAPTIONS[6].title).toBe(SCALE_TITLE);
+    expect(CAPTIONS[7].title).toBe(USES_TITLE);
+    expect(EXPLORE[6].about).toBe(SCALE_ABOUT);
+  });
+
+  it("catches a tick on the same line as a step off the rail, before or after its name", () => {
+    const tick = TICK_BESIDE_ASIDE;
+    expect(RETIRED).toContain(tick);
+    expect("AI review · advisoryOne AI model reads the draft.✓").toMatch(tick);
+    expect("✓ Program comparison").toMatch(tick);
+    expect("checks\nIt compiles ✓\nAI review · advisory").not.toMatch(tick);
+  });
+
+  it("carries no retired claim, in its strings or either rendered version", () => {
+    const copy = [...WALKTHROUGH_COPY, renderedText(stage()), renderedText(scroll())];
+    for (const text of copy) for (const retired of RETIRED) expect(plain(text), String(retired)).not.toMatch(retired);
+  });
+});

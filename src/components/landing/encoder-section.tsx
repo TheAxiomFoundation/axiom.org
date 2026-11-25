@@ -21,10 +21,11 @@ export function EncoderSection() {
           </h2>
           {/*
             No human sign-off clause here. The pipeline has no human review
-            gate — the gates are deterministic checks, oracle cross-checks
-            where a comparison exists, and AI judges; naming a human approver
-            would describe a step that does not exist. The heading claims no
-            blanket "verified": CI skips validation, companion tests and
+            gate: the encoder applies a draft once its deterministic checks
+            pass, one AI model's review of it is advisory, and program
+            comparisons run separately in axiom-oracles; naming a human
+            approver would describe a step that does not exist. The heading
+            claims no blanket "verified": CI skips validation, companion tests and
             proof checks for modules on rulespec-us's waiver list (1,940 on
             2026-10-02, holding 23,735 of 34,810 US rules).
           */}

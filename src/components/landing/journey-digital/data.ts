@@ -191,13 +191,42 @@ export const GRAPH_EDGES: Array<[GraphNodeId, GraphNodeId]> = [
 
 // Where each piece of the story leads once the scroll is done: the real
 // page behind each step. Shown as clickable cards in the end state.
+//
+// The about lines for steps 4 to 8 state what the encoder and the rules do,
+// read from code on 2026-11-24 (axiom-encode caa46624, rulespec-us
+// fbc74a69, axiom-rules-engine 82cf3aa6):
+// - encode applies a draft only once it compiles, its numbers and quotes are
+//   found in its source and its tests pass (cmd_encode's overlay validation,
+//   built with oracles off and reviewers skipped). One AI model reviews a
+//   draft that passes; its verdict blocks apply only under
+//   --require-review, which is off by default and set by no signed or CI
+//   workflow. Program comparisons run in axiom-oracles, never in encode.
+// - every executable rule in a jurisdiction repo names its source (the
+//   encoder's CI refuses one without), and the engine will not compile a
+//   version with no effective date. Citations sit on rules, not values.
+// - the encoder takes one corpus citation at a time, in any jurisdiction;
+//   /ops follows runs of the targeted re-encode workflow from dispatch to
+//   merge (scripts/collect-encoding-pipeline.mjs), and no other encoder run.
+//
+// The walkthrough's worked example is § 2017(a), so step 5, where the code
+// card quotes the published module, carries the same kind of dated waiver
+// line as the journey film. At rulespec-us fbc74a69 (main on 2026-11-24),
+// known-validation-gaps.yaml lists 1,930 modules under validate_failures,
+// each with an active waiver, us/statutes/7/2017/a.yaml among them; the
+// shared workflow rulespec-us pins (TheAxiomFoundation/.github
+// validate-rulespec.yml@882c5f11) prints "SKIPPED (known-validation-gaps
+// validate_failures)" for each in its validate, companion-test and proof
+// steps. The list last changed on 2026-11-01, so the count held all day.
+export const WAIVER_LINE =
+  "On November 24, 2026 the published § 2017(a) module was one of 1,930 rulespec-us modules on the validation waiver list, whose checks CI skipped.";
+
 export const EXPLORE: Array<{ n: number; name: string; go: string; href: string; about: string }> = [
   { n: 1, name: "Off the shelf", go: "See what is covered", href: "/coverage", about: "Primary sources: the statutes, regulations and agency manuals that legislatures and agencies publish." },
   { n: 2, name: "The law, as published", go: "Read § 2017(a)", href: "/us/statute/7/2017/a", about: "The official text is captured word for word and stored in the corpus: a database of the law, exactly as published." },
   { n: 3, name: "The corpus", go: "Browse Title 7", href: "/us/statute/7", about: "The corpus splits each document into its provisions. Each one has its own address, which follows its legal citation." },
-  { n: 4, name: "Encode", go: "How the encoder works", href: "/encoder", about: "The encoder writes a draft of a rule. The draft then goes through a series of checks, from deterministic tests to reviews by AI judges." },
-  { n: 5, name: "Cited code", go: "Explore this encoding", href: "https://github.com/TheAxiomFoundation/rulespec-us/blob/main/us/statutes/7/2017/a.yaml#L105-L128", about: "The formula and the metadata of a rule are both derived from the text of the provision." },
-  { n: 6, name: "The graph", go: "Explore the rule graph", href: "/app?compose=us:statutes/7/2017/a", about: "The rules of a program form a single executable graph. It represents each provision and each dependency between provisions." },
-  { n: 7, name: "All the law", go: "Watch the pipeline", href: "/ops", about: "The process that encoded one provision applies to each program and each state. The record of each run is public." },
-  { n: 8, name: "Every system", go: "Build on it", href: "/docs", about: "The rules are open and versioned. Every system that uses them works from the same set." },
+  { n: 4, name: "Encode", go: "How the encoder works", href: "/encoder", about: "The encoder applies a draft only once it compiles, its numbers and quotes are found in its source, and its tests pass. An AI review of it is advisory." },
+  { n: 5, name: "Cited code", go: "Explore this encoding", href: "https://github.com/TheAxiomFoundation/rulespec-us/blob/main/us/statutes/7/2017/a.yaml#L105-L128", about: `Each rule cites the words it encodes. ${WAIVER_LINE}` },
+  { n: 6, name: "The graph", go: "Explore the rule graph", href: "/app?compose=us:statutes/7/2017/a", about: "The rules of a program form one executable graph: each node is a rule, and each line is a value one rule reads from another." },
+  { n: 7, name: "All the law", go: "Watch the pipeline", href: "/ops", about: "The same encoder works one provision at a time, in any program and any state. A public page follows targeted encoder runs from dispatch to merge." },
+  { n: 8, name: "Potential uses", go: "Build on it", href: "/docs", about: "The rules are open and versioned, so any tool can build on them." },
 ];

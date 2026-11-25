@@ -29,6 +29,12 @@ export const captionAt = (P: number) => {
   return 0;
 };
 
+// Steps 7 and 8 say what the encoder and the rules can do, not how every
+// rule was made: CI skips the checks of modules on rulespec-us's waiver
+// list, and some modules were signed in by manual attestation, not written
+// by the encoder. Decks that frame /present/encoder compare each title the
+// walkthrough sends them with their own copy, so a change here needs one
+// there too.
 export const CAPTIONS: Array<{ kicker: string; title: string }> = [
   { kicker: "1 / 8 · Off the shelf", title: "It starts with the law as written." },
   { kicker: "2 / 8 · The law, as published", title: "The legal text is the specification, encoded line by line." },
@@ -36,8 +42,8 @@ export const CAPTIONS: Array<{ kicker: string; title: string }> = [
   { kicker: "4 / 8 · Encode and check", title: "Automated encoding, deterministic checks, transparent validation." },
   { kicker: "5 / 8 · Cited code", title: "Every part of a rule can be traced back to its primary source." },
   { kicker: "6 / 8 · The graph", title: "The rules run as one graph." },
-  { kicker: "7 / 8 · At scale", title: "The same process and the same checks, law by law." },
-  { kicker: "8 / 8 · Every system", title: "One set of rules powers every kind of tool, built by anyone." },
+  { kicker: "7 / 8 · At scale", title: "One encoder can take any provision in the corpus, one at a time." },
+  { kicker: "8 / 8 · Every system", title: "One open set of rules that many kinds of tool can build on." },
 ];
 
 // the whole story in words, for the canvas that draws it

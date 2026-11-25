@@ -405,6 +405,38 @@
 .jv-gate[data-state="fail"] .jv-gate__mark::after {
   content: "✕";
 }
+/* a step off the rail (the AI review, program comparison): a dashed
+   border and no mark, so it never reads as a gate the draft must pass */
+.jv-aside {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 16px;
+  border-radius: 12px;
+  background: var(--color-paper-elevated, #fff);
+  border: 1px dashed color-mix(in srgb, var(--color-ink) 24%, transparent);
+  transition: border-color 200ms ease;
+}
+.jv-aside__name {
+  font: 500 10px/1 var(--font-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-ink-muted);
+  white-space: nowrap;
+}
+.jv-aside__about {
+  font: 400 12px/1.35 var(--font-geist-sans, system-ui), system-ui, sans-serif;
+  color: var(--color-ink-secondary);
+}
+/* the review at work on draft 2: lit, but never a pass */
+.jv-aside[data-state="active"] {
+  border-color: color-mix(in srgb, var(--color-accent) 60%, transparent);
+}
+.jv-aside[data-state="active"] .jv-aside__name {
+  color: var(--color-accent);
+}
 
 /* ── the draft ── */
 
@@ -683,6 +715,12 @@
 .jv-node__note {
   font: 400 11.5px/1.3 var(--font-geist-sans, system-ui), system-ui, sans-serif;
   color: var(--color-ink-muted);
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+/* the output's "greater of" line shows once the output has its value */
+.jv-node[data-fired="1"] .jv-node__note {
+  opacity: 1;
 }
 
 /* ── the registry ── */
@@ -770,7 +808,7 @@
   opacity: 0.8;
 }
 
-/* ── one source, every kind of user ── */
+/* ── one source, four potential uses ── */
 
 .jv-source {
   display: flex;
@@ -806,6 +844,12 @@
   border: 1px solid color-mix(in srgb, var(--color-ink) 10%, transparent);
   font: 400 11px/1 var(--font-mono);
   color: var(--color-ink-secondary);
+}
+/* the heading over the four branches */
+.jv-uses {
+  margin: 0;
+  white-space: nowrap;
+  opacity: 0;
 }
 .jv-user {
   display: flex;
@@ -1315,6 +1359,27 @@
 .js-gate__ok {
   color: var(--color-accent-hover);
 }
+/* the steps off the rail, below a dashed rule, with no tick */
+.js-asides {
+  margin: 14px 0 0;
+  padding: 12px 0 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-top: 1px dashed color-mix(in srgb, var(--color-ink) 18%, transparent);
+}
+.js-asides li {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.js-aside {
+  font: 500 10.5px/1 var(--font-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-ink-muted);
+}
 .js-cites {
   margin: 0;
   list-style: none;
@@ -1374,6 +1439,11 @@
 .js-node--hero b {
   font: 400 30px/1 var(--font-serif);
 }
+.js-node__note {
+  display: block;
+  font: 400 12.5px/1.35 var(--font-geist-sans, system-ui), system-ui, sans-serif;
+  color: var(--color-ink-muted);
+}
 .js-clusters {
   margin: 0;
   padding: 0;
@@ -1393,6 +1463,9 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+.js-uses {
+  margin: 8px 0 0;
 }
 .js-user {
   display: flex;

@@ -3,17 +3,20 @@
 // The encoder section's story, live: all eight beats as real page
 // components on one pinned stage. A law book comes off the shelf, opens
 // on § 2017, and shrinks into one addressed cell of the corpus; that cell
-// becomes the statute card, which goes through the gates, cites its code,
-// runs as a graph, joins the registry and becomes the one source.
+// becomes the statute card, whose draft passes encode and checks, cites
+// its code, runs as a graph, joins the registry and becomes the one source.
 //
 // Lenis drives the scroll and the GSAP ticker drives Lenis and every
 // frame, so there is one clock; each frame is a pure function of scroll,
 // and only transform, opacity, SVG stroke and a few text values change.
 //
 // Copy rules (journey-film.tsx, lamplight2.ts): the failed draft is an
-// illustration and says so (the draft's test strip is marked "example"); the review is one AI model's read; the
+// illustration and says so (the draft's test strip is marked "example");
+// only encode and checks are on the rail and only they can pass; the AI
+// review is one AI model's read and advisory, and program comparison runs
+// separately, both off the rail and with no mark (layout.ts ASIDES); the
 // registry numbers carry their snapshot month; nothing says certified,
-// signed or sealed.
+// signed or sealed. The words that state facts live in copy.ts.
 //
 // Phones and reduced motion get StaticStory: the same components, one
 // beat after another, at rest.
@@ -22,14 +25,15 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import Lenis from "lenis";
-import { CODE, EXPLORE, GRAPH_EDGES, GRAPH_NODES, MARKS, STATUTE, CASE, type GraphNodeId } from "../journey-digital/data";
+import { CODE, EXPLORE, GRAPH_EDGES, GRAPH_NODES, MARKS, STATUTE } from "../journey-digital/data";
 import { CAPTIONS } from "../journey-lamplight/captions";
 import {
-  AMBER, CAPTION_AT, CAPTION_OPEN, CODE_BAR, CODE_CARD, CODE_PAD, DH, DRAFT, DW, GATE_H, GATE_W, GATE_X, GATE_Y,
-  GATES, GRID, HERO, LOOP_D, NODE_AT, NODE_FIRE, NODE_H, NODE_W, O, OPEN, PAGE, PROGRAMS, RAIL_Y, REGIONS, REGION_LEAD, ROW_H, SHELF, SHELVES, WALK, WALK_CUT, toClock, toScroll,
-  SOURCE_CARD, SPINE7, SPINES, STATUTE_CARD, TARGET_CELL, U, USER_CARD, USERS, cellAt, clamp01, draftX,
-  easeInOut, easeOut, lerp, panFor, rowTop, seg, shelfBase,
+  AMBER, ASIDE, ASIDES, CAPTION_AT, CAPTION_OPEN, CODE_BAR, CODE_CARD, CODE_PAD, DH, DRAFT, DW, GATE_H, GATE_W, GATE_X, GATE_Y,
+  GATES, GRID, LAST_GATE, LOOP_D, NODE_AT, NODE_FIRE, O, OPEN, PAGE, PROGRAMS, RAIL, RAIL_Y, REGIONS, REGION_LEAD, ROW_H, SHELF, SHELVES, WALK, WALK_CUT, toClock, toScroll,
+  SOURCE_CARD, SPINE7, SPINES, STATUTE_CARD, TARGET_CELL, U, USER_CARD, USERS, USES_Y, asideAt, asideY, cellAt, clamp01, draftAt, draftX,
+  easeInOut, easeOut, edgeD, gateAt, lerp, nodeBox, panFor, rowTop, seg, shelfBase,
 } from "./layout";
+import { CODE_WAIVER_NOTE, NODE_NAME, OUTPUT_NOTE, SOURCE_ABOUT, STAGE_LABEL, USES_HEADING } from "./copy";
 import type { Aisle } from "../style-frames/aisle";
 import { PHRASE_PARENT, RULE_LINES, RULE_ROW_H, RULE_STEPS, RULE_THREADS, SUB_PHRASES } from "./rule";
 import "../journey-lamplight/journey-lamplight.css";
@@ -54,23 +58,8 @@ const phraseOf = (id: string) => {
   return "";
 };
 const short = (s: string) => (s.length > 30 ? `${s.slice(0, 28).trimEnd()}…` : s);
-// The graph shows each rule by a plain name, not its identifier in the
-// file (snap_allotment_before_minimum and so on), and calls a computed
-// rule a result.
-const NODE_NAME: Record<GraphNodeId, string> = {
-  imp2014: "Net income, from § 2014(e)(6)(A)",
-  impUsda: "Maximum allotment, USDA FY 2026",
-  net: "Net income for the allotment",
-  rate30: "Household contribution rate",
-  size2: "Household size limit for the minimum",
-  rate8: "Minimum allotment rate",
-  contrib: "Household food contribution",
-  minimum: "Minimum monthly allotment",
-  before: "Allotment before the minimum",
-  regular: "Regular monthly allotment",
-};
+// a computed rule is called a result (the plain names are in copy.ts)
 const KIND_NAME: Record<string, string> = { import: "import", parameter: "parameter", derived: "result", output: "output" };
-const nodeBox = (id: GraphNodeId) => (id === "regular" ? HERO : { w: NODE_W, h: NODE_H });
 const MARK_PANS = MARKS.map((m) => panFor(m.line));
 const PAN0 = panFor(27);
 const ADDRESS = ["us", "statute", "7", "2017", "a"];
@@ -78,46 +67,6 @@ const ADDRESS = ["us", "statute", "7", "2017", "a"];
 const CELLS = Array.from({ length: GRID.rows }, (_, r) => Array.from({ length: GRID.cols }, (_, c) => cellAt(c, r))).flat();
 const TCX = TARGET_CELL.x + TARGET_CELL.w / 2;
 const TCY = TARGET_CELL.y + TARGET_CELL.h / 2;
-
-// draft card: where it is and which draft it holds, at u
-// Draft 2 goes from encode to AI review in one move, not gate by gate:
-// 0 at encode, 1/3 at checks, 2/3 at compare, 1 at AI review. Mostly even,
-// with a soft start and stop, so it does not halt at each gate.
-const GLIDE = [2.45, 3.5] as const;
-function glide2(u: number) {
-  const p = seg(u, GLIDE[0], GLIDE[1]);
-  return lerp(p, easeInOut(p), 0.35);
-}
-
-function draftAt(u: number) {
-  if (u < U.draft1[0] || (u >= U.draft1[1] && u < U.draft2[0])) return null;
-  if (u < U.draft2[0]) {
-    const form = easeOut(seg(u, 0.6, 0.8));
-    const x = lerp(draftX(0), draftX(1), easeInOut(seg(u, 0.8, 1.2)));
-    const drop = easeOut(seg(u, 1.38, 1.6));
-    return { n: 1, x, y: DRAFT.y + 28 * drop, o: form * (1 - drop), test: u >= 1.2 };
-  }
-  const form = easeOut(seg(u, 2.2, 2.45));
-  const g = glide2(u);
-  return { n: 2, x: lerp(draftX(0), draftX(3), g), y: DRAFT.y, o: form, test: g >= 1 / 3 };
-}
-
-// each gate's state at u
-function gateAt(i: number, u: number): { state: string; text: string } {
-  const g = glide2(u);
-  if (i === 0) {
-    const on = (u >= 0.55 && u < 0.85) || (u >= 2.05 && u < GLIDE[0] + 0.05);
-    return { state: on ? "active" : u >= 0.6 ? "done" : "idle", text: u < 0.6 ? "waiting" : u < 2.2 ? "draft 1" : "draft 2" };
-  }
-  if (i === 1) {
-    if (u >= 1.2 && u < 2.2) return { state: "fail", text: u < 1.6 ? "test 1 fails" : "sent back" };
-    if (g >= 1 / 3) return { state: "pass", text: "passes" };
-    return { state: g >= 0.17 ? "active" : "idle", text: "—" };
-  }
-  // a gate is at work as the draft comes up to it, and done as it arrives
-  if (i === 2) return g >= 2 / 3 ? { state: "pass", text: "compared" } : { state: g >= 0.5 ? "active" : "idle", text: "—" };
-  return g >= 0.999 ? { state: "pass", text: "read" } : { state: g >= 0.84 ? "active" : "idle", text: "—" };
-}
 
 // text with the words beat 5 marks on their own (rule.ts) wrapped;
 // `within` is the marked phrase the text stands in, or null
@@ -208,6 +157,7 @@ export function LiveStory({ base = "", clock, bare = false }: { base?: string; c
     const gatesBox = $<HTMLElement>("[data-gates]");
     const gates = $$<HTMLElement>("[data-gate]");
     const gateText = gates.map((g) => g.querySelector<HTMLElement>("[data-gate-text]")!);
+    const asides = ASIDES.map((a) => $<HTMLElement>(`[data-aside="${a.id}"]`));
     const draft = $<HTMLElement>("[data-draft]");
     const draftName = $<HTMLElement>("[data-draft-name]");
     const draftRate = $<HTMLElement>("[data-draft-rate]");
@@ -240,21 +190,14 @@ export function LiveStory({ base = "", clock, bare = false }: { base?: string; c
     const clusters = $$<HTMLElement>("[data-cluster]");
     const clusterLabels = $$<HTMLElement>("[data-cluster-label]");
     const source = $<HTMLElement>("[data-source]");
+    const uses = $<HTMLElement>("[data-uses]");
     const users = $$<HTMLElement>("[data-user]");
     const beams = $$<SVGPathElement>("[data-beam]");
     const beamDots = $$<SVGCircleElement>("[data-beam-dot]");
 
-    // fixed geometry of the graph edges and beams
-    const mid = (id: GraphNodeId, side: "in" | "out") => {
-      const at = NODE_AT[id];
-      const b = nodeBox(id);
-      return { x: side === "out" ? at.x + b.w : at.x, y: at.y + b.h / 2 };
-    };
+    // fixed geometry of the graph edges (layout.ts edgeD) and beams
     GRAPH_EDGES.forEach(([a, b], i) => {
-      const p = mid(a, "out");
-      const q = mid(b, "in");
-      const dx = Math.max(30, (q.x - p.x) * 0.5);
-      const d = `M ${p.x} ${p.y} C ${p.x + dx} ${p.y}, ${q.x - dx} ${q.y}, ${q.x} ${q.y}`;
+      const d = edgeD(a, b);
       edgeBase[i].setAttribute("d", d);
       edgeLit[i].setAttribute("d", d);
     });
@@ -468,6 +411,9 @@ export function LiveStory({ base = "", clock, bare = false }: { base?: string; c
         attr(g, "data-state", st.state);
         text(gateText[i], st.text);
       });
+      // the steps off the rail never pass: the review reads draft 2 once
+      // it has passed checks, and the comparison stands apart throughout
+      ASIDES.forEach((a, i) => attr(asides[i], "data-state", asideAt(a.id, u)));
       // the text runs into encode as each draft is written
       const streamDraw = Math.max(easeInOut(seg(u, 0.45, 0.75)) * (1 - seg(u, 0.85, 1.05)), easeInOut(seg(u, 2.05, 2.3)) * (1 - seg(u, 2.4, 2.6)));
       if (streamDraw > 0.001) {
@@ -488,9 +434,10 @@ export function LiveStory({ base = "", clock, bare = false }: { base?: string; c
       pulse.style.opacity = String(pf > 0 && pf < 1 ? 1 : 0);
 
       // the draft card; at the end of beat 4 it grows into the code card
+      // from checks, the last gate it passed
       const d = draftAt(u);
       const grow = easeInOut(seg(u, U.t45[0], U.t45[1]));
-      const gx = lerp(draftX(3), CODE_CARD.x, grow);
+      const gx = lerp(draftX(LAST_GATE), CODE_CARD.x, grow);
       const gy = lerp(DRAFT.y, CODE_CARD.y, grow);
       if (u >= U.t45[0]) {
         place(draft, gx, gy, lerp(1, CODE_CARD.w / DRAFT.w, grow), 1 - seg(u, 4.1, 4.5));
@@ -616,8 +563,9 @@ export function LiveStory({ base = "", clock, bare = false }: { base?: string; c
         const fired = fu >= fire;
         el.style.setProperty("--fire", String(fired ? 1 - seg(fu, fire, fire + 0.45) : 0));
         attr(el, "data-fired", fired ? "1" : "0");
-        if (nd.id === "regular") text(nodeVal[j], fired ? `$${Math.round(CASE.result * easeOut(seg(fu, fire, fire + 0.3)))}` : "—");
-        else text(nodeVal[j], fired ? nd.value : "—");
+        // every node, the output too, shows its value once it fires: a
+        // count-up from $0 would read as a running sum beside its note
+        text(nodeVal[j], fired ? nd.value : "—");
       });
       const eIn = seg(u, 9.7, 9.95);
       const eOut = 1 - seg(u, U.t67[0], U.t67[0] + 0.3);
@@ -652,9 +600,12 @@ export function LiveStory({ base = "", clock, bare = false }: { base?: string; c
         clusterLabels[i].style.opacity = String(seg(u, 13.5 + dist * 0.4, 13.8 + dist * 0.4) * labelsOut);
       });
 
-      // ── beat 8: the cluster becomes the one source; beams to every kind of user
+      // ── beat 8: the cluster becomes the one source; beams to four
+      // potential uses, under their heading
       const scIn = easeOut(seg(u, 14.6, 15.0));
       place(source, SOURCE_CARD.x, SOURCE_CARD.y, lerp(0.92, 1, scIn), scIn);
+      const usesIn = easeOut(seg(u, 15.1, 15.4));
+      place(uses, USER_CARD.x + 18 * (1 - usesIn), USES_Y, 1, usesIn);
       USERS.forEach((_, i) => {
         const b = easeInOut(seg(u, 15.0 + i * 0.22, 15.35 + i * 0.22));
         beams[i].style.strokeDashoffset = String(1 - b);
@@ -744,7 +695,7 @@ export function LiveStory({ base = "", clock, bare = false }: { base?: string; c
         <div ref={stageRef} className="jl-stage jl-stage--paper jv-stage" data-bare={bare ? "" : undefined}>
           {/* beat 1: the library aisle, a 3D scene that fades into the page on every side */}
           <canvas data-aisle className="jv-aisle" aria-hidden />
-          <div ref={liveRef} className="jv-live" role="img" aria-label="A law book comes off the shelf, opens on section 2017(a) and becomes one addressed cell of the corpus; the section is encoded and checked, each value cites its words, the rules run as a graph to $182 for test case 1, join the runtime registry, and become one source for every kind of tool.">
+          <div ref={liveRef} className="jv-live" role="img" aria-label={STAGE_LABEL}>
             {/* beat 1: the block that takes Title 7's place and grows into the cover */}
             <div data-spine7 className="jv-spine7" style={{ width: SPINE7.w, height: SPINE7.h }} />
 
@@ -854,9 +805,10 @@ export function LiveStory({ base = "", clock, bare = false }: { base?: string; c
               </div>
             </article>
 
-            {/* beat 4: the gates */}
+            {/* beat 4: the gates a draft must pass on the rail; the AI review
+                and program comparison beside it, off the rail and with no mark */}
             <div data-gates className="jv-gates">
-              <span className="jv-rail" style={{ top: RAIL_Y, left: GATE_X[0] - 40, width: GATE_X[3] - GATE_X[0] + 120 }} />
+              <span className="jv-rail" style={{ top: RAIL_Y, left: RAIL.x0, width: RAIL.x1 - RAIL.x0 }} />
               {GATES.map((g, i) => (
                 <div key={g.name} data-gate data-state="idle" className="jv-gate" style={{ left: GATE_X[i] - GATE_W / 2, top: GATE_Y, width: GATE_W, height: GATE_H }}>
                   <span className="jv-gate__name">{g.name}</span>
@@ -864,6 +816,12 @@ export function LiveStory({ base = "", clock, bare = false }: { base?: string; c
                     —
                   </span>
                   <span className="jv-gate__mark" aria-hidden />
+                </div>
+              ))}
+              {ASIDES.map((a, i) => (
+                <div key={a.id} data-aside={a.id} data-state="idle" className="jv-aside" style={{ left: ASIDE.x, top: asideY(i), width: ASIDE.w, height: ASIDE.h }}>
+                  <span className="jv-aside__name">{a.name}</span>
+                  <span className="jv-aside__about">{a.about}</span>
                 </div>
               ))}
             </div>
@@ -898,8 +856,8 @@ export function LiveStory({ base = "", clock, bare = false }: { base?: string; c
             <article data-code className="jv-card jv-code" style={{ width: CODE_CARD.w, height: CODE_CARD.h }}>
               <div className="jv-bar">
                 <span>rulespec-us / us / statutes / 7 / 2017 / a.yaml</span>
-                <span>
-                  lines {RULE_LINES[0].n}–{RULE_LINES[RULE_LINES.length - 1].n}
+                <span data-code-meta>
+                  lines {RULE_LINES[0].n}–{RULE_LINES[RULE_LINES.length - 1].n} · {CODE_WAIVER_NOTE}
                 </span>
               </div>
               <ol className="jv-rule">
@@ -942,6 +900,8 @@ export function LiveStory({ base = "", clock, bare = false }: { base?: string; c
                   <span data-node-value className="jv-node__value">
                     —
                   </span>
+                  {/* the output takes the greater of its two inputs; shown once it fires */}
+                  {nd.id === "regular" && <span className="jv-node__note">{OUTPUT_NOTE}</span>}
                 </div>
               );
             })}
@@ -961,11 +921,11 @@ export function LiveStory({ base = "", clock, bare = false }: { base?: string; c
               </span>
             </div>
 
-            {/* beat 8: one source, every kind of user */}
+            {/* beat 8: one source, four potential uses */}
             <article data-source className="jv-card jv-source" style={{ width: SOURCE_CARD.w, height: SOURCE_CARD.h }}>
               <span className="jv-kicker">One source</span>
               <h3 className="jv-source__title">Encoded, cited rules</h3>
-              <p className="jv-source__about">Every value tied to the provision it comes from, effective-dated, in versioned releases.</p>
+              <p className="jv-source__about">{SOURCE_ABOUT}</p>
               <div className="jv-chips">
                 {["App", "API", "MCP", "Rust · Python · npm", "WASM"].map((c) => (
                   <span key={c} className="jv-chip-ui">
@@ -974,6 +934,9 @@ export function LiveStory({ base = "", clock, bare = false }: { base?: string; c
                 ))}
               </div>
             </article>
+            <h4 data-uses className="jv-kicker jv-uses">
+              {USES_HEADING}
+            </h4>
             {USERS.map((g) => (
               <a key={g.who} data-user href={href(g.href)} {...away} className="jv-card jv-user" style={{ width: USER_CARD.w, height: USER_CARD.h }}>
                 <span className="jv-user__who">{g.who}</span>
@@ -1075,6 +1038,7 @@ export function StaticStory({ base = "" }: { base?: string }) {
         {beat(
           3,
           <div className="js-card">
+            {/* the gates a draft must pass, each ticked */}
             <ol className="js-gates">
               {GATES.map((g) => (
                 <li key={g.name}>
@@ -1084,6 +1048,15 @@ export function StaticStory({ base = "" }: { base?: string }) {
                 </li>
               ))}
             </ol>
+            {/* below a dashed rule, the steps off the rail, with no tick */}
+            <ul className="js-asides">
+              {ASIDES.map((a) => (
+                <li key={a.id}>
+                  <span className="js-aside">{a.name}</span>
+                  <span className="js-gate__about">{a.about}</span>
+                </li>
+              ))}
+            </ul>
           </div>,
         )}
         {beat(
@@ -1108,7 +1081,10 @@ export function StaticStory({ base = "" }: { base?: string }) {
             <ol className="js-nodes">
               {byFire.map((nd) => (
                 <li key={nd.id} className={nd.id === "regular" ? "js-node js-node--hero" : "js-node"}>
-                  <span className="js-node__label">{NODE_NAME[nd.id]}</span>
+                  <span className="js-node__label">
+                    {NODE_NAME[nd.id]}
+                    {nd.id === "regular" && <span className="js-node__note">{OUTPUT_NOTE}</span>}
+                  </span>
                   <b>{nd.value}</b>
                 </li>
               ))}
@@ -1132,8 +1108,9 @@ export function StaticStory({ base = "" }: { base?: string }) {
             <article className="js-card">
               <span className="jv-kicker">One source</span>
               <h4>Encoded, cited rules</h4>
-              <p>Every value tied to the provision it comes from, effective-dated, in versioned releases.</p>
+              <p>{SOURCE_ABOUT}</p>
             </article>
+            <h4 className="jv-kicker js-uses">{USES_HEADING}</h4>
             {USERS.map((g) => (
               <a key={g.who} href={href(g.href)} {...away} className="js-card js-user">
                 <b>{g.who}</b>

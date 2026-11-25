@@ -7,7 +7,7 @@
 // (beats 1–3) hands over on the corpus address. Each transition carries one
 // element into the next beat: the draft becomes the code card, the code
 // lines become the graph's nodes, the graph becomes an amber cluster among
-// the registry's packages, and that cluster becomes the one source card.
+// other bodies of law, and that cluster becomes the one source card.
 
 import { CODE, type GraphNodeId } from "../journey-digital/data";
 
@@ -164,22 +164,90 @@ export const REST_AT = [
 ];
 
 // ── beat 4: the gates ──
+// The rail holds the steps a draft must pass before the encoder applies
+// it, and only those (axiom-encode caa46624, 2026-11-24): encode writes the
+// draft, and checks compile it, find its numbers and quotes in its source
+// and run its tests (the overlay validation in cmd_encode, built with
+// oracles off and reviewers skipped). A draft that fails checks goes back
+// to encode.
 export const STATUTE_CARD = { x: 40, y: 30, w: 460 };
 export const GATES = [
   { name: "encode", about: "An AI model drafts the rule" },
   { name: "checks", about: "It compiles, its sources ground, its tests pass" },
-  { name: "compare", about: "Against another calculator, where one covers the program" },
-  { name: "AI review", about: "One AI model reads the draft" },
 ] as const;
-export const GATE_X = [680, 830, 980, 1130]; // centres
+// Two more steps sit off the rail, so neither reads as one the draft must
+// pass, and neither ever shows a pass. The AI review reads a draft only
+// once its checks pass, and its verdict stops nothing unless the encoder
+// runs with --require-review, which is off by default and which no signed
+// or CI workflow sets (evals.py, cli.py). Program comparisons never run
+// inside encode or apply: axiom-oracles runs them on whole programs, on a
+// schedule, where another calculator covers the program.
+export const ASIDES = [
+  { id: "review", name: "AI review · advisory", about: "One AI model reads the draft. Its verdict does not stop the draft." },
+  { id: "compare", name: "Program comparison", about: "Runs separately, on whole programs, where another calculator covers them" },
+] as const;
+export type AsideId = (typeof ASIDES)[number]["id"];
+export const GATE_X = [680, 830]; // centres
 export const GATE_Y = 78; // top
 export const GATE_W = 132;
 export const GATE_H = 64;
 export const RAIL_Y = GATE_Y + GATE_H / 2;
+// the rail runs under encode and checks, and stops short of the asides
+export const RAIL = { x0: GATE_X[0] - 40, x1: GATE_X[GATE_X.length - 1] + 80 };
 export const DRAFT = { y: 200, w: 300, h: 240 };
 export const draftX = (gate: number) => GATE_X[gate] - DRAFT.w / 2;
+// the gate a passing draft stops at, and grows into the code card from
+export const LAST_GATE = GATE_X.length - 1;
+// the off-rail steps: a column right of the draft, below the rail's row
+export const ASIDE = { x: 1010, w: 240, h: 96, gap: 16, y0: DRAFT.y };
+export const asideY = (i: number) => ASIDE.y0 + i * (ASIDE.h + ASIDE.gap);
 // the check that sends draft 1 back, from checks round to encode
 export const LOOP_D = `M ${GATE_X[1]} ${GATE_Y} C ${GATE_X[1]} 14, ${GATE_X[0]} 14, ${GATE_X[0]} ${GATE_Y}`;
+
+// Draft 2 goes from encode to checks in one soft move, as draft 1 did, and
+// stops there: once it passes checks it is applied, and at t45 it grows
+// into the code card from that gate.
+export const MOVE2 = [2.45, 2.95] as const;
+// The AI review reads draft 2 after it passes checks. Draft 1 never
+// reaches it: the encoder skips the review when checks reject a draft.
+export const REVIEW_READ = [3.05, 3.45] as const;
+
+/** the draft card at u: where it is, which draft it holds, and whether its test shows */
+export function draftAt(u: number) {
+  if (u < U.draft1[0] || (u >= U.draft1[1] && u < U.draft2[0])) return null;
+  if (u < U.draft2[0]) {
+    const form = easeOut(seg(u, 0.6, 0.8));
+    const x = lerp(draftX(0), draftX(1), easeInOut(seg(u, 0.8, 1.2)));
+    const drop = easeOut(seg(u, 1.38, 1.6));
+    return { n: 1, x, y: DRAFT.y + 28 * drop, o: form * (1 - drop), test: u >= 1.2 };
+  }
+  const form = easeOut(seg(u, 2.2, 2.45));
+  const p = easeInOut(seg(u, MOVE2[0], MOVE2[1]));
+  return { n: 2, x: lerp(draftX(0), draftX(LAST_GATE), p), y: DRAFT.y, o: form, test: p >= 1 };
+}
+
+export type GateState = "idle" | "active" | "done" | "pass" | "fail";
+/** a gate on the rail at u: its state (which sets its mark) and its line */
+export function gateAt(i: number, u: number): { state: GateState; text: string } {
+  if (i === 0) {
+    const on = (u >= 0.55 && u < 0.85) || (u >= 2.05 && u < MOVE2[0] + 0.05);
+    return { state: on ? "active" : u >= 0.6 ? "done" : "idle", text: u < 0.6 ? "waiting" : u < 2.2 ? "draft 1" : "draft 2" };
+  }
+  if (u >= 1.2 && u < 2.2) return { state: "fail", text: u < 1.6 ? "test 1 fails" : "sent back" };
+  // at work as draft 2 comes up to it, passed as it arrives
+  const p = seg(u, MOVE2[0], MOVE2[1]);
+  if (p >= 1) return { state: "pass", text: "passes" };
+  return { state: p >= 0.5 ? "active" : "idle", text: "—" };
+}
+
+// An aside has no pass state, and its markup has no mark to draw one.
+export type AsideState = "idle" | "active" | "aside";
+/** an off-rail step at u: the review waits, reads draft 2, then stands aside; the comparison stands apart throughout */
+export function asideAt(id: AsideId, u: number): AsideState {
+  if (id === "compare") return "aside";
+  if (u < REVIEW_READ[0]) return "idle";
+  return u < REVIEW_READ[1] ? "active" : "aside";
+}
 
 // ── beat 5: the code card ──
 export const CODE_CARD = { x: 572, y: 30, w: 668, h: 560 };
@@ -212,6 +280,19 @@ export const NODE_AT: Record<GraphNodeId, { x: number; y: number }> = {
   before: { x: 840, y: 248 },
   regular: { x: 1070, y: 210 },
 };
+export const nodeBox = (id: GraphNodeId) => (id === "regular" ? HERO : { w: NODE_W, h: NODE_H });
+// An edge leaves its source's right middle and enters its target's left
+// middle. The output takes its two inputs at their own heights: the $182
+// line straight across from the card beside it, the $24 line lower, so it
+// runs below that card instead of behind it and reaches the output alone.
+const IN_DY: Partial<Record<GraphNodeId, Partial<Record<GraphNodeId, number>>>> = { regular: { minimum: 50 } };
+/** the path of the graph edge from a to b */
+export function edgeD(a: GraphNodeId, b: GraphNodeId) {
+  const p = { x: NODE_AT[a].x + nodeBox(a).w, y: NODE_AT[a].y + nodeBox(a).h / 2 };
+  const q = { x: NODE_AT[b].x, y: NODE_AT[b].y + nodeBox(b).h / 2 + (IN_DY[b]?.[a] ?? 0) };
+  const dx = Math.max(30, (q.x - p.x) * 0.5);
+  return `M ${p.x} ${p.y} C ${p.x + dx} ${p.y}, ${q.x - dx} ${q.y}, ${q.x} ${q.y}`;
+}
 // when each node takes its test-case value, in screens after the flow
 // starts: inputs first, then each rule once what it reads is known
 export const NODE_FIRE: Record<GraphNodeId, number> = {
@@ -227,7 +308,7 @@ export const NODE_FIRE: Record<GraphNodeId, number> = {
   regular: 1.85,
 };
 
-// ── beat 7: the registry ──
+// ── beat 7: the scope, by body of law ──
 // CLUSTERS carry their own map coordinates; this moves them into the stage
 export const clusterAt = (c: { x: number; y: number; r: number }) => ({ x: c.x - 120, y: c.y - 120, r: c.r * 0.85 });
 export const AMBER = { x: 640, y: 500, r: 34 };
@@ -247,12 +328,15 @@ export const PROGRAMS: Array<{ name: string; x: number; y: number; r: number }> 
   { name: "Child Nutrition Act", x: 150, y: 470, r: 62 },
 ];
 
-// ── beat 8: one source, four kinds of tool ──
+// ── beat 8: one source, four potential uses ──
 export const SOURCE_CARD = { x: 60, y: 140, w: 380, h: 300 };
-export const USER_CARD = { x: 760, w: 480, h: 112, gap: 138, y0: 37 };
+export const USER_CARD = { x: 760, w: 480, h: 108, gap: 130, y0: 64 };
+// the "Potential uses" heading over the four branches (11px type)
+export const USES_Y = 34;
 
 // The four kinds of tool, in the words of the journey film's last slide
-// (style-frames/lamplight2.ts GROUPS).
+// (style-frames/lamplight2.ts GROUPS). They are uses the rules could
+// serve, so the stage heads them "Potential uses".
 export const USERS: Array<{ who: string; items: string[]; href: string }> = [
   { who: "AI tools", items: ["The chatbots and assistants residents and staff already ask"], href: "/docs" },
   { who: "Government tools", items: ["Eligibility systems, caseworker guidance and training, and policy changes tested before they land"], href: "/validation" },
