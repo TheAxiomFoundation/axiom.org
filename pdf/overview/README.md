@@ -10,7 +10,14 @@ glyphs and never falls back to a system font.
 ```bash
 ./render.sh axiom-overview.html
 cp axiom-overview.pdf ../../public/Axiom-Foundation-Overview.pdf
+shasum -a 256 axiom-overview.html ../../public/Axiom-Foundation-Overview.pdf
 ```
+
+Put the two hashes in `published-pdf.json`. A test in
+`src/components/overview/overview.test.tsx` fails when the print source or the
+published PDF changes without the other, so a stale download can't ship
+behind updated HTML. The PDF's text is compressed, so the test can't read it;
+check it after rendering with `pdftotext -layout`.
 
 `render.sh` prints the page count. **This is a one-pager and must stay one
 page** — the site's download button literally says "Download 1-Page PDF". If a

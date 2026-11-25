@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react'
+import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, it, expect } from 'vitest'
@@ -112,6 +113,21 @@ describe('Overview page', () => {
       join(process.cwd(), 'public/Axiom-Foundation-Overview.pdf'),
     ).toString('latin1')
     expect(pdf.match(/\/Type \/Pages\b[\s\S]{0,200}?\/Count (\d+)/)?.[1]).toBe('1')
+  })
+
+  // The tests above read the print source; the download is a separate file.
+  // pdf/overview/published-pdf.json pins the pair, so a stale PDF (say, the
+  // CC BY version) can't ship behind updated HTML. See pdf/overview/README.md.
+  it('publishes the PDF rendered from the current print source', () => {
+    const sha = (path: string) =>
+      createHash('sha256').update(readFileSync(join(process.cwd(), path))).digest('hex')
+    const stamp = JSON.parse(
+      readFileSync(join(process.cwd(), 'pdf/overview/published-pdf.json'), 'utf8'),
+    )
+    expect({
+      html: sha('pdf/overview/axiom-overview.html'),
+      pdf: sha('public/Axiom-Foundation-Overview.pdf'),
+    }).toEqual({ html: stamp.html, pdf: stamp.pdf })
   })
 
   it('anchors the sections the PDF links back to', () => {
