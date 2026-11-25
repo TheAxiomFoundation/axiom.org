@@ -47,7 +47,10 @@ import {
   fetchProgramGraph,
   programKey,
   programRefFromSummary,
+  toLoadFailure,
+  type LoadFailure,
 } from "./api";
+import { LoadFailureNotice } from "./load-failure";
 import type { Country, DashboardSpec, LegalId, ParameterRule, ProgramGraph, ProgramRef, ProgramSummary, RuleNode, TraceNode } from "./types";
 import {
   composeRootOutput,
@@ -94,7 +97,9 @@ export function GraphViewerApp({
   const [graph, setGraph] = useState<ProgramGraph | null>(null);
   const [selectedOutputs, setSelectedOutputs] = useState<LegalId[]>([]);
   const surveyRef = useRef(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<LoadFailure | null>(null);
+  // Retries made since the last successful load; paces the Retry button.
+  const [retryAttempt, setRetryAttempt] = useState(0);
   const [programsLoading, setProgramsLoading] = useState(true);
   const [loading, setLoading] = useState(false);
   const [outputSearch, setOutputSearch] = useState("");
@@ -361,6 +366,10 @@ export function GraphViewerApp({
   // Re-reads the root catalog alone (not the graph) when the server's
   // relation set has moved under a roles run.
   const [catalogNonce, setCatalogNonce] = useState(0);
+  // Bumped by the load-failure Retry: re-reads the composed graph. Kept
+  // apart from reloadNonce, which "Retry loading inputs" also bumps while a
+  // graph is on screen.
+  const [composeReloadNonce, setComposeReloadNonce] = useState(0);
 
   const lastRunRequest = useRef<Record<string, unknown> | null>(null);
   // The results sheet's quick-adjust strip pages through answered
@@ -640,6 +649,9 @@ export function GraphViewerApp({
   const [runBlocked, setRunBlocked] = useState<string | null>(null);
   // The capability probe's refusal, in the gate's or runtime's own words.
   const [runUnavailableReason, setRunUnavailableReason] = useState<string | null>(null);
+  // The capability probe did not get an answer (outage, timeout): the run
+  // notice offers a retry, which a real refusal does not.
+  const [runCheckFailed, setRunCheckFailed] = useState(false);
 
   // Load the full program registry once; countries and the per-country program
   // list are derived from it, so a newly compiled program appears here with no
@@ -659,7 +671,7 @@ export function GraphViewerApp({
           );
       })
       .catch((err) => {
-        if (!cancelled) setError(String(err));
+        if (!cancelled) setError(reportLoadFailure(err));
       })
       .finally(() => {
         if (!cancelled) setProgramsLoading(false);
@@ -1575,6 +1587,7 @@ export function GraphViewerApp({
         if (cancelled) return;
         graphJustLoaded.current = true;
         setGraph(nextGraph);
+        setRetryAttempt(0);
         if (surveyPendingRef.current || !pendingFocusRef.current) {
           // The survey IS the default view: first render shows the
           // whole law (deep links with ?focus keep their scoped view).
@@ -1625,7 +1638,7 @@ export function GraphViewerApp({
         });
       })
       .catch((err) => {
-        if (!cancelled) setError(String(err));
+        if (!cancelled) setError(reportLoadFailure(err));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -1653,6 +1666,7 @@ export function GraphViewerApp({
         // them. The count no longer announces itself on the canvas.
         const { graph: filteredGraph } = filterStandaloneRules(composed.graph);
         setGraph(filteredGraph);
+        setRetryAttempt(0);
         setComposedFiles(composed.files);
         setComposedTruncated(composed.truncated);
         // No package registry backs a composed view; the graph's own
@@ -1744,7 +1758,7 @@ export function GraphViewerApp({
         );
       })
       .catch((err) => {
-        if (!cancelled) setError(String(err));
+        if (!cancelled) setError(reportLoadFailure(err));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -1752,7 +1766,9 @@ export function GraphViewerApp({
     return () => {
       cancelled = true;
     };
-  }, [composeFocus]);
+    // composeReloadNonce: the failure notice's Retry. Without it Retry
+    // cleared the notice and fetched nothing.
+  }, [composeFocus, composeReloadNonce]);
 
   // Compilation capability is independent of whether an empty household can
   // produce a result. The input catalog compiles without executing a scenario.
@@ -1764,6 +1780,7 @@ export function GraphViewerApp({
     catalogFocusRef.current = composeFocus;
     setRunBlocked(null);
     setRunUnavailableReason(null);
+    setRunCheckFailed(false);
     if (focusChanged) {
       setComposeRunReady(null);
       setRootRelations({ relations: [], mode: "convention" });
@@ -1789,8 +1806,16 @@ export function GraphViewerApp({
           return;
         }
         // Unavailability is not evidence that the encoding cannot execute.
-        // Leave it unknown so a transient outage does not poison the cache.
-        if (!cancelled) setComposeRunReady(null);
+        // Leave it unknown so a transient outage does not poison the cache,
+        // and say why the Run tab is absent instead of hiding it silently.
+        if (!cancelled) {
+          setComposeRunReady(null);
+          const failure = reportLoadFailure(error);
+          if (failure.kind === "unavailable") {
+            setRunUnavailableReason(failure.message);
+            setRunCheckFailed(true);
+          }
+        }
       });
     return () => { cancelled = true; };
   }, [composeFocus, reloadNonce, catalogNonce]);
@@ -2589,6 +2614,7 @@ export function GraphViewerApp({
             truncated={composedTruncated}
             runReady={runAffordanceReady}
             runUnavailableReason={runBlocked ?? runUnavailableReason}
+            onRunCheckRetry={runCheckFailed && !runBlocked ? () => setCatalogNonce((n) => n + 1) : undefined}
             onRun={() => void runScenario()}
             running={running}
             members={extraMembers}
@@ -2656,19 +2682,16 @@ export function GraphViewerApp({
             </div>
           )}
           {error && (
-            <div className="status error">
-              {error}
-              <button
-                type="button"
-                className="status-retry"
-                onClick={() => {
-                  setError(null);
-                  setReloadNonce((n) => n + 1);
-                }}
-              >
-                Retry
-              </button>
-            </div>
+            <LoadFailureNotice
+              failure={error}
+              attempt={retryAttempt}
+              onRetry={() => {
+                setRetryAttempt((n) => n + 1);
+                setError(null);
+                setReloadNonce((n) => n + 1);
+                setComposeReloadNonce((n) => n + 1);
+              }}
+            />
           )}
 
           {loading ? (
@@ -2727,7 +2750,7 @@ export function GraphViewerApp({
               selectedOutputIds={selectedSet}
             />
             </InputEditContext.Provider>
-          ) : (
+          ) : error ? null : (
             <div className="empty-state">Select at least one output to render its computation graph.</div>
           )}
         </div>
@@ -3486,6 +3509,14 @@ function buildStructureTraces(
       .filter((legalId) => rulesById.has(legalId))
       .map((legalId) => [legalId, nodeFor(legalId)]),
   );
+}
+
+/** The visitor-facing form of a failed load. The original error goes to
+ *  the console, where support can read the status, code and request id. */
+function reportLoadFailure(error: unknown): LoadFailure {
+  const failure = toLoadFailure(error);
+  console.warn("[axiom] load failed", failure.reference ?? "", error);
+  return failure;
 }
 
 function traceDtype(dtype: string | null): TraceNode["dtype"] {

@@ -386,6 +386,31 @@
   color: #8b2e25;
 }
 
+/* An outage on our side: calm, not an alarm. */
+.graph-viewer-root .status.unavailable{
+  border-color: var(--color-rule);
+  color: var(--color-ink-secondary);
+}
+
+.graph-viewer-root .status .status-title{
+  color: var(--color-ink);
+  font-weight: 600;
+  margin-right: 8px;
+}
+
+.graph-viewer-root .status .status-reference{
+  color: var(--color-ink-muted);
+  display: block;
+  font-size: 11.5px;
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+}
+
+.graph-viewer-root .status-retry:disabled{
+  cursor: default;
+  opacity: 0.6;
+}
+
 .graph-viewer-root .status.warning{
   border-color: #c89753;
   color: #7a541b;

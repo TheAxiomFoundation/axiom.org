@@ -177,6 +177,13 @@ export default async function SectionPage({
     if (browse && browse !== "unavailable" && browse.nodes.length > 0) {
       return shell(<BrowseView data={browse} />);
     }
+    // Nothing resolved AND the navigation index did not answer: the
+    // backend is down, so "does not exist" is not known. Say unavailable
+    // rather than a 404 for what may be a valid provision (2026-11-19: every
+    // section URL showed "404 This page could not be found").
+    if (!resolution && browse === "unavailable") {
+      return shell(<BrowseUnavailable path={decoded.join("/")} known={false} />);
+    }
   }
   if (!resolution) notFound();
 
