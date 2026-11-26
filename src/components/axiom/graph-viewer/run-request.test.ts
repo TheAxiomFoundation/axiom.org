@@ -1,3 +1,4 @@
+import fc from "fast-check";
 import { describe, it, expect } from "vitest";
 import { buildRunRequestBody, mergeRunBatches, runValueMaps, scenarioKey, traceRootIds, classifyRunRefusal } from "./run-request";
 import type { ProgramGraph, RuleNode } from "./types";
@@ -38,6 +39,22 @@ describe("buildRunRequestBody", () => {
         household_occupies_home: true,
       },
       variables: ["countable_resources"],
+    });
+  });
+
+  it("compose mode: a text answer travels verbatim (a Wellington district-plan zone)", () => {
+    const root = "nz:regulations/rma_district_plans/wellington_city/supermarket_zoning";
+    expect(
+      buildRunRequestBody(
+        `${root}#wcc_supermarket_activity_status`,
+        null,
+        { wcc_supermarket_zone: "MUZ", wcc_proposed_supermarket_gfa_m2: 2000 },
+        ["wcc_supermarket_activity_status"],
+      ),
+    ).toEqual({
+      root,
+      facts: { wcc_supermarket_zone: "MUZ", wcc_proposed_supermarket_gfa_m2: 2000 },
+      variables: ["wcc_supermarket_activity_status"],
     });
   });
 
@@ -116,6 +133,34 @@ describe("scenarioKey (explicit runs only — edits mark staleness)", () => {
   it("distinguishes boolean flips", () => {
     expect(scenarioKey({ occupies_home: true })).not.toBe(
       scenarioKey({ occupies_home: false }),
+    );
+  });
+
+  it("distinguishes text answers, and text from numbers", () => {
+    expect(scenarioKey({ wcc_supermarket_zone: "MUZ" })).not.toBe(
+      scenarioKey({ wcc_supermarket_zone: "CCZ" }),
+    );
+    expect(scenarioKey({ code: "1" })).not.toBe(scenarioKey({ code: 1 }));
+  });
+
+  it("is the same for any insertion order of the same answers (property)", () => {
+    const answers = fc.uniqueArray(
+      fc.tuple(
+        fc.stringMatching(/^[a-z][a-z0-9_]{0,8}$/),
+        fc.oneof(fc.integer(), fc.boolean(), fc.string({ maxLength: 6 })),
+      ),
+      { selector: ([name]) => name, maxLength: 8 },
+    );
+    fc.assert(
+      fc.property(answers, (entries) => {
+        const forward = Object.fromEntries(entries);
+        const backward = Object.fromEntries([...entries].reverse());
+        expect(scenarioKey(backward)).toBe(scenarioKey(forward));
+        expect(JSON.parse(scenarioKey(forward))).toEqual(
+          Object.entries(forward).sort(([a], [b]) => a.localeCompare(b)),
+        );
+      }),
+      { numRuns: 200, seed: 2026110312 },
     );
   });
 });
