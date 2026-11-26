@@ -394,7 +394,8 @@ describe("ProgramBundle", () => {
     ];
     render(<ProgramBundle bundle={withParts} documents={documents} snapshots={snapshots} available referenceMs={NOW} />);
     const headers = within(screen.getByRole("table", { name: "Parts of the program by tier" })).getAllByRole("columnheader");
-    expect(headers[1]).toHaveTextContent("Changed from 3 on Oct 5, 2026");
+    expect(headers[1]).toHaveTextContent("Scope changed from 3 documents on Oct 5, 2026");
+    expect(headers[1]).not.toHaveTextContent(/Changed from/);
     const panel = screen.getByRole("region", { name: "Documents" });
     fireEvent.click(within(panel).getByRole("button", { name: /^Federal statutes and public laws/ }));
     expect(within(panel).getByRole("button", { name: "7 USC 2014" }).closest("th")).toHaveTextContent(

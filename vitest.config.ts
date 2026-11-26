@@ -82,6 +82,9 @@ export default defineConfig({
         'src/components/landing/journey-lamplight/director.ts',
         'src/components/landing/journey-lamplight/beats.ts',
         'src/components/landing/journey-lamplight/journey-lamplight.tsx',
+        // the live journey's scroll driver (Lenis, ScrollTrigger, layout
+        // reads); its layout and clock (journey-live/layout.ts) stay covered
+        'src/components/landing/journey-live/journey-live.tsx',
         // the earlier canvas prototype, shown only on a dev preview page
         'src/components/landing/journey-digital/journey-digital.tsx',
         'src/components/landing/journey-digital/field.ts',

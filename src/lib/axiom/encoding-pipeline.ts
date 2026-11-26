@@ -595,14 +595,40 @@ export function cancelledBeforeEncode(attempt: PipelineAttempt): boolean {
 }
 
 /**
+ * How far a stage got, least first: where an attempt stopped (in ALL_STAGES
+ * order), then the stages still on the way, up to verified.
+ */
+const STAGE_DONENESS: PipelineStage[] = [
+  "encode_failed",
+  "no_pr",
+  "closed",
+  "merged_off_main",
+  "not_indexed",
+  "compile_failed",
+  "tests_failing",
+  "oracle_disagrees",
+  "encoding",
+  "review",
+  "awaiting_sync",
+  "indexed",
+  "runs",
+  "verified",
+];
+
+/**
  * The attempt a citation's status comes from: its newest of every source
  * (by attemptTime, so a module merged by hand counts from its merge),
  * passing over dispatches cancelled before their encode job started while
  * an earlier attempt exists, so a cancelled re-dispatch does not hide what
- * came before it.
+ * came before it. Attempts at the same time (several modules of one PR
+ * that encode the same provision) give the least advanced stage, so a
+ * citation never looks more done than its weakest module.
  */
 export function statusAttempt(attempts: PipelineAttempt[]): PipelineAttempt | null {
-  const sorted = [...attempts].sort(byTimeDesc);
+  const sorted = [...attempts].sort(
+    (a, b) =>
+      byTimeDesc(a, b) || STAGE_DONENESS.indexOf(attemptStage(a)) - STAGE_DONENESS.indexOf(attemptStage(b))
+  );
   return sorted.find((attempt) => !cancelledBeforeEncode(attempt)) ?? sorted[0] ?? null;
 }
 

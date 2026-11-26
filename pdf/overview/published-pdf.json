@@ -1,0 +1,5 @@
+{
+  "note": "sha256 of axiom-overview.html and of the PDF rendered from it and copied to public/Axiom-Foundation-Overview.pdf. Re-render and update both after any change to either (README.md, Rebuild).",
+  "html": "c425f69c658b54e83c2c287bbb3c3d072ef215a0f3d89a6b85acab1fa2852f2d",
+  "pdf": "eeb47390acdfed3af200eaabac28473ca4e46e7145f8fda9debc501ae8beff07"
+}

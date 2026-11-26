@@ -1,0 +1,1577 @@
+{
+  "_recorded": "2026-11-15, read-only, with the collector's own queries (scripts/collect-encoding-pipeline.mjs): manifestPrs are PR_QUERY search nodes, mergedPrs are listMergedPrs nodes with readPrFiles' files, sideBranchPrs the REST listing readBranchPrs reads, runs the dispatch runs listDispatchRuns keeps, mirror encodings.rulespec_files rows. rulespec-us#2202-#2204: the promotion lane's signed PRs (manifest only) into candidate branches, closed when merge train #2205 merged; #2192 into #2045's branch; #1347 a one-PR landing. rawYaml holds the YAML (encodings.rulespec_files.raw_yaml) of the modules whose citation depends on their declared source; ndAttempts are the collector's rows for rulespec-us#1112 (two us-nd modules merged at once), as its first version gave both us-nd/statute/57/57-38-30.3.",
+  "repo": "rulespec-us",
+  "defaultBranch": "main",
+  "runs": [
+    {
+      "id": 43376624427,
+      "display_title": "Targeted signed RuleSpec re-encode [adhoc:adhoc:adhoc] us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-11",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-11-13T06:08:29Z",
+      "run_started_at": "2026-11-13T06:08:29Z",
+      "updated_at": "2026-11-13T06:15:23Z",
+      "html_url": "https://github.com/TheAxiomFoundation/axiom-encode/actions/runs/43376624427",
+      "run_attempt": 1,
+      "triggering_actor": "PavelMakarchuk",
+      "head_sha": "f6d314a85a1a366e0753df485d25aeedb114b184"
+    },
+    {
+      "id": 43376652240,
+      "display_title": "Targeted signed RuleSpec re-encode [adhoc:adhoc:adhoc] us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-12",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-11-13T06:08:43Z",
+      "run_started_at": "2026-11-13T06:08:43Z",
+      "updated_at": "2026-11-13T06:15:45Z",
+      "html_url": "https://github.com/TheAxiomFoundation/axiom-encode/actions/runs/43376652240",
+      "run_attempt": 1,
+      "triggering_actor": "PavelMakarchuk",
+      "head_sha": "f6d314a85a1a366e0753df485d25aeedb114b184"
+    },
+    {
+      "id": 43376596010,
+      "display_title": "Targeted signed RuleSpec re-encode [adhoc:adhoc:adhoc] us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-7",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-11-13T06:08:14Z",
+      "run_started_at": "2026-11-13T06:08:14Z",
+      "updated_at": "2026-11-13T06:16:07Z",
+      "html_url": "https://github.com/TheAxiomFoundation/axiom-encode/actions/runs/43376596010",
+      "run_attempt": 1,
+      "triggering_actor": "PavelMakarchuk",
+      "head_sha": "f6d314a85a1a366e0753df485d25aeedb114b184"
+    },
+    {
+      "id": 43290017621,
+      "display_title": "Targeted signed RuleSpec re-encode [adhoc:adhoc:adhoc] us-az/manual/des/faa5/na-utility-expenses-and-allowances/block-13",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-11-12T19:25:30Z",
+      "run_started_at": "2026-11-12T19:25:30Z",
+      "updated_at": "2026-11-12T19:44:29Z",
+      "html_url": "https://github.com/TheAxiomFoundation/axiom-encode/actions/runs/43290017621",
+      "run_attempt": 1,
+      "triggering_actor": "PavelMakarchuk",
+      "head_sha": "2046572f51310d63b700a40c982bdf89fe9dfbd5"
+    },
+    {
+      "id": 34204901922,
+      "display_title": "Targeted signed RuleSpec re-encode [adhoc:adhoc:adhoc] us/statute/7/2015/f",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-09-08T08:30:50Z",
+      "run_started_at": "2026-09-08T08:30:50Z",
+      "updated_at": "2026-09-08T08:56:46Z",
+      "html_url": "https://github.com/TheAxiomFoundation/axiom-encode/actions/runs/34204901922",
+      "run_attempt": 1,
+      "triggering_actor": "PavelMakarchuk",
+      "head_sha": "1daadad265dc9eaa1ab737df87b453a5e5e0cb46"
+    }
+  ],
+  "manifestPrs": [
+    {
+      "number": 2202,
+      "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2202",
+      "title": "Add signed encoding manifest for us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-11",
+      "body": "## Signed apply manifest\n\nCitation: `us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-11`\nIndependent canonical refresh bundle: `[]`\nAtomic source bundle: `[]`\nExisting signed imports: `[]`\nDirect dependent: `n/a`\nSecond direct dependent: `n/a`\nExact legacy dependent: `n/a`\nSecond exact legacy dependent: `n/a`\nRetained successor legacy paths: `[]`\nRepair candidate run: `n/a`\nBase commit: `c7ad6bc45bd5f811cd9cd14c4807976d68644ca8`\nBase branch: `codex/az-medicare-premiums-reviewed`\nQueue item: `ad-hoc/ad-hoc`\nQueue generation SHA-256: `n/a`\nQueue manifest SHA-256: `n/a`\nAxiom Encode run: https://github.com/TheAxiomFoundation/axiom-encode/actions/runs/43376624427\n\nThis draft PR was produced by the protected country-general signed-apply workflow. Review all RuleSpec and manifest changes before marking it ready.",
+      "isDraft": true,
+      "state": "CLOSED",
+      "createdAt": "2026-11-13T06:15:15Z",
+      "mergedAt": null,
+      "closedAt": "2026-11-15T07:54:25Z",
+      "baseRefName": "codex/az-medicare-premiums-reviewed",
+      "headRefOid": "0af42960165a1eb7e7995b435a0130dc8d4864ab",
+      "mergeStateStatus": "CLEAN",
+      "repository": {
+        "name": "rulespec-us",
+        "defaultBranchRef": {
+          "name": "main"
+        }
+      },
+      "reviewDecision": null,
+      "mergeCommit": null,
+      "reviewRequests": {
+        "nodes": []
+      },
+      "reviews": {
+        "nodes": []
+      },
+      "timelineItems": {
+        "nodes": [
+          {
+            "source": {
+              "__typename": "PullRequest",
+              "number": 2205,
+              "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2205",
+              "state": "MERGED",
+              "isDraft": false,
+              "createdAt": "2026-11-13T06:20:36Z",
+              "mergedAt": "2026-11-15T07:53:48Z",
+              "baseRefName": "main",
+              "mergeCommit": {
+                "oid": "ccdfdcf7ceaba602065eb3a1d8da3a56d66bfbf7"
+              },
+              "repository": {
+                "name": "rulespec-us",
+                "defaultBranchRef": {
+                  "name": "main"
+                }
+              }
+            }
+          },
+          {
+            "source": {
+              "__typename": "PullRequest",
+              "number": 2046,
+              "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2046",
+              "state": "MERGED",
+              "isDraft": false,
+              "createdAt": "2026-11-05T23:43:08Z",
+              "mergedAt": "2026-11-15T07:53:50Z",
+              "baseRefName": "main",
+              "mergeCommit": {
+                "oid": "d5c3c4e2abe096fd1293b3a2e8e59b81a25e498e"
+              },
+              "repository": {
+                "name": "rulespec-us",
+                "defaultBranchRef": {
+                  "name": "main"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "commits": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "commit": {
+              "statusCheckRollup": null
+            }
+          }
+        ]
+      },
+      "files": {
+        "nodes": [
+          {
+            "path": ".axiom/encoding-manifests/us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-11.json"
+          }
+        ]
+      }
+    },
+    {
+      "number": 2203,
+      "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2203",
+      "title": "Add signed encoding manifest for us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-12",
+      "body": "## Signed apply manifest\n\nCitation: `us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-12`\nIndependent canonical refresh bundle: `[]`\nAtomic source bundle: `[]`\nExisting signed imports: `[]`\nDirect dependent: `n/a`\nSecond direct dependent: `n/a`\nExact legacy dependent: `n/a`\nSecond exact legacy dependent: `n/a`\nRetained successor legacy paths: `[]`\nRepair candidate run: `n/a`\nBase commit: `503386bc52e727e4ed01b285ff10373f3e8b7326`\nBase branch: `codex/az-medication-prescriptions-reviewed`\nQueue item: `ad-hoc/ad-hoc`\nQueue generation SHA-256: `n/a`\nQueue manifest SHA-256: `n/a`\nAxiom Encode run: https://github.com/TheAxiomFoundation/axiom-encode/actions/runs/43376652240\n\nThis draft PR was produced by the protected country-general signed-apply workflow. Review all RuleSpec and manifest changes before marking it ready.",
+      "isDraft": true,
+      "state": "CLOSED",
+      "createdAt": "2026-11-13T06:15:37Z",
+      "mergedAt": null,
+      "closedAt": "2026-11-15T07:54:28Z",
+      "baseRefName": "codex/az-medication-prescriptions-reviewed",
+      "headRefOid": "4e288ddb6423684d27384662af702a4778ac5e12",
+      "mergeStateStatus": "CLEAN",
+      "repository": {
+        "name": "rulespec-us",
+        "defaultBranchRef": {
+          "name": "main"
+        }
+      },
+      "reviewDecision": null,
+      "mergeCommit": null,
+      "reviewRequests": {
+        "nodes": []
+      },
+      "reviews": {
+        "nodes": []
+      },
+      "timelineItems": {
+        "nodes": [
+          {
+            "source": {
+              "__typename": "PullRequest",
+              "number": 2205,
+              "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2205",
+              "state": "MERGED",
+              "isDraft": false,
+              "createdAt": "2026-11-13T06:20:36Z",
+              "mergedAt": "2026-11-15T07:53:48Z",
+              "baseRefName": "main",
+              "mergeCommit": {
+                "oid": "ccdfdcf7ceaba602065eb3a1d8da3a56d66bfbf7"
+              },
+              "repository": {
+                "name": "rulespec-us",
+                "defaultBranchRef": {
+                  "name": "main"
+                }
+              }
+            }
+          },
+          {
+            "source": {
+              "__typename": "PullRequest",
+              "number": 2046,
+              "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2046",
+              "state": "MERGED",
+              "isDraft": false,
+              "createdAt": "2026-11-05T23:43:08Z",
+              "mergedAt": "2026-11-15T07:53:50Z",
+              "baseRefName": "main",
+              "mergeCommit": {
+                "oid": "d5c3c4e2abe096fd1293b3a2e8e59b81a25e498e"
+              },
+              "repository": {
+                "name": "rulespec-us",
+                "defaultBranchRef": {
+                  "name": "main"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "commits": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "commit": {
+              "statusCheckRollup": null
+            }
+          }
+        ]
+      },
+      "files": {
+        "nodes": [
+          {
+            "path": ".axiom/encoding-manifests/us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-12.json"
+          }
+        ]
+      }
+    },
+    {
+      "number": 2204,
+      "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2204",
+      "title": "Add signed encoding manifest for us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-7",
+      "body": "## Signed apply manifest\n\nCitation: `us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-7`\nIndependent canonical refresh bundle: `[]`\nAtomic source bundle: `[]`\nExisting signed imports: `[]`\nDirect dependent: `n/a`\nSecond direct dependent: `n/a`\nExact legacy dependent: `n/a`\nSecond exact legacy dependent: `n/a`\nRetained successor legacy paths: `[]`\nRepair candidate run: `n/a`\nBase commit: `d5c3c4e2abe096fd1293b3a2e8e59b81a25e498e`\nBase branch: `codex/az-medical-premiums-reviewed`\nQueue item: `ad-hoc/ad-hoc`\nQueue generation SHA-256: `n/a`\nQueue manifest SHA-256: `n/a`\nAxiom Encode run: https://github.com/TheAxiomFoundation/axiom-encode/actions/runs/43376596010\n\nThis draft PR was produced by the protected country-general signed-apply workflow. Review all RuleSpec and manifest changes before marking it ready.",
+      "isDraft": true,
+      "state": "CLOSED",
+      "createdAt": "2026-11-13T06:15:57Z",
+      "mergedAt": null,
+      "closedAt": "2026-11-15T07:54:30Z",
+      "baseRefName": "codex/az-medical-premiums-reviewed",
+      "headRefOid": "3e91d19f61d5312dfe6883afd8a1af35f144a450",
+      "mergeStateStatus": "CLEAN",
+      "repository": {
+        "name": "rulespec-us",
+        "defaultBranchRef": {
+          "name": "main"
+        }
+      },
+      "reviewDecision": null,
+      "mergeCommit": null,
+      "reviewRequests": {
+        "nodes": []
+      },
+      "reviews": {
+        "nodes": []
+      },
+      "timelineItems": {
+        "nodes": [
+          {
+            "source": {
+              "__typename": "PullRequest",
+              "number": 2205,
+              "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2205",
+              "state": "MERGED",
+              "isDraft": false,
+              "createdAt": "2026-11-13T06:20:36Z",
+              "mergedAt": "2026-11-15T07:53:48Z",
+              "baseRefName": "main",
+              "mergeCommit": {
+                "oid": "ccdfdcf7ceaba602065eb3a1d8da3a56d66bfbf7"
+              },
+              "repository": {
+                "name": "rulespec-us",
+                "defaultBranchRef": {
+                  "name": "main"
+                }
+              }
+            }
+          },
+          {
+            "source": {
+              "__typename": "PullRequest",
+              "number": 2046,
+              "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2046",
+              "state": "MERGED",
+              "isDraft": false,
+              "createdAt": "2026-11-05T23:43:08Z",
+              "mergedAt": "2026-11-15T07:53:50Z",
+              "baseRefName": "main",
+              "mergeCommit": {
+                "oid": "d5c3c4e2abe096fd1293b3a2e8e59b81a25e498e"
+              },
+              "repository": {
+                "name": "rulespec-us",
+                "defaultBranchRef": {
+                  "name": "main"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "commits": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "commit": {
+              "statusCheckRollup": null
+            }
+          }
+        ]
+      },
+      "files": {
+        "nodes": [
+          {
+            "path": ".axiom/encoding-manifests/us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-7.json"
+          }
+        ]
+      }
+    },
+    {
+      "number": 2192,
+      "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2192",
+      "title": "Add signed encoding manifest for us-az/manual/des/faa5/na-utility-expenses-and-allowances/block-13",
+      "body": "## Protected signed-manifest promotion\n\nCitation: `us-az/manual/des/faa5/na-utility-expenses-and-allowances/block-13`.\nProtected model-free promotion run: https://github.com/TheAxiomFoundation/axiom-encode/actions/runs/43290017621\nSigned head: `9a936d9b02d8dfe165ac4448c966c5bf5928e2da`.\nReviewed candidate base: `2b5d733287b4fbd3b2954f256e234296512323b9` on `codex/az-utility-installation-reviewed`.\n\nThis manifest-only PR was merged by PavelMakarchuk into the candidate branch at `9be9d91e55d4f717e4a272d31478bdaef3108929`. It was NOT retargeted to main. A concurrent retarget request was rejected after that merge; this description corrects the partially applied update. Final signed candidate review and CI now belong to #2045. This merge is not a merge into main or completion of Arizona SNAP.\n\nArtifact checksums verified. Committed manifest SHA-256 matches the artifact inventory: `b3ff5884ebdf58bdbe39193ba76eff58a9f3d1f24ec5e734142d4bac5c71c4f8`. Rule and companion bytes are unchanged. This is model-free promotion, not new generation or retrospective authentication of historical local generation.\n\nManual non-default-branch CI run 43293469002 was rejected by protected input policy before validation; it is not a validation pass. No gate was disabled or retry dispatched. Full program behavior and matched oracle parity remain separate requirements.",
+      "isDraft": false,
+      "state": "MERGED",
+      "createdAt": "2026-11-12T19:44:21Z",
+      "mergedAt": "2026-11-12T19:47:35Z",
+      "closedAt": "2026-11-12T19:47:35Z",
+      "baseRefName": "codex/az-utility-installation-reviewed",
+      "headRefOid": "9a936d9b02d8dfe165ac4448c966c5bf5928e2da",
+      "mergeStateStatus": "UNKNOWN",
+      "repository": {
+        "name": "rulespec-us",
+        "defaultBranchRef": {
+          "name": "main"
+        }
+      },
+      "reviewDecision": null,
+      "mergeCommit": {
+        "oid": "9be9d91e55d4f717e4a272d31478bdaef3108929"
+      },
+      "reviewRequests": {
+        "nodes": [
+          {
+            "requestedReviewer": {
+              "__typename": "User",
+              "login": "MaxGhenis"
+            }
+          }
+        ]
+      },
+      "reviews": {
+        "nodes": []
+      },
+      "timelineItems": {
+        "nodes": []
+      },
+      "commits": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "commit": {
+              "statusCheckRollup": null
+            }
+          }
+        ]
+      },
+      "files": {
+        "nodes": [
+          {
+            "path": ".axiom/encoding-manifests/us-az/policies/des/faa5/na-utility-expenses-and-allowances/block-13.json"
+          }
+        ]
+      }
+    },
+    {
+      "number": 1347,
+      "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/1347",
+      "title": "Add signed encoding manifest for us/statute/7/2015/f",
+      "body": "## Signed apply manifest\n\nCitation: `us/statute/7/2015/f`\nIndependent canonical refresh bundle: `[]`\nAtomic source bundle: `[]`\nExisting signed imports: `[]`\nDirect dependent: `n/a`\nSecond direct dependent: `n/a`\nExact legacy dependent: `n/a`\nSecond exact legacy dependent: `n/a`\nRetained successor legacy paths: `[]`\nRepair candidate run: `n/a`\nBase commit: `adc9fbaa8a6e61244b8f00295c7cde3d58858adb`\nBase branch: `main`\nQueue item: `ad-hoc/ad-hoc`\nQueue generation SHA-256: `n/a`\nQueue manifest SHA-256: `n/a`\nAxiom Encode run: https://github.com/TheAxiomFoundation/axiom-encode/actions/runs/34204901922\n\nThis draft PR was produced by the protected country-general signed-apply workflow. Review all RuleSpec and manifest changes before marking it ready.",
+      "isDraft": false,
+      "state": "MERGED",
+      "createdAt": "2026-09-08T08:56:38Z",
+      "mergedAt": "2026-09-08T12:29:01Z",
+      "closedAt": "2026-09-08T12:29:01Z",
+      "baseRefName": "main",
+      "headRefOid": "dc92e7bbed4373412b1452199500ea919641e116",
+      "mergeStateStatus": "UNKNOWN",
+      "repository": {
+        "name": "rulespec-us",
+        "defaultBranchRef": {
+          "name": "main"
+        }
+      },
+      "reviewDecision": null,
+      "mergeCommit": {
+        "oid": "38d5c8c516f9243cedf8e07a22f96dde9ac66fe3"
+      },
+      "reviewRequests": {
+        "nodes": []
+      },
+      "reviews": {
+        "nodes": []
+      },
+      "timelineItems": {
+        "nodes": [
+          {
+            "source": {
+              "__typename": "PullRequest",
+              "number": 1329,
+              "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/1329",
+              "state": "CLOSED",
+              "isDraft": true,
+              "createdAt": "2026-09-04T07:32:23Z",
+              "mergedAt": null,
+              "baseRefName": "main",
+              "mergeCommit": null,
+              "repository": {
+                "name": "rulespec-us",
+                "defaultBranchRef": {
+                  "name": "main"
+                }
+              }
+            }
+          },
+          {
+            "source": {
+              "__typename": "PullRequest",
+              "number": 1346,
+              "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/1346",
+              "state": "CLOSED",
+              "isDraft": true,
+              "createdAt": "2026-09-08T08:26:06Z",
+              "mergedAt": null,
+              "baseRefName": "main",
+              "mergeCommit": null,
+              "repository": {
+                "name": "rulespec-us",
+                "defaultBranchRef": {
+                  "name": "main"
+                }
+              }
+            }
+          },
+          {
+            "source": {
+              "__typename": "PullRequest",
+              "number": 1345,
+              "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/1345",
+              "state": "CLOSED",
+              "isDraft": true,
+              "createdAt": "2026-09-07T21:50:53Z",
+              "mergedAt": null,
+              "baseRefName": "main",
+              "mergeCommit": null,
+              "repository": {
+                "name": "rulespec-us",
+                "defaultBranchRef": {
+                  "name": "main"
+                }
+              }
+            }
+          },
+          {
+            "source": {
+              "__typename": "PullRequest",
+              "number": 1331,
+              "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/1331",
+              "state": "CLOSED",
+              "isDraft": true,
+              "createdAt": "2026-09-04T13:30:10Z",
+              "mergedAt": null,
+              "baseRefName": "main",
+              "mergeCommit": null,
+              "repository": {
+                "name": "rulespec-us",
+                "defaultBranchRef": {
+                  "name": "main"
+                }
+              }
+            }
+          },
+          {
+            "source": {
+              "__typename": "PullRequest",
+              "number": 1330,
+              "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/1330",
+              "state": "CLOSED",
+              "isDraft": true,
+              "createdAt": "2026-09-04T11:00:05Z",
+              "mergedAt": null,
+              "baseRefName": "main",
+              "mergeCommit": null,
+              "repository": {
+                "name": "rulespec-us",
+                "defaultBranchRef": {
+                  "name": "main"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "commits": {
+        "totalCount": 2,
+        "nodes": [
+          {
+            "commit": {
+              "statusCheckRollup": {
+                "state": "SUCCESS",
+                "contexts": {
+                  "nodes": [
+                    {
+                      "__typename": "CheckRun",
+                      "name": "workflow-toolchain",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102000561429,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:01:16Z",
+                      "completedAt": "2026-09-08T09:01:23Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "reverse-index",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102000558461,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:00:05Z",
+                      "completedAt": "2026-09-08T09:01:15Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "build",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102000558829,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:00:05Z",
+                      "completedAt": "2026-09-08T12:28:37Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "publish",
+                      "conclusion": "SKIPPED",
+                      "databaseId": 102061110372,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T12:28:38Z",
+                      "completedAt": "2026-09-08T12:28:37Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / shards",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102000976320,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:01:25Z",
+                      "completedAt": "2026-09-08T09:01:35Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "source-staleness (report-only)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102000558661,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:00:04Z",
+                      "completedAt": "2026-09-08T09:02:45Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-ak)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033454,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:02:20Z",
+                      "completedAt": "2026-09-08T10:16:29Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-al)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033419,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:10:26Z",
+                      "completedAt": "2026-09-08T09:27:39Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-ar)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033414,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:12:48Z",
+                      "completedAt": "2026-09-08T09:31:10Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-az)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033500,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:17:40Z",
+                      "completedAt": "2026-09-08T09:33:05Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-ca)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033395,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:01:37Z",
+                      "completedAt": "2026-09-08T09:19:16Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-co)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033452,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:10:22Z",
+                      "completedAt": "2026-09-08T09:28:31Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-ct)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033536,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:12:51Z",
+                      "completedAt": "2026-09-08T09:31:47Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-dc)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033551,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:15:30Z",
+                      "completedAt": "2026-09-08T09:31:21Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-de)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033481,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:11:43Z",
+                      "completedAt": "2026-09-08T09:29:56Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-fl)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033517,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:02:46Z",
+                      "completedAt": "2026-09-08T09:19:50Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-ga)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033407,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:08:34Z",
+                      "completedAt": "2026-09-08T09:24:42Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-hi)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033460,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:12:32Z",
+                      "completedAt": "2026-09-08T09:29:16Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-ia)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033532,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:14:07Z",
+                      "completedAt": "2026-09-08T09:29:41Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-id)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033553,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:16:08Z",
+                      "completedAt": "2026-09-08T09:34:42Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-il)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033594,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:14:26Z",
+                      "completedAt": "2026-09-08T09:32:02Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-in)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033647,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:15:34Z",
+                      "completedAt": "2026-09-08T09:33:46Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-ks)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033837,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:19:18Z",
+                      "completedAt": "2026-09-08T09:32:23Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-ky)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033684,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:15:30Z",
+                      "completedAt": "2026-09-08T09:40:51Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-la)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033638,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:18:45Z",
+                      "completedAt": "2026-09-08T09:34:36Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-ma)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033506,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:12:58Z",
+                      "completedAt": "2026-09-08T09:31:46Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-md)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033571,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:14:01Z",
+                      "completedAt": "2026-09-08T09:31:20Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-me)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033743,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:15:44Z",
+                      "completedAt": "2026-09-08T09:34:45Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-mi)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033616,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:12:02Z",
+                      "completedAt": "2026-09-08T09:29:23Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-mn)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033681,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:17:12Z",
+                      "completedAt": "2026-09-08T09:33:49Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-mo)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033586,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:14:56Z",
+                      "completedAt": "2026-09-08T09:32:48Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-ms)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033611,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:13:10Z",
+                      "completedAt": "2026-09-08T09:32:01Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-mt)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033807,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:15:00Z",
+                      "completedAt": "2026-09-08T09:29:07Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-nc)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033650,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:12:14Z",
+                      "completedAt": "2026-09-08T09:26:18Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-nd)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033771,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:15:53Z",
+                      "completedAt": "2026-09-08T09:35:10Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-ne)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033778,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:18:01Z",
+                      "completedAt": "2026-09-08T09:35:11Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-nh)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033733,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:13:07Z",
+                      "completedAt": "2026-09-08T09:29:23Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-nj)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033822,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:14:45Z",
+                      "completedAt": "2026-09-08T11:11:24Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-nm)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033806,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:15:54Z",
+                      "completedAt": "2026-09-08T09:41:59Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-nv)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033717,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:13:06Z",
+                      "completedAt": "2026-09-08T09:29:39Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-ny)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033766,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:16:22Z",
+                      "completedAt": "2026-09-08T09:35:12Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-oh)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033772,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:14:22Z",
+                      "completedAt": "2026-09-08T09:30:13Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-ok)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033725,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:10:53Z",
+                      "completedAt": "2026-09-08T09:27:29Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-or)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033699,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:14:24Z",
+                      "completedAt": "2026-09-08T09:34:10Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-pa)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033777,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:14:19Z",
+                      "completedAt": "2026-09-08T09:33:23Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-ri)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033846,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:14:50Z",
+                      "completedAt": "2026-09-08T09:33:00Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-sc)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001034003,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:16:12Z",
+                      "completedAt": "2026-09-08T09:35:09Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-sd)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033696,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:10:32Z",
+                      "completedAt": "2026-09-08T09:27:59Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-tn)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033756,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:15:02Z",
+                      "completedAt": "2026-09-08T09:33:10Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-tx)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001034023,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:17:47Z",
+                      "completedAt": "2026-09-08T09:35:11Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-ut)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033813,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:12:59Z",
+                      "completedAt": "2026-09-08T09:29:47Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-va)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033801,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:14:43Z",
+                      "completedAt": "2026-09-08T09:30:50Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-vt)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033935,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:16:16Z",
+                      "completedAt": "2026-09-08T09:33:19Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-wa)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033868,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:16:04Z",
+                      "completedAt": "2026-09-08T09:29:16Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-wi)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033852,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:14:07Z",
+                      "completedAt": "2026-09-08T09:31:49Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-wv)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033820,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:13:07Z",
+                      "completedAt": "2026-09-08T09:25:26Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us-wy)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033898,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:14:27Z",
+                      "completedAt": "2026-09-08T09:32:34Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate (us)",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102001033917,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T09:14:14Z",
+                      "completedAt": "2026-09-08T09:31:41Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "validate / validate",
+                      "conclusion": "SUCCESS",
+                      "databaseId": 102038608386,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T11:11:27Z",
+                      "completedAt": "2026-09-08T11:11:29Z"
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "drift-alarm",
+                      "conclusion": "SKIPPED",
+                      "databaseId": 102038631398,
+                      "status": "COMPLETED",
+                      "startedAt": "2026-09-08T11:11:29Z",
+                      "completedAt": "2026-09-08T11:11:29Z"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      },
+      "files": {
+        "nodes": [
+          {
+            "path": ".axiom/encoding-manifests/us/statutes/7/2015/f.json"
+          },
+          {
+            "path": ".axiom/index/provisions_to_rules.json"
+          },
+          {
+            "path": "us/statutes/7/2015/f.test.yaml"
+          },
+          {
+            "path": "us/statutes/7/2015/f.yaml"
+          }
+        ]
+      }
+    }
+  ],
+  "mergedPrs": [
+    {
+      "number": 2205,
+      "title": "Merge train: 3 signed Arizona SNAP medical modules (FAA5 medical expenses blocks 7, 11, 12)",
+      "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2205",
+      "createdAt": "2026-11-13T06:20:36Z",
+      "mergedAt": "2026-11-15T07:53:48Z",
+      "updatedAt": "2026-11-15T07:53:48Z",
+      "baseRefName": "main",
+      "author": {
+        "login": "PavelMakarchuk"
+      },
+      "mergeCommit": {
+        "oid": "ccdfdcf7ceaba602065eb3a1d8da3a56d66bfbf7"
+      },
+      "files": {
+        "pageInfo": {
+          "hasNextPage": false,
+          "endCursor": "OQ"
+        },
+        "nodes": [
+          {
+            "path": ".axiom/encoding-manifests/us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-11.json",
+            "changeType": "ADDED"
+          },
+          {
+            "path": ".axiom/encoding-manifests/us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-12.json",
+            "changeType": "ADDED"
+          },
+          {
+            "path": ".axiom/encoding-manifests/us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-7.json",
+            "changeType": "ADDED"
+          },
+          {
+            "path": "us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-11.test.yaml",
+            "changeType": "ADDED"
+          },
+          {
+            "path": "us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-11.yaml",
+            "changeType": "ADDED"
+          },
+          {
+            "path": "us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-12.test.yaml",
+            "changeType": "ADDED"
+          },
+          {
+            "path": "us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-12.yaml",
+            "changeType": "ADDED"
+          },
+          {
+            "path": "us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-7.test.yaml",
+            "changeType": "ADDED"
+          },
+          {
+            "path": "us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-7.yaml",
+            "changeType": "ADDED"
+          }
+        ]
+      }
+    },
+    {
+      "number": 2045,
+      "title": "Stage protected-generated Arizona SNAP utility installation fees",
+      "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2045",
+      "createdAt": "2026-11-05T22:36:18Z",
+      "mergedAt": "2026-11-13T01:41:55Z",
+      "updatedAt": "2026-11-13T01:41:55Z",
+      "baseRefName": "main",
+      "author": {
+        "login": "PavelMakarchuk"
+      },
+      "mergeCommit": {
+        "oid": "8081f0cc69a7c5a566325061b7e210f765809a96"
+      },
+      "files": {
+        "pageInfo": {
+          "hasNextPage": false,
+          "endCursor": "Mw"
+        },
+        "nodes": [
+          {
+            "path": ".axiom/encoding-manifests/us-az/policies/des/faa5/na-utility-expenses-and-allowances/block-13.json",
+            "changeType": "ADDED"
+          },
+          {
+            "path": "us-az/policies/des/faa5/na-utility-expenses-and-allowances/block-13.test.yaml",
+            "changeType": "ADDED"
+          },
+          {
+            "path": "us-az/policies/des/faa5/na-utility-expenses-and-allowances/block-13.yaml",
+            "changeType": "ADDED"
+          }
+        ]
+      }
+    },
+    {
+      "number": 2046,
+      "title": "Arizona SNAP medical insurance premiums: protected reviewed candidate",
+      "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2046",
+      "createdAt": "2026-11-05T23:43:08Z",
+      "mergedAt": "2026-11-15T07:53:50Z",
+      "updatedAt": "2026-11-15T07:53:50Z",
+      "baseRefName": "main",
+      "author": {
+        "login": "PavelMakarchuk"
+      },
+      "mergeCommit": {
+        "oid": "d5c3c4e2abe096fd1293b3a2e8e59b81a25e498e"
+      },
+      "files": {
+        "pageInfo": {
+          "hasNextPage": false,
+          "endCursor": "Mg"
+        },
+        "nodes": [
+          {
+            "path": "us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-7.test.yaml",
+            "changeType": "ADDED"
+          },
+          {
+            "path": "us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-7.yaml",
+            "changeType": "ADDED"
+          }
+        ]
+      }
+    },
+    {
+      "number": 2047,
+      "title": "Arizona SNAP Medicare premiums: protected reviewed candidate",
+      "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2047",
+      "createdAt": "2026-11-05T23:51:24Z",
+      "mergedAt": "2026-11-15T07:53:50Z",
+      "updatedAt": "2026-11-15T07:53:50Z",
+      "baseRefName": "main",
+      "author": {
+        "login": "PavelMakarchuk"
+      },
+      "mergeCommit": {
+        "oid": "c7ad6bc45bd5f811cd9cd14c4807976d68644ca8"
+      },
+      "files": {
+        "pageInfo": {
+          "hasNextPage": false,
+          "endCursor": "Mg"
+        },
+        "nodes": [
+          {
+            "path": "us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-11.test.yaml",
+            "changeType": "ADDED"
+          },
+          {
+            "path": "us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-11.yaml",
+            "changeType": "ADDED"
+          }
+        ]
+      }
+    },
+    {
+      "number": 2048,
+      "title": "Arizona SNAP medication expenses: protected reviewed candidate",
+      "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2048",
+      "createdAt": "2026-11-06T02:23:59Z",
+      "mergedAt": "2026-11-15T07:53:50Z",
+      "updatedAt": "2026-11-15T07:53:50Z",
+      "baseRefName": "main",
+      "author": {
+        "login": "PavelMakarchuk"
+      },
+      "mergeCommit": {
+        "oid": "503386bc52e727e4ed01b285ff10373f3e8b7326"
+      },
+      "files": {
+        "pageInfo": {
+          "hasNextPage": false,
+          "endCursor": "Mg"
+        },
+        "nodes": [
+          {
+            "path": "us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-12.test.yaml",
+            "changeType": "ADDED"
+          },
+          {
+            "path": "us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-12.yaml",
+            "changeType": "ADDED"
+          }
+        ]
+      }
+    }
+  ],
+  "sideBranchPrs": {
+    "codex/az-utility-installation-reviewed": [
+      {
+        "number": 2045,
+        "html_url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2045",
+        "state": "closed",
+        "draft": false,
+        "created_at": "2026-11-05T22:36:18Z",
+        "merged_at": "2026-11-13T01:41:55Z",
+        "merge_commit_sha": "8081f0cc69a7c5a566325061b7e210f765809a96"
+      }
+    ]
+  },
+  "mirror": [
+    {
+      "repo": "rulespec-us",
+      "jurisdiction": "us",
+      "file_path": "policies/income_tax/salt_deduction_pipeline.yaml",
+      "citation_path": "us/policy/income_tax/salt_deduction_pipeline",
+      "synced_at": "2026-11-16T00:46:24.897+00:00",
+      "raw_yaml_sha256": "81d049791e96d949b63b0b7599f88b4767ab4c68d5e05389d49ead70afb063b8",
+      "commit_sha": "8231711fd2f69eae7d63c59082fa285d5b6927d9",
+      "value_citation_paths": [
+        "us/statute/26/164"
+      ]
+    },
+    {
+      "repo": "rulespec-us",
+      "jurisdiction": "us",
+      "file_path": "regulations/7-cfr/273/11/c.yaml",
+      "citation_path": "us/regulation/7/273/11/c",
+      "synced_at": "2026-11-16T00:46:31.526+00:00",
+      "raw_yaml_sha256": "6827c4cc35619aa8780e53f85ddcc79454e17813bb2a5d5294e73f07e08d9b55",
+      "commit_sha": "8231711fd2f69eae7d63c59082fa285d5b6927d9",
+      "value_citation_paths": [
+        "us/regulation/7/273/11"
+      ]
+    },
+    {
+      "repo": "rulespec-us",
+      "jurisdiction": "us",
+      "file_path": "statutes/26/63/c.yaml",
+      "citation_path": "us/statute/26/63/c",
+      "synced_at": "2026-11-16T00:46:39.15+00:00",
+      "raw_yaml_sha256": "fbc6f30c840556e4303536a7f2f0bd47bb3612cc2beb30e0bb4ac2f6ac45bbba",
+      "commit_sha": "8231711fd2f69eae7d63c59082fa285d5b6927d9",
+      "value_citation_paths": [
+        "us/statute/26/63"
+      ]
+    },
+    {
+      "repo": "rulespec-us",
+      "jurisdiction": "us",
+      "file_path": "statutes/7/2015/f.yaml",
+      "citation_path": "us/statute/7/2015/f",
+      "synced_at": "2026-11-16T00:46:41.698+00:00",
+      "raw_yaml_sha256": "a2d4205551c6e79f7e7ed62e4fdd349faaf265811d69bc04686674555195b5aa",
+      "commit_sha": "8231711fd2f69eae7d63c59082fa285d5b6927d9",
+      "value_citation_paths": [
+        "us/statute/7/2015/f",
+        "us/guidance/usda/fns/snap-obbb-alien-eligibility-implementation-memo/page-3"
+      ]
+    },
+    {
+      "repo": "rulespec-us",
+      "jurisdiction": "us-az",
+      "file_path": "policies/des/faa5/na-medical-expenses-and-deduction/block-11.yaml",
+      "citation_path": "us-az/policy/des/faa5/na-medical-expenses-and-deduction/block-11",
+      "synced_at": "2026-11-16T00:45:29.984+00:00",
+      "raw_yaml_sha256": "2b06c1a2eca9dc5d9620bbc71c4fe63d7c0ddcba295ba0790f85567b4fb18836",
+      "commit_sha": "8231711fd2f69eae7d63c59082fa285d5b6927d9",
+      "value_citation_paths": [
+        "us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-11"
+      ]
+    },
+    {
+      "repo": "rulespec-us",
+      "jurisdiction": "us-az",
+      "file_path": "policies/des/faa5/na-medical-expenses-and-deduction/block-12.yaml",
+      "citation_path": "us-az/policy/des/faa5/na-medical-expenses-and-deduction/block-12",
+      "synced_at": "2026-11-16T00:45:29.972+00:00",
+      "raw_yaml_sha256": "69362b8386a0b18e6f4d2c31f3aa76902db85342a049502f6433b3cfb6200911",
+      "commit_sha": "8231711fd2f69eae7d63c59082fa285d5b6927d9",
+      "value_citation_paths": [
+        "us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-12"
+      ]
+    },
+    {
+      "repo": "rulespec-us",
+      "jurisdiction": "us-az",
+      "file_path": "policies/des/faa5/na-medical-expenses-and-deduction/block-7.yaml",
+      "citation_path": "us-az/policy/des/faa5/na-medical-expenses-and-deduction/block-7",
+      "synced_at": "2026-11-16T00:45:30.004+00:00",
+      "raw_yaml_sha256": "45e68dc15e3a797f19b894d4a9c01efdaa25758edaa51f0b133f71f8d2d518e9",
+      "commit_sha": "8231711fd2f69eae7d63c59082fa285d5b6927d9",
+      "value_citation_paths": [
+        "us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-7"
+      ]
+    },
+    {
+      "repo": "rulespec-us",
+      "jurisdiction": "us-az",
+      "file_path": "policies/des/faa5/na-utility-expenses-and-allowances/block-13.yaml",
+      "citation_path": "us-az/policy/des/faa5/na-utility-expenses-and-allowances/block-13",
+      "synced_at": "2026-11-16T00:45:29.998+00:00",
+      "raw_yaml_sha256": "fdc77ab91cf52ea7e0ac9fab8f72bfff5116dc84a41cd8b6bad3eced05486580",
+      "commit_sha": "8231711fd2f69eae7d63c59082fa285d5b6927d9",
+      "value_citation_paths": [
+        "us-az/manual/des/faa5/na-utility-expenses-and-allowances/block-13"
+      ]
+    },
+    {
+      "repo": "rulespec-us",
+      "jurisdiction": "us-nc",
+      "file_path": "statutes/105/105-153.5/a.yaml",
+      "citation_path": "us-nc/statute/105/105-153.5/a",
+      "synced_at": "2026-11-16T00:46:11.939+00:00",
+      "raw_yaml_sha256": "348ea8867b2972d5f990b17f0c0e5ab6f686738350eda6d8b072787d16be1ce9",
+      "commit_sha": "8231711fd2f69eae7d63c59082fa285d5b6927d9",
+      "value_citation_paths": [
+        "us-nc/statute/105/105-153.5"
+      ]
+    },
+    {
+      "repo": "rulespec-us",
+      "jurisdiction": "us-nc",
+      "file_path": "statutes/105/105-153.5/a1.yaml",
+      "citation_path": "us-nc/statute/105/105-153.5/a1",
+      "synced_at": "2026-11-16T00:46:11.965+00:00",
+      "raw_yaml_sha256": "64d3f29c9d1ee3a17dd3ed9b7fc6687eaa4077bc5dd5c6e3df8442a6fe251bb3",
+      "commit_sha": "8231711fd2f69eae7d63c59082fa285d5b6927d9",
+      "value_citation_paths": [
+        "us-nc/statute/105/105-153.5"
+      ]
+    },
+    {
+      "repo": "rulespec-us",
+      "jurisdiction": "us-nc",
+      "file_path": "statutes/105/105-153.5/b.yaml",
+      "citation_path": "us-nc/statute/105/105-153.5/b",
+      "synced_at": "2026-11-16T00:46:11.96+00:00",
+      "raw_yaml_sha256": "5b8a5488491993f4b8bc62417d581db1a87b5a86d988806684c8d4a1a3a07e59",
+      "commit_sha": "8231711fd2f69eae7d63c59082fa285d5b6927d9",
+      "value_citation_paths": [
+        "us-nc/statute/105/105-153.5"
+      ]
+    },
+    {
+      "repo": "rulespec-us",
+      "jurisdiction": "us-nd",
+      "file_path": "policies/income_tax/2026_nd1es_estimated_schedule.yaml",
+      "citation_path": "us-nd/policy/income_tax/2026_nd1es_estimated_schedule",
+      "synced_at": "2026-11-16T00:46:12.019+00:00",
+      "raw_yaml_sha256": "31fc3dea8582fa5bc08d9f609197e2f69a2691a08479e934a699c6ef15de11dc",
+      "commit_sha": "8231711fd2f69eae7d63c59082fa285d5b6927d9",
+      "value_citation_paths": [
+        "us-nd/statute/57/57-38-30.3"
+      ]
+    },
+    {
+      "repo": "rulespec-us",
+      "jurisdiction": "us-nd",
+      "file_path": "policies/income_tax/resident_core_liability_pipeline.yaml",
+      "citation_path": "us-nd/policy/income_tax/resident_core_liability_pipeline",
+      "synced_at": "2026-11-16T00:46:12.04+00:00",
+      "raw_yaml_sha256": "1070ee4cd88d4bca31feaed6447c4d665e86e6f1333fede05a336d62966d69bb",
+      "commit_sha": "8231711fd2f69eae7d63c59082fa285d5b6927d9",
+      "value_citation_paths": [
+        "us-nd/statute/57/57-38-30.3"
+      ]
+    }
+  ],
+  "rawYaml": {
+    "rulespec-us:us/policies/income_tax/salt_deduction_pipeline.yaml": "format: rulespec/v1\nmodule:\n  proof_validation:\n    required: true\n  source_verification:\n    corpus_citation_paths:\n      - us/statute/26/164\n      - us/statute/26/911\n      - us/statute/26/931\n      - us/statute/26/933\n      - us/statute/26/2\n      - us/statute/26/7703\n    upstream_source_check:\n      status: composed_from_grounded_modules\n      checked_paths:\n        - us/statute/26/164\n        - us/statute/26/911\n        - us/statute/26/931\n        - us/statute/26/933\n        - us/statute/26/2\n        - us/statute/26/7703\n      rationale: |-\n        Section 164 supplies the imported 2026 cap, MAGI threshold, phaseout\n        rate, floor, and married-separate fraction. Sections 911, 931, and 933\n        supply the imported exclusion amounts added back to adjusted gross\n        income. Sections 2 and 7703 anchor the caller-resolved filing-status\n        boundary. This composition locally performs only the section\n        164(b)(6)-(7) status selection, phaseout, and lesser-of arithmetic.\n  summary: |-\n    Fail-closed federal individual state-and-local-tax deduction composition\n    for tax year 2026 under 26 USC 164.\n\n    The three supplied tax amounts are completed personal deductions: the\n    income-or-sales-tax amount already reflects the section 164(b)(5)\n    election; the personal-property amount is an annual ad valorem tax; and\n    the real-property amount is already assigned to this taxpayer. The caller\n    attests that business and section 212 taxes, acquisition-capitalized\n    taxes, refunded amounts, and nondeductible taxes are absent.\n\n    The imported section 911 amount is Person-level, so this module aggregates\n    it through the explicit `salt_section_911_individual_of_tax_unit`\n    relation. The caller attests that the relation contains every individual\n    whose section 911 exclusion belongs to the TaxUnit. Sections 931 and 933\n    already expose TaxUnit amounts.\n\n    Filing status uses the federal pipeline convention: 0 single, 1 joint,\n    2 married filing separately, 3 head of household, and 4 surviving spouse.\n    Any other status, negative completed tax amount, false boundary\n    attestation, or incomplete section 911 relation makes the verified-domain\n    judgment fail and every local amount return zero. No PolicyEngine\n    simulation-only adjusted-gross-income ceiling is part of this legal\n    formula.\nimports:\n  - us:statutes/26/164#applicable_limitation_amount_for_taxable_year_beginning_in_calendar_year_2026\n  - us:statutes/26/164#modified_adjusted_gross_income_phaseout_rate\n  - us:statutes/26/164#modified_adjusted_gross_income_threshold_for_taxable_year_beginning_in_calendar_year_2026\n  - us:statutes/26/164#applicable_limitation_amount_phaseout_floor\n  - us:statutes/26/164#married_separate_applicable_limitation_fraction\n  - us:statutes/26/911/a#section_911_amount_excluded_from_gross_income\n  - us:statutes/26/931#amount_excluded_from_gross_income_under_section_931\n  - us:statutes/26/933#income_excluded_from_gross_income_under_section_933\nrules:\n  - name: salt_section_911_individual_of_tax_unit\n    kind: data_relation\n    data_relation:\n      predicate: salt_section_911_individual_of_tax_unit\n      arity: 2\n      arguments:\n        - TaxUnit\n        - Person\n\n  - name: salt_deduction_pipeline_verified_domain_applies\n    kind: derived\n    entity: TaxUnit\n    dtype: Judgment\n    period: Year\n    source: 26 USC 164(a), (b)(5)-(7), and (c), fail-closed completed-personal-tax boundary\n    metadata:\n      private: true\n      proof:\n        atoms:\n          - path: versions[0].formula\n            kind: condition\n            source:\n              corpus_citation_path: us/statute/26/164\n              excerpt: \"State and local, and foreign, real property taxes.\"\n          - path: versions[0].formula\n            kind: condition\n            source:\n              corpus_citation_path: us/statute/26/164\n              excerpt: \"State and local personal property taxes.\"\n          - path: versions[0].formula\n            kind: condition\n            source:\n              corpus_citation_path: us/statute/26/164\n              excerpt: \"State and local, and foreign, income, war profits, and excess profits taxes.\"\n          - path: versions[0].formula\n            kind: exception\n            source:\n              corpus_citation_path: us/statute/26/164\n              excerpt: \"which are paid or accrued in carrying on a trade or business or an activity described in section 212\"\n          - path: versions[0].formula\n            kind: exception\n            source:\n              corpus_citation_path: us/statute/26/164\n              excerpt: \"paid or accrued by the taxpayer in connection with an acquisition or disposition of property shall be treated as part of the cost of the acquired property or, in the case of a disposition, as a reduction in the amount realized on the disposition\"\n          - path: versions[0].formula\n            kind: exception\n            source:\n              corpus_citation_path: us/statute/26/164\n              excerpt: \"No deduction shall be allowed for the following taxes\"\n          - path: versions[0].formula\n            kind: condition\n            source:\n              corpus_citation_path: us/statute/26/164\n              excerpt: \"half the applicable limitation amount in the case of a married individual filing a separate return\"\n    versions:\n      - effective_from: '2026-01-01'\n        effective_to: '2026-12-31'\n        formula: |-\n          (\n            filing_status == 0\n            or filing_status == 1\n            or filing_status == 2\n            or filing_status == 3\n            or filing_status == 4\n          )\n          and state_and_local_sales_or_income_tax >= 0\n          and state_and_local_personal_property_tax >= 0\n          and real_estate_taxes >= 0\n          and completed_personal_tax_amounts_exclude_business_and_section_212_taxes\n          and completed_personal_tax_amounts_exclude_acquisition_capitalized_taxes\n          and completed_personal_tax_amounts_are_net_of_refunds\n          and completed_personal_tax_amounts_exclude_nondeductible_taxes\n          and section_911_exclusion_relation_includes_every_tax_unit_individual\n\n  - name: federal_section_911_exclusion_for_salt_magi\n    kind: derived\n    entity: TaxUnit\n    dtype: Money\n    period: Year\n    unit: USD\n    source: 26 USC 164(b)(7)(B)(iv), TaxUnit aggregate of imported section 911 exclusions\n    metadata:\n      proof:\n        atoms:\n          - path: versions[0].formula\n            kind: import\n            import:\n              target: us:statutes/26/911/a#section_911_amount_excluded_from_gross_income\n              output: section_911_amount_excluded_from_gross_income\n              hash: sha256:b128d251a0f74fc46a27e516e864e53c8d25442f5b419c7bb3bb4b607542d725\n          - path: versions[0].formula\n            kind: import\n            import:\n              target: us:policies/income_tax/salt_deduction_pipeline#salt_deduction_pipeline_verified_domain_applies\n              output: salt_deduction_pipeline_verified_domain_applies\n              hash: sha256:local\n          - path: versions[0].formula\n            kind: formula\n            source:\n              corpus_citation_path: us/statute/26/164\n              excerpt: \"increased by any amount excluded from gross income under section 911, 931, or 933\"\n    versions:\n      - effective_from: '2026-01-01'\n        effective_to: '2026-12-31'\n        formula: |-\n          if salt_deduction_pipeline_verified_domain_applies:\n            sum_where(\n              salt_section_911_individual_of_tax_unit,\n              section_911_amount_excluded_from_gross_income,\n              individual_is_qualified_individual\n            )\n          else:\n            0\n\n  - name: federal_salt_deduction\n    kind: derived\n    entity: TaxUnit\n    dtype: Money\n    period: Year\n    unit: USD\n    source: 26 USC 164(a), (b)(5)-(7), guarded 2026 personal SALT deduction\n    metadata:\n      proof:\n        atoms:\n          - path: versions[0].formula\n            kind: import\n            import:\n              target: us:statutes/26/164#applicable_limitation_amount_for_taxable_year_beginning_in_calendar_year_2026\n              output: applicable_limitation_amount_for_taxable_year_beginning_in_calendar_year_2026\n              hash: sha256:b2117d82bb081394e0656beecce4ced901a1f3035c9039291da61c599dbd5dc3\n          - path: versions[0].formula\n            kind: import\n            import:\n              target: us:statutes/26/164#modified_adjusted_gross_income_phaseout_rate\n              output: modified_adjusted_gross_income_phaseout_rate\n              hash: sha256:b2117d82bb081394e0656beecce4ced901a1f3035c9039291da61c599dbd5dc3\n          - path: versions[0].formula\n            kind: import\n            import:\n              target: us:statutes/26/164#modified_adjusted_gross_income_threshold_for_taxable_year_beginning_in_calendar_year_2026\n              output: modified_adjusted_gross_income_threshold_for_taxable_year_beginning_in_calendar_year_2026\n              hash: sha256:b2117d82bb081394e0656beecce4ced901a1f3035c9039291da61c599dbd5dc3\n          - path: versions[0].formula\n            kind: import\n            import:\n              target: us:statutes/26/164#applicable_limitation_amount_phaseout_floor\n              output: applicable_limitation_amount_phaseout_floor\n              hash: sha256:b2117d82bb081394e0656beecce4ced901a1f3035c9039291da61c599dbd5dc3\n          - path: versions[0].formula\n            kind: import\n            import:\n              target: us:statutes/26/164#married_separate_applicable_limitation_fraction\n              output: married_separate_applicable_limitation_fraction\n              hash: sha256:b2117d82bb081394e0656beecce4ced901a1f3035c9039291da61c599dbd5dc3\n          - path: versions[0].formula\n            kind: import\n            import:\n              target: us:policies/income_tax/salt_deduction_pipeline#federal_section_911_exclusion_for_salt_magi\n              output: federal_section_911_exclusion_for_salt_magi\n              hash: sha256:local\n          - path: versions[0].formula\n            kind: import\n            import:\n              target: us:statutes/26/931#amount_excluded_from_gross_income_under_section_931\n              output: amount_excluded_from_gross_income_under_section_931\n              hash: sha256:1fa430ea6a413cdaea822ffd05121d78a82954e52929f5a8e48a80c85249c295\n          - path: versions[0].formula\n            kind: import\n            import:\n              target: us:statutes/26/933#income_excluded_from_gross_income_under_section_933\n              output: income_excluded_from_gross_income_under_section_933\n              hash: sha256:e9b939801362efae757d1886823555c38a5f4ea828538308fe531f3619adc72f\n          - path: versions[0].formula\n            kind: import\n            import:\n              target: us:policies/income_tax/salt_deduction_pipeline#salt_deduction_pipeline_verified_domain_applies\n              output: salt_deduction_pipeline_verified_domain_applies\n              hash: sha256:local\n          - path: versions[0].formula\n            kind: formula\n            source:\n              corpus_citation_path: us/statute/26/164\n              excerpt: \"the aggregate amount of taxes taken into account under paragraphs (1), (2), and (3) of subsection (a) and paragraph (5) of this subsection\"\n          - path: versions[0].formula\n            kind: definition\n            source:\n              corpus_citation_path: us/statute/26/164\n              excerpt: \"the term “modified adjusted gross income” means adjusted gross income increased by any amount excluded from gross income under section 911, 931, or 933\"\n          - path: versions[0].formula\n            kind: formula\n            source:\n              corpus_citation_path: us/statute/26/164\n              excerpt: \"the applicable limitation amount shall be reduced by 30 percent of the excess (if any) of the taxpayer’s modified adjusted gross income over the threshold amount (half the threshold amount in the case of a married individual filing a separate return)\"\n          - path: versions[0].formula\n            kind: formula\n            source:\n              corpus_citation_path: us/statute/26/164\n              excerpt: \"shall not result in the applicable limitation amount being less than $10,000\"\n          - path: versions[0].formula\n            kind: formula\n            source:\n              corpus_citation_path: us/statute/26/164\n              excerpt: \"shall not exceed the applicable limitation amount\"\n    versions:\n      - effective_from: '2026-01-01'\n        effective_to: '2026-12-31'\n        formula: |-\n          if salt_deduction_pipeline_verified_domain_applies:\n            if filing_status == 2:\n              min(\n                max(\n                  0,\n                  state_and_local_sales_or_income_tax\n                  + state_and_local_personal_property_tax\n                  + real_estate_taxes\n                ),\n                max(\n                  applicable_limitation_amount_phaseout_floor\n                  * married_separate_applicable_limitation_fraction,\n                  max(\n                    0,\n                    (\n                      applicable_limitation_amount_for_taxable_year_beginning_in_calendar_year_2026\n                      * married_separate_applicable_limitation_fraction\n                    )\n                    - modified_adjusted_gross_income_phaseout_rate\n                    * max(\n                      0,\n                      adjusted_gross_income\n                      + federal_section_911_exclusion_for_salt_magi\n                      + amount_excluded_from_gross_income_under_section_931\n                      + income_excluded_from_gross_income_under_section_933\n                      - (\n                        modified_adjusted_gross_income_threshold_for_taxable_year_beginning_in_calendar_year_2026\n                        * married_separate_applicable_limitation_fraction\n                      )\n                    )\n                  )\n                )\n              )\n            else:\n              min(\n                max(\n                  0,\n                  state_and_local_sales_or_income_tax\n                  + state_and_local_personal_property_tax\n                  + real_estate_taxes\n                ),\n                max(\n                  applicable_limitation_amount_phaseout_floor,\n                  max(\n                    0,\n                    applicable_limitation_amount_for_taxable_year_beginning_in_calendar_year_2026\n                    - modified_adjusted_gross_income_phaseout_rate\n                    * max(\n                      0,\n                      adjusted_gross_income\n                      + federal_section_911_exclusion_for_salt_magi\n                      + amount_excluded_from_gross_income_under_section_931\n                      + income_excluded_from_gross_income_under_section_933\n                      - modified_adjusted_gross_income_threshold_for_taxable_year_beginning_in_calendar_year_2026\n                    )\n                  )\n                )\n              )\n          else:\n            0\ninputs:\n  - name: filing_status\n    entity: TaxUnit\n    dtype: Integer\n    period: Year\n    description: Resolved federal filing-status code; 0 single, 1 joint, 2 married filing separately, 3 head of household, 4 surviving spouse.\n  - name: state_and_local_sales_or_income_tax\n    entity: TaxUnit\n    dtype: Money\n    period: Year\n    unit: USD\n    description: Completed deductible personal state/local income-or-elected-general-sales-tax amount under section 164(a)(3) and (b)(5).\n  - name: state_and_local_personal_property_tax\n    entity: TaxUnit\n    dtype: Money\n    period: Year\n    unit: USD\n    description: Completed annual ad valorem state/local personal-property tax under section 164(a)(2), (b)(1), and (b)(2).\n  - name: real_estate_taxes\n    entity: TaxUnit\n    dtype: Money\n    period: Year\n    unit: USD\n    description: Completed deductible personal state/local real-property tax assigned to this taxpayer.\n  - name: adjusted_gross_income\n    entity: TaxUnit\n    dtype: Money\n    period: Year\n    unit: USD\n    description: Completed-return adjusted gross income before the section 164(b)(7)(B)(iv) addbacks.\n  - name: completed_personal_tax_amounts_exclude_business_and_section_212_taxes\n    entity: TaxUnit\n    dtype: Judgment\n    period: Year\n    description: Holds only when the three completed personal-tax amounts exclude taxes paid or accrued in a trade or business or section 212 activity.\n  - name: completed_personal_tax_amounts_exclude_acquisition_capitalized_taxes\n    entity: TaxUnit\n    dtype: Judgment\n    period: Year\n    description: Holds only when acquisition/disposition taxes capitalized into basis or amount realized are excluded.\n  - name: completed_personal_tax_amounts_are_net_of_refunds\n    entity: TaxUnit\n    dtype: Judgment\n    period: Year\n    description: Holds only when refunded or reimbursed tax amounts are absent from the completed paid-or-accrued amounts.\n  - name: completed_personal_tax_amounts_exclude_nondeductible_taxes\n    entity: TaxUnit\n    dtype: Judgment\n    period: Year\n    description: Holds only when taxes denied by section 164(c) or another applicable denial are excluded.\n  - name: section_911_exclusion_relation_includes_every_tax_unit_individual\n    entity: TaxUnit\n    dtype: Judgment\n    period: Year\n    description: Holds only when salt_section_911_individual_of_tax_unit contains every Person whose imported section 911 exclusion belongs to this TaxUnit.\n",
+    "rulespec-us:us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-11.yaml": "format: rulespec/v1\nmodule:\n  summary: |-\n    Medicare insurance premiums for participants who are eligible to receive Social Security Administration (SSA) benefits are allowable. The premium is not allowed when paid by the State of Arizona.\n  source_verification:\n    corpus_citation_path: us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-11\n    source_sha256: bcca71638873f357d02fd1d309e06fb4061aa724153cb16bfd7d238415a8274a\n  proof_validation:\n    required: true\ninputs:\n  - name: snap_medicare_premium_component_is_medicare_insurance\n    entity: Payment\n    dtype: Boolean\n    period: Month\n  - name: snap_medicare_premium_participant_social_security_benefit_eligible\n    entity: Payment\n    dtype: Boolean\n    period: Month\n  - name: snap_medicare_premium_component_paid_by_state_of_arizona\n    entity: Payment\n    dtype: Boolean\n    period: Month\nrules:\n  - name: snap_medicare_premium_component_allowable\n    kind: derived\n    entity: Payment\n    dtype: Judgment\n    period: Month\n    source: Arizona DES FAA5, NA Medical Expenses and Deduction, block 11\n    metadata:\n      proof:\n        atoms:\n          - path: versions[0].formula\n            kind: formula\n            source:\n              corpus_citation_path: us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-11\n              excerpt: \"Medicare insurance premiums for participants who are eligible to receive Social Security Administration (SSA) benefits are allowable.\"\n          - path: versions[0].formula\n            kind: exception\n            source:\n              corpus_citation_path: us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-11\n              excerpt: \"The premium is not allowed when paid by the State of Arizona.\"\n      component_scope: Each Payment row represents a separately identified premium component; mixed invoices require separate component rows. This rule does not allocate mixed premiums.\n      caller_obligations: Participant deduction eligibility, billing and ownership, out-of-pocket treatment, verification, timing, and prevention of duplicate counting remain outside this component judgment.\n      temporal_scope: August 2026 is the first full month of evidence coverage following the July 17 snapshot, not a legal commencement date.\n    versions:\n      - effective_from: '2026-08-01'\n        formula: |-\n          snap_medicare_premium_component_is_medicare_insurance\n          and snap_medicare_premium_participant_social_security_benefit_eligible\n          and not snap_medicare_premium_component_paid_by_state_of_arizona\n",
+    "rulespec-us:us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-12.yaml": "format: rulespec/v1\nmodule:\n  summary: |-\n    Any of the following expenses are allowable deductions:\n    Any of the following purchases are not allowed as a deduction:\n  source_verification:\n    corpus_citation_path: us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-12\n    source_sha256: 18f988ddde33cce8ca2d958d2903d41d98c13969d66fd615845811f85c594418\n  proof_validation:\n    required: true\ninputs:\n  - name: component_is_prescription_drug\n    entity: Payment\n    dtype: Boolean\n    period: Month\n  - name: component_is_over_the_counter_medication_purchase\n    entity: Payment\n    dtype: Boolean\n    period: Month\n  - name: medication_purchase_is_approved\n    entity: Payment\n    dtype: Boolean\n    period: Month\n  - name: approving_source_is_us_source\n    entity: Payment\n    dtype: Boolean\n    period: Month\n  - name: approving_source_is_medically_qualified\n    entity: Payment\n    dtype: Boolean\n    period: Month\n  - name: component_is_shipping_handling_or_postage\n    entity: Payment\n    dtype: Boolean\n    period: Month\n  - name: delivery_is_for_prescription_drugs\n    entity: Payment\n    dtype: Boolean\n    period: Month\n  - name: prescription_order_is_mail_order_or_online\n    entity: Payment\n    dtype: Boolean\n    period: Month\n  - name: component_is_purchasable_with_na_benefits\n    entity: Payment\n    dtype: Boolean\n    period: Month\n  - name: component_is_special_diet\n    entity: Payment\n    dtype: Boolean\n    period: Month\n  - name: component_is_medicinal_marijuana\n    entity: Payment\n    dtype: Boolean\n    period: Month\nrules:\n  - name: snap_medication_expense_component_allowable\n    kind: derived\n    entity: Payment\n    dtype: Judgment\n    period: Month\n    source: Arizona DES FAA5, NA Medical Expenses and Deduction, block-12\n    metadata:\n      proof:\n        atoms:\n          - path: versions[0].formula\n            kind: condition\n            source:\n              corpus_citation_path: us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-12\n              excerpt: \"Any of the following expenses are allowable deductions:\"\n          - path: versions[0].formula\n            kind: formula\n            source:\n              corpus_citation_path: us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-12\n              excerpt: \"Prescription drugs.\"\n          - path: versions[0].formula\n            kind: formula\n            source:\n              corpus_citation_path: us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-12\n              excerpt: \"Over-the-counter medication purchases (including insulin) can be allowed as medical deductions when approved by a U.S. medically qualified source(g) .\"\n          - path: versions[0].formula\n            kind: formula\n            source:\n              corpus_citation_path: us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-12\n              excerpt: \"Shipping, handling and postage for mail order or online prescription drugs.\"\n          - path: versions[0].formula\n            kind: exception\n            source:\n              corpus_citation_path: us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-12\n              excerpt: \"Any of the following purchases are not allowed as a deduction:\"\n          - path: versions[0].formula\n            kind: exception\n            source:\n              corpus_citation_path: us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-12\n              excerpt: \"Any item that can be purchased with NA benefits.\"\n          - path: versions[0].formula\n            kind: exception\n            source:\n              corpus_citation_path: us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-12\n              excerpt: \"Any item that is considered as a special diet.\"\n          - path: versions[0].formula\n            kind: exception\n            source:\n              corpus_citation_path: us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-12\n              excerpt: \"Medicinal marijuana(g).\"\n    versions:\n      - effective_from: '2026-08-01'\n        formula: |-\n          (\n            component_is_prescription_drug\n            or (\n              component_is_over_the_counter_medication_purchase\n              and medication_purchase_is_approved\n              and approving_source_is_us_source\n              and approving_source_is_medically_qualified\n            )\n            or (\n              component_is_shipping_handling_or_postage\n              and delivery_is_for_prescription_drugs\n              and prescription_order_is_mail_order_or_online\n            )\n          )\n          and not component_is_purchasable_with_na_benefits\n          and not component_is_special_diet\n          and not component_is_medicinal_marijuana\n",
+    "rulespec-us:us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-7.yaml": "format: rulespec/v1\nmodule:\n  summary: |-\n    Medical and hospitalization insurance premiums intended to cover medical expenses are allowable.\n    When a group policy does not specify how much of a premium is for each person, the amount is divided among those included in the policy.\n    Only the portion of the insurance premium assigned to the elderly or participant with a disability is budgeted.\n    Costs for accident and disability insurance benefits are not allowed including any of the following:\n  source_verification:\n    corpus_citation_path: us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-7\n    source_sha256: 46a75aac92ff0edd02e007374c5ebd70671eed3adc60b83ced45d6b30f683f6b\n  proof_validation:\n    required: true\n  # Evidence coverage starts with the first full month after the authenticated\n  # snapshot. This is not a finding of legal commencement.\n  # No output is supplied for periods before this coverage floor.\n  #\n  # Consumer contract:\n  # Evaluate once per insured person and separately identified premium component.\n  # Component categories describe that same component, not the entire policy.\n  # An unitemized mixed medical/accident/disability premium must first be resolved\n  # externally; this module does not invent a component split.\n  # For unspecified group allocations, component_premium covers all insured\n  # people and insured_person_count includes every insured person, including\n  # people outside the household and people without elderly/disability status.\n  # insured_person_count must be a positive integer whenever division is reached.\n  # Premium and assigned-premium amounts must be nonnegative.\n  # Explicit assignments must be mutually consistent across insured people.\n  # Consumers sum distinct person/component results without duplicating them.\n  # Billing, ownership, out-of-pocket treatment, full participant eligibility,\n  # verification, and the household medical deduction remain consumer duties.\n  # No living-participant condition or cents-rounding rule is imposed here.\ninputs:\n  - name: snap_medical_insurance_premium_component_category\n    entity: Person\n    dtype: String\n    period: Month\n  - name: snap_medical_insurance_premium_intended_to_cover_medical_expenses\n    entity: Person\n    dtype: Boolean\n    period: Month\n  - name: snap_medical_insurance_premium_covers_accident_or_disability_benefits\n    entity: Person\n    dtype: Boolean\n    period: Month\n  - name: snap_medical_insurance_premium_is_group_policy\n    entity: Person\n    dtype: Boolean\n    period: Month\n  - name: snap_medical_insurance_premium_per_person_amount_specified\n    entity: Person\n    dtype: Boolean\n    period: Month\n  - name: snap_medical_insurance_premium_component_amount\n    entity: Person\n    dtype: Money\n    unit: USD\n    period: Month\n  - name: snap_medical_insurance_premium_specified_person_amount\n    entity: Person\n    dtype: Money\n    unit: USD\n    period: Month\n  - name: snap_medical_insurance_premium_insured_person_count\n    entity: Person\n    dtype: Count\n    period: Month\n  - name: snap_medical_insurance_premium_participant_is_elderly\n    entity: Person\n    dtype: Boolean\n    period: Month\n  - name: snap_medical_insurance_premium_participant_has_disability\n    entity: Person\n    dtype: Boolean\n    period: Month\nrules:\n  - name: snap_medical_insurance_premium_component_allowable\n    kind: derived\n    entity: Person\n    dtype: Judgment\n    period: Month\n    source: Arizona DES FAA5, NA Medical Expenses and Deduction, block 7, allowable insurance and exclusions\n    metadata:\n      proof:\n        atoms:\n          - path: versions[0].formula\n            kind: formula\n            source:\n              corpus_citation_path: us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-7\n              excerpt: Medical and hospitalization insurance premiums intended to cover medical expenses are allowable.\n          - path: versions[0].formula\n            kind: definition\n            source:\n              corpus_citation_path: us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-7\n              excerpt: This includes health, dental, and vision insurance.\n          - path: versions[0].formula\n            kind: exception\n            source:\n              corpus_citation_path: us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-7\n              excerpt: Costs for accident and disability insurance benefits are not allowed\n          - path: versions[0].formula\n            kind: exception\n            source:\n              corpus_citation_path: us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-7\n              excerpt: Benefits payable in lump sum settlements for death or dismemberment.\n          - path: versions[0].formula\n            kind: exception\n            source:\n              corpus_citation_path: us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-7\n              excerpt: Income maintenance policies that cover mortgage or loan payments (including auto loans) while the policyholder or beneficiary has a disability.\n    versions:\n      - effective_from: '2026-08-01'\n        formula: |-\n          snap_medical_insurance_premium_intended_to_cover_medical_expenses\n          and (\n            snap_medical_insurance_premium_component_category == \"medical\"\n            or snap_medical_insurance_premium_component_category == \"hospitalization\"\n            or snap_medical_insurance_premium_component_category == \"health\"\n            or snap_medical_insurance_premium_component_category == \"dental\"\n            or snap_medical_insurance_premium_component_category == \"vision\"\n          )\n          and not snap_medical_insurance_premium_covers_accident_or_disability_benefits\n  - name: snap_medical_insurance_premium_assigned_amount\n    kind: derived\n    entity: Person\n    dtype: Money\n    unit: USD\n    period: Month\n    source: Arizona DES FAA5, NA Medical Expenses and Deduction, block 7, per-person premium allocation\n    metadata:\n      proof:\n        atoms:\n          - path: versions[0].formula\n            kind: formula\n            source:\n              corpus_citation_path: us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-7\n              excerpt: When a group policy does not specify how much of a premium is for each person, the amount is divided among those included in the policy.\n    versions:\n      - effective_from: '2026-08-01'\n        formula: |-\n          if snap_medical_insurance_premium_is_group_policy:\n            if snap_medical_insurance_premium_per_person_amount_specified:\n              snap_medical_insurance_premium_specified_person_amount\n            else:\n              snap_medical_insurance_premium_component_amount / snap_medical_insurance_premium_insured_person_count\n          else:\n            snap_medical_insurance_premium_component_amount\n  - name: snap_medical_insurance_premium_budgeted_amount\n    kind: derived\n    entity: Person\n    dtype: Money\n    unit: USD\n    period: Month\n    source: Arizona DES FAA5, NA Medical Expenses and Deduction, block 7, budgeted premium portion\n    metadata:\n      proof:\n        atoms:\n          - path: versions[0].formula\n            kind: formula\n            source:\n              corpus_citation_path: us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-7\n              excerpt: Only the portion of the insurance premium assigned to the elderly or participant with a disability is budgeted.\n          - path: versions[0].formula\n            kind: condition\n            source:\n              corpus_citation_path: us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-7\n              excerpt: Medical and hospitalization insurance premiums intended to cover medical expenses are allowable.\n          - path: versions[0].formula\n            kind: exception\n            source:\n              corpus_citation_path: us-az/manual/des/faa5/na-medical-expenses-and-deduction/block-7\n              excerpt: Costs for accident and disability insurance benefits are not allowed\n    versions:\n      - effective_from: '2026-08-01'\n        formula: |-\n          if snap_medical_insurance_premium_component_allowable:\n            if snap_medical_insurance_premium_participant_is_elderly or snap_medical_insurance_premium_participant_has_disability:\n              snap_medical_insurance_premium_assigned_amount\n            else: 0\n          else: 0\n",
+    "rulespec-us:us-az/policies/des/faa5/na-utility-expenses-and-allowances/block-13.yaml": "format: rulespec/v1\nmodule:\n  proof_validation:\n    required: true\n  source_verification:\n    corpus_citation_path: us-az/manual/des/faa5/na-utility-expenses-and-allowances/block-13\n    source_sha256: a96bbc2708e28591092844d0feda039dfca1042fc2298e5bdc61ca638bc42a72\n  summary: |-\n    The initial utility installation fee is an allowable NA Utility Expense in the month the expense is billed when all of the following occur:\n# Each evaluated entity represents one separately identified expense component.\n# Boolean factual inputs are implicit, as supported by the pinned engine.\n# 2026-08-01 is the first-full-month evidence coverage floor following the\n# authenticated 2026-07-17 snapshot, not a legal commencement date.\n# Earlier coverage is unproven.\n# This helper determines component admissibility only. Consumer rules remain\n# responsible for obligation, verification, and allowance substitution.\nrules:\n  - name: snap_initial_utility_installation_component_allowable\n    kind: derived\n    entity: UtilityExpenseComponent\n    dtype: Judgment\n    period: Month\n    source: Arizona DES FAA5, D NA Utility Expenses and Allowances, block 13\n    metadata:\n      proof:\n        atoms:\n          - path: versions[0].formula\n            kind: formula\n            source:\n              corpus_citation_path: us-az/manual/des/faa5/na-utility-expenses-and-allowances/block-13\n              excerpt: |-\n                The initial utility installation fee is an allowable NA Utility Expense in the month the expense is billed when all of the following occur:\n          - path: versions[0].formula\n            kind: condition\n            source:\n              corpus_citation_path: us-az/manual/des/faa5/na-utility-expenses-and-allowances/block-13\n              excerpt: The utility installation fee is for an initial installation of a utility.\n          - path: versions[0].formula\n            kind: condition\n            source:\n              corpus_citation_path: us-az/manual/des/faa5/na-utility-expenses-and-allowances/block-13\n              excerpt: The utility provider performs the installation.\n          - path: versions[0].formula\n            kind: exception\n            source:\n              corpus_citation_path: us-az/manual/des/faa5/na-utility-expenses-and-allowances/block-13\n              excerpt: One-time deposits are not an allowable NA Utility Expense.\n          - path: versions[0].formula\n            kind: definition\n            source:\n              corpus_citation_path: us-az/manual/des/faa5/na-utility-expenses-and-allowances/block-13\n              excerpt: |-\n                Examples of utility installation fees include the following:\n\n                ● Electrical wiring\n\n                ● Gas pipes\n\n                ● Septic tanks\n\n                ● Solar panels\n\n                ● Water pipes\n    versions:\n      - effective_from: '2026-08-01'\n        formula: |-\n          component_is_initial_utility_installation_fee\n          and installation_performed_by_utility_provider\n          and component_billed_in_evaluated_month\n          and not component_is_one_time_deposit\n"
+  },
+  "ndAttempts": [
+    {
+      "jurisdiction": "us-nd",
+      "queue_ref": "outside",
+      "run_attempt": null,
+      "started_at": null,
+      "finished_at": "2026-07-26T15:02:56+00:00",
+      "run_conclusion": "success",
+      "failed_step": null,
+      "failure_source": null,
+      "encoder_run_id": null,
+      "encoder_status": null,
+      "encoder_error": null,
+      "encoder_error_rule": null,
+      "generation_attempts": null,
+      "cost_usd": null,
+      "pr_repo": "rulespec-us",
+      "pr_number": 1112,
+      "pr_url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/1112",
+      "pr_state": "merged",
+      "pr_base_branch": "main",
+      "pr_targets_default": true,
+      "pr_created_at": "2026-07-26T14:15:51+00:00",
+      "pr_merged_at": "2026-07-26T15:02:56+00:00",
+      "pr_closed_at": null,
+      "pr_checks": "none",
+      "pr_review": "none",
+      "module_paths": [
+        "us-nd/policies/income_tax/2026_nd1es_estimated_schedule.yaml"
+      ],
+      "synced_at": "2026-10-14T17:11:57.436+00:00",
+      "index_status": "indexed",
+      "compile_status": null,
+      "compile_checked_at": null,
+      "compile_error": null,
+      "collected_at": "2026-11-15T23:40:56.810Z",
+      "id": "pr:rulespec-us#1112:us-nd/policies/income_tax/2026_nd1es_estimated_schedule.yaml",
+      "citation": "us-nd/statute/57/57-38-30.3",
+      "run_url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/1112",
+      "dispatched_at": "2026-07-26T14:15:51+00:00",
+      "run_status": "completed",
+      "dispatched_by": "PavelMakarchuk",
+      "pr_merge_commit": "8ed6406784687586040c8d64b2056bd021a84532",
+      "tests_first_at": "2026-07-26T15:07:08+00:00",
+      "tests_first_started_at": "2026-07-26T15:03:26+00:00",
+      "tests_first_status": "pass",
+      "tests_first_run_url": "https://github.com/TheAxiomFoundation/rulespec-us/actions/runs/30207371205/job/89807710740",
+      "indexed_at": "2026-07-28T21:13:46+00:00",
+      "tests_status": "pass",
+      "tests_checked_at": "2026-11-15T20:43:46Z",
+      "tests_run_url": "https://github.com/TheAxiomFoundation/rulespec-us/actions/runs/43751641961/job/132926805091",
+      "oracle_status": "pending"
+    },
+    {
+      "jurisdiction": "us-nd",
+      "queue_ref": "outside",
+      "run_attempt": null,
+      "started_at": null,
+      "finished_at": "2026-07-26T15:02:56+00:00",
+      "run_conclusion": "success",
+      "failed_step": null,
+      "failure_source": null,
+      "encoder_run_id": null,
+      "encoder_status": null,
+      "encoder_error": null,
+      "encoder_error_rule": null,
+      "generation_attempts": null,
+      "cost_usd": null,
+      "pr_repo": "rulespec-us",
+      "pr_number": 1112,
+      "pr_url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/1112",
+      "pr_state": "merged",
+      "pr_base_branch": "main",
+      "pr_targets_default": true,
+      "pr_created_at": "2026-07-26T14:15:51+00:00",
+      "pr_merged_at": "2026-07-26T15:02:56+00:00",
+      "pr_closed_at": null,
+      "pr_checks": "none",
+      "pr_review": "none",
+      "module_paths": [
+        "us-nd/policies/income_tax/resident_core_liability_pipeline.yaml"
+      ],
+      "synced_at": "2026-10-14T17:11:57.436+00:00",
+      "index_status": "indexed",
+      "compile_status": null,
+      "compile_checked_at": null,
+      "compile_error": null,
+      "collected_at": "2026-11-15T23:40:56.810Z",
+      "id": "pr:rulespec-us#1112:us-nd/policies/income_tax/resident_core_liability_pipeline.yaml",
+      "citation": "us-nd/statute/57/57-38-30.3",
+      "run_url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/1112",
+      "dispatched_at": "2026-07-26T14:15:51+00:00",
+      "run_status": "completed",
+      "dispatched_by": "PavelMakarchuk",
+      "pr_merge_commit": "8ed6406784687586040c8d64b2056bd021a84532",
+      "tests_first_at": "2026-07-26T15:07:08+00:00",
+      "tests_first_started_at": "2026-07-26T15:03:26+00:00",
+      "tests_first_status": "pass",
+      "tests_first_run_url": "https://github.com/TheAxiomFoundation/rulespec-us/actions/runs/30207371205/job/89807710740",
+      "indexed_at": "2026-07-28T21:13:46+00:00",
+      "tests_status": "waived",
+      "oracle_status": "pending"
+    }
+  ]
+}

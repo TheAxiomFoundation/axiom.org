@@ -9,6 +9,7 @@ import {
   liveRunExit,
   encodeWindow,
   mainMerge,
+  carrierFileLookups,
   carrierIndex,
   carrierPrFor,
   prGate,
@@ -2032,6 +2033,7 @@ describe("what stands between a PR and its merge", () => {
 
 describe("a merge train that replaces closed PRs", () => {
   const MODULE = "us/regulations/42-cfr/457/800.yaml";
+  const MANIFEST = ".axiom/encoding-manifests/us/regulations/42-cfr/457/800.json";
   const train = (override: Record<string, unknown> = {}) => ({
     repo: "rulespec-us",
     number: 2154,
@@ -2046,13 +2048,19 @@ describe("a merge train that replaces closed PRs", () => {
     ...override,
   });
   const closed = (override: Partial<ManifestPr> = {}) => pr({ state: "CLOSED", isDraft: false, closedAt: "2026-09-30T02:05:00Z", crossRefs: [train()], ...override });
-  const holds = { files: new Map([["rulespec-us#2154", new Set([MODULE, "us/other.yaml"])]]), recorded: new Map<string, number>() };
+  /** The train as read this pass: the closed PR's signed manifest and module, and another module. */
+  const held = (files: string[]) => ({
+    files: new Map([["rulespec-us#2154", new Set(files)]]),
+    recorded: new Map<string, number>(),
+    read: new Set(["rulespec-us#2154"]),
+  });
+  const holds = held([MANIFEST, MODULE, "us/other.yaml"]);
 
   it("links a closed PR to the merged PR that mentions it and holds its module", () => {
     expect(carrierPrFor(closed(), holds)).toMatchObject({ number: 2154, state: "MERGED", mergedAt: "2026-09-30T02:00:00Z", mergeCommit: "train1" });
     // A mention alone is not a replacement: the train must hold every module file.
-    expect(carrierPrFor(closed(), { files: new Map([["rulespec-us#2154", new Set(["us/other.yaml"])]]), recorded: new Map() })).toBeNull();
-    expect(carrierPrFor(closed(), { files: new Map(), recorded: new Map() })).toBeNull();
+    expect(carrierPrFor(closed(), held([MANIFEST, "us/other.yaml"]))).toBeNull();
+    expect(carrierPrFor(closed(), { files: new Map(), recorded: new Map(), read: new Set() })).toBeNull();
     // Not an open PR, not a train that is still open, merged elsewhere, in another repo, or merged before the PR existed.
     expect(carrierPrFor(pr({ crossRefs: [train()] }), holds)).toBeNull();
     expect(carrierPrFor(closed({ crossRefs: [train({ state: "OPEN", mergedAt: null })] }), holds)).toBeNull();
@@ -2062,13 +2070,24 @@ describe("a merge train that replaces closed PRs", () => {
     expect(carrierPrFor(closed({ crossRefs: [] }), holds)).toBeNull();
   });
 
-  it("knows a train's files from this pass, from its stored outside rows, or from an earlier link", () => {
+  it("knows a train's files from this pass's read, and keeps an earlier link; stored rows alone do not link a signed PR", () => {
     const merged = [
-      { repo: "rulespec-us", number: 2154, url: "u", author: "x", createdAt: "2026-09-29T20:00:00Z", mergedAt: "2026-09-30T02:00:00Z", baseRefName: "main", defaultBranch: "main", mergeCommit: "train1", files: [MODULE] },
+      { repo: "rulespec-us", number: 2154, url: "u", author: "x", createdAt: "2026-09-29T20:00:00Z", mergedAt: "2026-09-30T02:00:00Z", baseRefName: "main", defaultBranch: "main", mergeCommit: "train1", files: [MANIFEST, MODULE] },
     ];
     expect(carrierPrFor(closed(), carrierIndex(merged, new Map()))?.number).toBe(2154);
+    // Read this pass, a train must hold the signed manifest too: the module alone may be an unsigned copy.
+    expect(carrierPrFor(closed(), carrierIndex([{ ...merged[0], files: [MODULE] }], new Map()))).toBeNull();
+    // Stored rows name modules only, so they cannot show the manifest: the collector reads the train's files.
     const stored = new Map([[`pr:rulespec-us#2154:${MODULE}`, { id: `pr:rulespec-us#2154:${MODULE}` }]]);
-    expect(carrierPrFor(closed(), carrierIndex([], stored))?.number).toBe(2154);
+    expect(carrierPrFor(closed(), carrierIndex([], stored))).toBeNull();
+    const lookups = carrierFileLookups([closed()], [], stored);
+    expect(lookups).toEqual([{ repo: "rulespec-us", number: 2154 }]);
+    expect(carrierPrFor(closed(), carrierIndex([], stored, [{ ...lookups[0], files: [MODULE] }]))).toBeNull();
+    expect(carrierPrFor(closed(), carrierIndex([], stored, [{ ...lookups[0], files: [MANIFEST, MODULE] }]))?.number).toBe(2154);
+    // A closed PR with no manifest has nothing signed to check: the stored module decides, as before.
+    const unsigned = closed({ files: [MODULE] });
+    expect(carrierFileLookups([unsigned], [], stored)).toEqual([]);
+    expect(carrierPrFor(unsigned, carrierIndex([], stored))?.number).toBe(2154);
     // Once linked, the outside rows are gone: the recorded link keeps it.
     const linked = new Map([["501", { id: "501", pr_repo: "rulespec-us", pr_number: 1500, pr_via_number: 2154, pr_via_state: "merged" as const }]]);
     expect(carrierPrFor(closed(), carrierIndex([], linked))?.number).toBe(2154);
