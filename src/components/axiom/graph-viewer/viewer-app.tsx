@@ -5,7 +5,7 @@ import { HouseholdComposer } from "./household-composer";
 import { ConventionNote, RelationRoles } from "./relation-roles";
 import { RelationTuples } from "./relation-tuples";
 import { flattenRoles, instanceKindsOf, kindStem, MAX_KIND_INSTANCES, reconcileRoles, rolesForRun, type InstanceAnswers, type RelationDecl, type RoleMembership } from "@/lib/axiom/runtime/relation-roles";
-import { isRunPeriodCoverageRefusal, parseRunPeriod } from "@/lib/axiom/runtime/run-period";
+import { isRunPeriodCoverageRefusal, parseRunPeriod, runPeriodCoverageRule } from "@/lib/axiom/runtime/run-period";
 import { ResultExplanation, inputAwareEvidence, recordedEvidence, recordedTableRow } from "./result-explanation";
 import { ParameterTableView } from "./parameter-table";
 import { GraphLoading } from "./graph-loading";
@@ -64,6 +64,8 @@ import {
 import { loadCorpusModules } from "@/lib/axiom/corpus-live";
 import type { CorpusModule } from "@/lib/axiom/corpus-field";
 
+/** Why a run waits: the Month field holds part of a month. */
+const RUN_PERIOD_INCOMPLETE = "Type a whole month as YYYY-MM in the Month field to run.";
 
 export function GraphViewerApp({
   onBackToOverview,
@@ -166,7 +168,22 @@ export function GraphViewerApp({
   useEffect(() => {
     setRunPeriodText((text) => (parseRunPeriod(text) === runPeriod ? text : (runPeriod ?? "")));
   }, [runPeriod]);
-  const runPeriodTextIncomplete = runPeriodText.trim() !== "" && parseRunPeriod(runPeriodText) === null;
+  // Chromium's month picker reports a partly filled field as value "" with
+  // validity.badInput: an unfinished entry, not a clear.
+  const [runPeriodPartial, setRunPeriodPartial] = useState(false);
+  const runPeriodTextIncomplete = runPeriodPartial || (runPeriodText.trim() !== "" && parseRunPeriod(runPeriodText) === null);
+  const readRunPeriodField = (field: HTMLInputElement) => {
+    const text = field.value;
+    const partial = field.validity?.badInput === true;
+    setRunPeriodText(text);
+    setRunPeriodPartial(partial);
+    const month = parseRunPeriod(text);
+    if (!partial && (month || text.trim() === "")) setRunPeriod(month);
+  };
+  // The guard's message clears once the field holds a whole month or none.
+  useEffect(() => {
+    if (!runPeriodTextIncomplete) setRunError((current) => (current === RUN_PERIOD_INCOMPLETE ? null : current));
+  }, [runPeriodTextIncomplete]);
   const [inspected, setInspected] = useState<IrgNodeData | null>(null);
   // The inspector shares the exec panel's scroll with the results
   // section — bring it into view when a node is picked, or its card
@@ -766,6 +783,7 @@ export function GraphViewerApp({
     setComposeRunReady(null);
     setRunBlocked(null);
     setRunPeriodText("");
+    setRunPeriodPartial(false);
     setRunResult(null);
     setRunError(null);
     setRunPanelOpen(false);
@@ -1194,14 +1212,18 @@ export function GraphViewerApp({
     if (!effectiveProgram || running) return;
     // Compose mode runs only after input-catalog compilation succeeds.
     if (composeFocus && composeRunReady !== true) return;
+    // A Month field mid-entry names no month yet: a run now would compute
+    // the last whole month, which the field no longer shows. Every Run
+    // button lands here, Relationships' included.
+    if (composeFocus && runPeriodTextIncomplete) {
+      setRunError(RUN_PERIOD_INCOMPLETE);
+      return;
+    }
     // Executing a run outgrows the tour — end it rather than talking
     // over the results.
     window.dispatchEvent(new Event("axiom:tour-end"));
     setRunning(true);
     setRunError(null);
-    // An explicit run consumes the pending edits: the stale flag
-    // clears and the edit tracker syncs to what this run computes.
-    setResultsStale(false);
     const runRoles =
       composeFocus && rootRelations.mode === "explicit"
         ? rolesForRun(rootRelations.relations, relationRoles, ["person_1", ...extraMembers], scopeInstanceKeys)
@@ -1214,7 +1236,10 @@ export function GraphViewerApp({
           Object.fromEntries((scopeInstanceKeys[kind] ?? []).map((key) => [key, { ...memberScenario[key] }])),
         ]))
       : undefined;
-    ranScenarioKey.current = scenarioKey({
+    // What this run computes. The edit tracker syncs to it, and the stale
+    // flag clears, only when its result lands: a failed run leaves the
+    // results on screen answering the question they answered.
+    const runKey = scenarioKey({
       ...scenario,
       ...flattenMemberAnswers([...extraMembers, ...Object.values(scopeInstanceKeys).flat()], memberScenario),
       ...flattenRoles(runRoles ?? {}),
@@ -1260,7 +1285,12 @@ export function GraphViewerApp({
           runInstances,
           composeFocus ? runPeriod : null,
         );
+      // The last traced request's refusal for a rule with no version at
+      // the run's month (recovery sheds the rule it names), and whether
+      // any request so far refused that way.
+      const refusal: { coverage: string | null; seen: boolean } = { coverage: null, seen: false };
       const attempt = async (variables: string[]) => {
+        refusal.coverage = null;
         const response = await fetch("/api/axiom/runtime/calculate", {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -1324,10 +1354,17 @@ export function GraphViewerApp({
             // shed — return non-ok instead of blocking the whole run.
             // If even the bare run refuses, the caller styles the
             // blocked state from this same payload.
-            // A rule with no version at the run's month: the user fixes it
-            // with the Month field, so it is a run error (Run and the field
-            // stay), and probing output names cannot help.
+            // A rule with no version at the run's month. A traced request
+            // also asks for rules in branches the root skips, so its
+            // refusal goes to recovery. The outputs-only request speaks for
+            // the root: its refusal is a run error the user fixes with the
+            // Month field (Run and the field stay), not a blocked scope.
             if (payload.error === "runtime_error" && isRunPeriodCoverageRefusal(payload.message)) {
+              if (variables.length > 0) {
+                refusal.coverage = payload.message ?? null;
+                refusal.seen = true;
+                return response;
+              }
               throw new Error(
                 `${(payload.message ?? "").replace(/\.$/, "")}. Set the Month field to a month the rule covers and run again.`,
               );
@@ -1394,39 +1431,12 @@ export function GraphViewerApp({
         const result = await attempt(variables);
         return result.ok ? result : null;
       };
-      // One bad name fails the WHOLE trace. Try everything; on
-      // failure, probe chunks under a bounded request budget and keep
-      // the good ones — so the middle of the graph still lights up
-      // instead of collapsing to outputs-only.
-      let response = await tryVariables(bareNames);
-      if (!response && bareNames.length > 0) {
-        const good: string[] = [];
-        let probes = 0;
-        const probe = async (chunk: string[], depth: number) => {
-          if (chunk.length === 0 || probes >= 9) return;
-          probes += 1;
-          const result = await attempt(chunk);
-          if (result.ok) {
-            good.push(...chunk);
-            return;
-          }
-          // One halving pass, then drop the poisoned few.
-          if (depth >= 1 || chunk.length === 1) return;
-          const mid = Math.ceil(chunk.length / 2);
-          await probe(chunk.slice(0, mid), depth + 1);
-          await probe(chunk.slice(mid), depth + 1);
-        };
-        const size = Math.ceil(bareNames.length / 4);
-        for (let i = 0; i < bareNames.length; i += size) {
-          await probe(bareNames.slice(i, i + size), 0);
-        }
-        response = await tryVariables(good);
-      }
-      if (!response) {
-        // Even outputs-only failed: the package itself can't run.
+      // The outputs-only request: the root's own outputs, no trace.
+      const runOutputsOnly = async () => {
         lastRunRequest.current = requestBody([]);
         const bare = await attempt([]);
         if (!bare.ok) {
+          // Even outputs-only failed: the package itself can't run.
           if (bare.status === 422) {
             // A runtime_error refusal that survived even the bare run:
             // subtree-level after all — style it as the blocked state.
@@ -1449,8 +1459,60 @@ export function GraphViewerApp({
               : `run failed (${bare.status})`,
           );
         }
-        response = bare;
+        return bare;
+      };
+      // One bad name fails the WHOLE trace. Try everything; on
+      // failure, probe chunks under a bounded request budget and keep
+      // the good ones — so the middle of the graph still lights up
+      // instead of collapsing to outputs-only.
+      let response = await tryVariables(bareNames);
+      let names = bareNames;
+      let outputsOnly: Response | null = null;
+      let probes = 0;
+      if (!response && refusal.coverage) {
+        // A traced rule has no version at the run's month. Only the
+        // outputs-only request says whether the root computes at it (it
+        // throws the run error if not); if the root does, drop each rule a
+        // refusal names, within the probe budget, before probing chunks.
+        let named = runPeriodCoverageRule(refusal.coverage);
+        outputsOnly = await runOutputsOnly();
+        while (!response && named && probes < 9) {
+          const rule = named.split("#").pop() ?? named;
+          if (!names.includes(rule)) break;
+          names = names.filter((name) => name !== rule);
+          if (names.length === 0) break;
+          probes += 1;
+          response = await tryVariables(names);
+          named = response ? null : runPeriodCoverageRule(refusal.coverage);
+        }
       }
+      if (!response && names.length > 0) {
+        const good: string[] = [];
+        const probe = async (chunk: string[], depth: number) => {
+          if (chunk.length === 0 || probes >= 9) return;
+          probes += 1;
+          const result = await attempt(chunk);
+          if (result.ok) {
+            good.push(...chunk);
+            return;
+          }
+          // One halving pass, then drop the poisoned few.
+          if (depth >= 1 || chunk.length === 1) return;
+          const mid = Math.ceil(chunk.length / 2);
+          await probe(chunk.slice(0, mid), depth + 1);
+          await probe(chunk.slice(mid), depth + 1);
+        };
+        const size = Math.ceil(names.length / 4);
+        for (let i = 0; i < names.length; i += size) {
+          await probe(names.slice(i, i + size), 0);
+        }
+        // Nothing traced cleanly after an outputs-only answer: it stands.
+        if (good.length > 0 || !outputsOnly) response = await tryVariables(good);
+      }
+      // A probe refused for the month too: no trace stands for the run
+      // until the root itself computes at it.
+      if (refusal.seen && !outputsOnly) outputsOnly = await runOutputsOnly();
+      if (!response) response = outputsOnly ?? (await runOutputsOnly());
       let data = (await response.json()) as RunPayload & {
         provenance?: {
           ledger_id: string;
@@ -1471,6 +1533,8 @@ export function GraphViewerApp({
         ((data as { allocated_instances?: unknown }).allocated_instances ?? {}) as Record<string, Record<string, string>>,
       ).flatMap((byKey) => (byKey && typeof byKey === "object" ? Object.entries(byKey) : []))
         .filter((entry): entry is [string, string] => typeof entry[1] === "string");
+      ranScenarioKey.current = runKey;
+      setResultsStale(false);
       setRunResult({
         ...data,
         submittedFacts: { ...scenario },
@@ -2476,12 +2540,16 @@ export function GraphViewerApp({
                 placeholder="YYYY-MM"
                 aria-describedby="run-period-hint"
                 aria-invalid={runPeriodTextIncomplete || undefined}
-                onChange={(event) => {
-                  const text = event.target.value;
-                  setRunPeriodText(text);
-                  const month = parseRunPeriod(text);
-                  if (month || text.trim() === "") setRunPeriod(month);
-                }}
+                // Locked while a run is in flight, like the household's
+                // answers: a late result or refusal for the month it asked
+                // about must not land on a month chosen after it left.
+                disabled={running}
+                onChange={(event) => readRunPeriodField(event.currentTarget)}
+                // Emptying a partly filled native field leaves its value ""
+                // unchanged, so React fires no change: read every input
+                // and the field's state on leaving it.
+                onInput={(event) => readRunPeriodField(event.currentTarget)}
+                onBlur={(event) => readRunPeriodField(event.currentTarget)}
               />
               <span id="run-period-hint" className="run-period-hint">{runPeriodTextIncomplete ? "type a whole month as YYYY-MM to run" : runPeriod ? "the month this run computes" : "blank runs the runtime's default month"}</span>
             </div>
@@ -2651,6 +2719,7 @@ export function GraphViewerApp({
             runReady={runAffordanceReady}
             runUnavailableReason={runBlocked ?? runUnavailableReason}
             onRun={() => void runScenario()}
+            runError={runError}
             running={running}
             members={extraMembers}
             roles={composeFocus ? (runResult?.submittedRoles ?? (rootRelations.mode === "explicit" ? rolesForRun(rootRelations.relations, relationRoles, ["person_1", ...extraMembers], scopeInstanceKeys) : undefined)) : undefined}
@@ -2705,8 +2774,10 @@ export function GraphViewerApp({
             </div>
           )}
           {/* A failed run must be visible even with the panel closed —
-              otherwise silence reads as success. */}
-          {runError && !runPanelOpen && !running && (
+              otherwise silence reads as success. Outside Graph this stage
+              is hidden (and inert once visited): Relationships and Run
+              show the error themselves. */}
+          {runError && workspaceView === "map" && !runPanelOpen && !running && (
             <div
               className="run-error run-error-floating"
               role="alert"
