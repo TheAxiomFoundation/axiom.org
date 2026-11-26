@@ -7,14 +7,20 @@ import type { LegalId, ProgramGraph, RuleNode } from "./types";
  * a composed canvas they're wallpaper; hide them and report how
  * many, so the view can say so honestly.
  *
- * Two honest exceptions:
+ * Three honest exceptions:
  * - A subtree that is ENTIRELY standalone definitions (a glossary
  *   page opened from the field) filters nothing — an empty canvas
  *   would be a lie.
+ * - The rule a composed view focuses on (``keep``, a ``#rule``
+ *   fragment) is never wallpaper, however standalone: hiding it would
+ *   open the canvas on a sibling and leave a run no root to ask for.
  * - Program (?program=) graphs never come through here; they're
  *   already frontier-pruned upstream.
  */
-export function filterStandaloneRules(graph: ProgramGraph): {
+export function filterStandaloneRules(
+  graph: ProgramGraph,
+  keep: LegalId | null = null,
+): {
   graph: ProgramGraph;
   hiddenCount: number;
 } {
@@ -23,6 +29,7 @@ export function filterStandaloneRules(graph: ProgramGraph): {
     for (const dep of rule.ruleDeps) referenced.add(dep);
   }
   const isStandalone = (rule: RuleNode) =>
+    rule.legalId !== keep &&
     rule.ruleDeps.length === 0 &&
     rule.inputDeps.length === 0 &&
     (rule.relationDeps?.length ?? 0) === 0 &&

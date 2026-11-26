@@ -1802,8 +1802,12 @@ export function GraphViewerApp({
         if (cancelled) return;
         // Standalone-definition filter: rules nothing feeds and
         // nothing consumes are wallpaper on a composed canvas — hide
-        // them. The count no longer announces itself on the canvas.
-        const { graph: filteredGraph } = filterStandaloneRules(composed.graph);
+        // them, except the rule a "#rule" focus names. The count no
+        // longer announces itself on the canvas.
+        const { graph: filteredGraph } = filterStandaloneRules(
+          composed.graph,
+          composeFocus.includes("#") ? composeFocus : null,
+        );
         setGraph(filteredGraph);
         setComposedFiles(composed.files);
         setComposedTruncated(composed.truncated);
@@ -1938,6 +1942,9 @@ export function GraphViewerApp({
           rememberRunCapability(root, false);
           setComposeRunReady(false);
           setRunUnavailableReason(error.message);
+          // Run is gone: a corrective run error (a relation set that moved)
+          // no longer applies, so "Run unavailable" stands alone.
+          setRunError(null);
           return;
         }
         // Unavailability is not evidence that the encoding cannot execute.

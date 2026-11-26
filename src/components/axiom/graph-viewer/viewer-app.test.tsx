@@ -333,6 +333,33 @@ it("lets the root check decide when a rule focus's outputs-only request refuses 
   expect(requests.slice(-2).map(({ variables }) => variables)).toEqual([[], ["credit"]]);
 });
 
+it("finds a standalone rule focus's root when a same-file helper refuses for its month", async () => {
+  // credit is a literal nothing feeds or consumes, the API's sole output
+  // for the "#credit" focus; phase_in, a helper the same file owns, reads
+  // an input and has no version at 2026-11. `[]` asks for the file's
+  // defaults, phase_in included: only credit's own name is the root.
+  composedGraph = {
+    ...graph,
+    rules: [
+      { ...graph.rules[0]!, formula: "4321", inputDeps: [] },
+      { ...withTraceOnlyRule.rules[1]!, formula: "payment_amount", inputDeps: [fixture.input] },
+    ],
+  };
+  window.history.replaceState({}, "", `/app?compose=${encodeURIComponent(fixture.output)}&period=2026-11&view=structure`);
+  const requests = stubCalculate(({ variables }) => (
+    variables.length === 0 || variables.includes("phase_in") ? noVersion("phase_in") : computedCredit(4321)
+  ));
+  render(<GraphViewerApp />);
+  fireEvent.click(await screen.findByRole("button", { name: "Run" }));
+  fireEvent.click(screen.getByRole("button", { name: "Run scenario" }));
+  await screen.findByRole("button", { name: "Dismiss results" });
+  expect(screen.queryByText(/has no formula version/)).not.toBeInTheDocument();
+  expect(screen.getByTestId("canvas-evidence")).toHaveTextContent("4321");
+  // The run asks for credit by name and never for the file's defaults.
+  expect(requests.some(({ variables }) => variables.length === 0)).toBe(false);
+  expect(requests.at(-1)?.variables).toEqual(["credit"]);
+});
+
 it("sends the outputs-only request once when no chunk traces after a month refusal", async () => {
   composedGraph = withUntraceables(11);
   window.history.replaceState({}, "", `/app?compose=${encodeURIComponent(fixture.root)}&period=2026-11&view=structure`);
@@ -464,6 +491,24 @@ it("keeps a rollback 404's error in Relationships after Run household folds away
   expect(await within(relationships).findByRole("alert")).toHaveTextContent("Running composed views isn't available on this deployment yet.");
   expect(screen.queryByRole("button", { name: "Run household" })).not.toBeInTheDocument();
   expect(requests).toHaveLength(1);
+});
+
+it("drops a corrective run error when the catalog it refreshes says Run is unavailable", async () => {
+  window.history.replaceState({}, "", `/app?compose=${encodeURIComponent(fixture.root)}&period=2026-11&view=structure`);
+  // The run refuses a relation the server no longer declares; the catalog
+  // the viewer then re-reads says this scope cannot run at all.
+  stubCalculate(() => Response.json({ error: "unknown_relation", message: "Relation payment_of_tax_unit is no longer declared." }, { status: 422 }));
+  render(<GraphViewerApp />);
+  const views = await screen.findByRole("navigation", { name: "Workspace views" });
+  fireEvent.click(within(views).getByRole("button", { name: "Relationships" }));
+  const unavailable = Object.assign(new Error("This source relates people to units in a way a scenario cannot represent yet."), { name: "RunUnavailableError" });
+  vi.mocked(fetchRootCatalog).mockRejectedValueOnce(unavailable);
+  fireEvent.click(await screen.findByRole("button", { name: "Run household" }));
+  expect(await screen.findByText(/This source relates people to units in a way a scenario cannot represent yet\./)).toBeInTheDocument();
+  expect(screen.getByText("Run unavailable.")).toBeInTheDocument();
+  // The corrective instruction no longer applies: only Run unavailable stands.
+  expect(screen.queryByText(/no longer declared/)).not.toBeInTheDocument();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 });
 
 it("locks the Month field while a run is in flight", async () => {
