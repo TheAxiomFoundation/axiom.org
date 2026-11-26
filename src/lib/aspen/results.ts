@@ -7,7 +7,6 @@ import {
   DISCUSSION_TOPICS,
   HOUSEHOLDS,
   PERSPECTIVES,
-  POST_CHECK,
   USE_CASES,
   VERDICTS,
   WENT_WELL,
@@ -36,11 +35,6 @@ export interface FeedItem {
   prompt: string;
   answer: string | null;
   verdict: string | null;
-  rulesAmount: number | null;
-  rulesProgram: string | null;
-  /** The rules ran on a program whose eligibility they don't test, so the amount holds only if eligible. */
-  rulesIfEligible: boolean;
-  postCheck: string | null;
   createdAt: string | null;
 }
 
@@ -125,7 +119,6 @@ export interface RunSummary {
   participants: number;
   prompts: number;
   rated: number;
-  checked: number;
   perspectives: Count[];
   households: Count[];
   /** Details people added to their household, most used first. */
@@ -135,7 +128,6 @@ export interface RunSummary {
   wouldAct: Count[];
   wentWell: Count[];
   wentWrong: Count[];
-  postCheck: Count[];
   feed: FeedItem[];
   viability: Viability;
   breakdown: BreakdownRow[];
@@ -233,6 +225,13 @@ function hasAnswer(e: { payload: Record<string, unknown> }): boolean {
 const SPOTLIGHT_SIZE = 4;
 const VOICES_SIZE = 12;
 
+/**
+ * A rules check saved on a prompt. Phones saved them until PR #350 took the
+ * check out of Try it (October 16, 2026). Nothing writes them now, but runs
+ * from before then still hold them, and the results still read them: the
+ * would-not-apply note, the spotlight's "checked-wrong", and which attempt
+ * at a question counts (attemptWeight).
+ */
 type SavedCheck = Pick<PromptRow, "rules_outputs" | "rules_program_id" | "rules_eligibility_tested">;
 
 /** The saved rules check's first computation, when the row carries the whole of rules_outputs. */
@@ -460,7 +459,6 @@ export function summarizeRun(data: RunData): RunSummary {
   // (a rating whose answer didn't save still means the phone showed one). So never fewer than rated.
   const asked = new Set([...answered, ...prompts.filter((p) => p.verdict)].map(questionKey)).size;
   const rated = prompts.filter((p) => p.verdict);
-  const checked = prompts.filter((p) => p.rules_program || typeof p.rules_amount === "number");
   // First questions only: follow-ups repeat the household and perspective.
   const firstTurns = prompts.filter((p) => p.turn === 0);
 
@@ -489,10 +487,6 @@ export function summarizeRun(data: RunData): RunSummary {
     prompt: clip(p.prompt, 280) ?? "",
     answer: clip(p.answer, 360),
     verdict: p.verdict ?? null,
-    rulesAmount: p.rules_amount ?? null,
-    rulesProgram: p.rules_program ?? null,
-    rulesIfEligible: rulesIfEligible(p),
-    postCheck: p.post_check_verdict ?? null,
     createdAt: p.created_at ?? null,
   });
 
@@ -545,7 +539,6 @@ export function summarizeRun(data: RunData): RunSummary {
     participants: participants.length,
     prompts: asked,
     rated: rated.length,
-    checked: checked.length,
     // What people asked as, from their first questions (the welcome pick is optional).
     perspectives: countBy(
       firstTurns.map((p) => p.perspective),
@@ -568,7 +561,6 @@ export function summarizeRun(data: RunData): RunSummary {
     wentWrong: countBy(rated.flatMap((p) => p.went_wrong ?? []), asOptions(WENT_WRONG)).sort(
       (a, b) => b.count - a.count,
     ),
-    postCheck: countBy(prompts.map((p) => p.post_check_verdict), POST_CHECK),
     feed,
     viability: viabilityOf(rated),
     sourceOfTruth: countBy(

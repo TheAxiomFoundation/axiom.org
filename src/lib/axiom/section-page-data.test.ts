@@ -326,6 +326,40 @@ describe("getSectionPageData", () => {
     expect(data!.citationPath).toBe("us/statute/42/1396u–1");
   });
 
+  it.each([
+    ["us-mt", "statute", "15-1-1"],
+    // No served document type has a hyphen today; this pins that one keeps it.
+    ["us-mt", "court-rules", "15-1-1"],
+  ])(
+    "retries with en dashes after the document type only: %s/%s/%s",
+    async (slug, docType, section) => {
+      const stored = `${slug}/${docType}/${section.replace(/-/g, "–")}`;
+      getProvisionByCitationPathMock.mockImplementation((path: string) =>
+        Promise.resolve(path === stored ? rule(path) : null)
+      );
+      queueTables({
+        current_provisions: [
+          { data: [], error: null }, // hyphen subtree probe: empty
+          { data: [], error: null }, // post-resolve subtree fetch
+        ],
+        navigation_nodes: [{ data: null, error: null }],
+      });
+
+      const resolution = await resolveSection([slug, docType, section]);
+      expect(resolution).not.toBeNull();
+      expect(resolution!.citationPath).toBe(stored);
+      const looked = getProvisionByCitationPathMock.mock.calls.map(
+        ([path]) => path as string
+      );
+      expect(looked).toContain(stored);
+      for (const path of looked) {
+        const [lookedSlug, lookedDocType] = path.split("/");
+        expect(lookedSlug).toBe(slug);
+        expect(lookedDocType).toBe(docType);
+      }
+    }
+  );
+
   it("returns null when nothing at, below, or above the path is ingested", async () => {
     getProvisionByCitationPathMock.mockResolvedValue(null);
     // The subtree probe (new root-less-section path) finds nothing.

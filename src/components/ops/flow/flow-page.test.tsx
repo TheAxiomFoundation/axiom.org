@@ -176,8 +176,111 @@ describe("JourneyView", () => {
     expect(screen.getByRole("complementary", { name: "Run details" })).toBeTruthy();
   });
 
+  it("says in the run details that no encode ran, the oracle state, and a try's typed checks", () => {
+    const typed = { ...tryOf(1, false), checks: [{ id: "complete-source-unit:structure/branch-unencoded", gate: "ci", n: 2 }], checksMore: 3 };
+    const more = [
+      pipelineAttempt({ id: "5", run_conclusion: "cancelled", cancel_stage: "approval" }),
+      pipelineAttempt({ id: "6", failed_step: "encode_apply", tries: [typed] }),
+      mergedAttempt({ id: "7", tries: [tryOf(1, true)], indexed_at: "2026-09-21T12:00:00Z", index_status: "indexed", tests_status: "waived", oracle_status: "pending" }),
+    ].flatMap(attemptEvents);
+    const panel = (id: string) => {
+      cleanup();
+      const detail = caseDetail(more, id)!;
+      render(<JourneyView citation={detail.citation} stationOrder={stationOrder} lanes={[]} detail={detail} bundles={[]} error={null} />);
+      return screen.getByRole("complementary", { name: "Run details" }).textContent ?? "";
+    };
+    const cancelled = panel("5");
+    expect(cancelled).toContain("no encode ran");
+    expect(cancelled).toContain("No encode ran: cancelled at Signing approval.");
+    const failed = panel("6");
+    expect(failed).toContain("Try 1: typed checks that failed");
+    expect(failed).toContain("complete-source-unit:structure/branch-unencoded");
+    expect(failed).toContain("gate ci · 2");
+    expect(failed).toContain("and 3 more checks");
+    expect(failed).not.toContain("no encode ran");
+    expect(panel("7")).toContain("Oracle · Pending: no oracle compares it yet (listed in oracle-coverage-pending.yaml).");
+  });
+
+  it("says in the run details how an encode with no try record ended, or that it is not on record", () => {
+    const noRecord = { encode_started_at: "2026-09-20T10:01:00Z", encode_seconds: 12, failed_step: "encode_apply" };
+    const runs = [
+      pipelineAttempt({ id: "8", ...noRecord, encode_exit_status: "exited", encode_exit_rule: "exit:1", encode_last_phase: "resolve" }),
+      pipelineAttempt({ id: "9", ...noRecord }),
+      // Columns present and empty (no live row names the run).
+      pipelineAttempt({ id: "10", ...noRecord, encode_exit_status: null, encode_exit_rule: null, encode_last_phase: null }),
+      // A last phase alone: where it was, not how it ended.
+      pipelineAttempt({ id: "11", ...noRecord, encode_last_phase: "generate" }),
+    ].flatMap(attemptEvents);
+    const panel = (id: string) => {
+      cleanup();
+      const detail = caseDetail(runs, id)!;
+      render(<JourneyView citation={detail.citation} stationOrder={stationOrder} lanes={[]} detail={detail} bundles={[]} error={null} />);
+      return screen.getByRole("complementary", { name: "Run details" }).textContent ?? "";
+    };
+    expect(panel("8")).toContain("none recorded");
+    expect(panel("8")).toContain("The encode ended: exited · exit:1 · in phase resolve.");
+    expect(panel("11")).toContain("The encode's last reported phase was generate; how it ended is not on record.");
+    expect(panel("11")).not.toContain("The encode ended");
+    for (const id of ["9", "10"]) {
+      expect(panel(id)).toContain("Why it stopped is not on record.");
+      expect(panel(id)).not.toContain("The encode ended");
+    }
+  });
+
+  it("counts in the coverage line the no-try-record runs with a recorded end", () => {
+    const noRecord = { encode_started_at: "2026-09-20T10:01:00Z", encode_seconds: 12, failed_step: "encode_apply" };
+    const coverage = (attempts: Parameters<typeof pipelineAttempt>[0][]) => {
+      cleanup();
+      const mined = mineFlow(attempts.map((a, i) => pipelineAttempt({ id: String(50 + i), citation: `us/${i}`, ...noRecord, ...a })).flatMap(attemptEvents), { now: NOW, days: 30 });
+      return render(<FlowLine model={mined} error={null} params={params} jurisdictions={[]} />).container.textContent ?? "";
+    };
+    expect(coverage([{ encode_exit_status: "exited", encode_exit_rule: "exit:1", encode_last_phase: "resolve" }, {}])).toContain(
+      "2 ran the encode step with no try record (1 with a recorded end: exited · exit:1 · in phase resolve (1); 1 not on record);"
+    );
+    expect(coverage([{}, {}])).toContain("2 ran the encode step with no try record (why they stopped is not on record);");
+    expect(coverage([{ encode_exit_status: "exited" }, { encode_last_phase: "validate" }, {}])).toContain(
+      "3 ran the encode step with no try record (1 with a recorded end: exited (1); 1 with the last phase alone: validate (1); 1 not on record);"
+    );
+    cleanup();
+  });
+
   it("shows a plain title with no citation", () => {
     render(<JourneyView citation={null} stationOrder={[]} lanes={[]} detail={null} bundles={[]} error={null} />);
     expect(screen.getByRole("heading", { name: "Encoding journey" })).toBeTruthy();
+  });
+});
+
+describe("Waiting now", () => {
+  it("lists where open cases wait, why, since when, and links the oldest to its journey", () => {
+    const open = pipelineAttempt({
+      id: "9",
+      citation: "us/behind",
+      run_conclusion: "success",
+      encode_seconds: 60,
+      pr_repo: "rulespec-us",
+      pr_number: 9,
+      pr_url: "https://github.com/x/pull/9",
+      pr_state: "open",
+      pr_created_at: "2026-09-20T10:29:00Z",
+      pr_checks: "success",
+      pr_review: "none",
+      pr_merge_state: "BEHIND",
+      pr_commit_count: 3,
+    });
+    const waiting = mineFlow(attemptEvents(open), { now: NOW, days: 30 });
+    render(<FlowLine model={waiting} error={null} params={params} jurisdictions={[]} />);
+    const table = screen.getByRole("table", { name: "Waiting now" });
+    const row = within(table).getAllByRole("row")[1];
+    expect(row).toHaveTextContent("Behind the default branch");
+    expect(row).toHaveTextContent("10d");
+    expect(within(row).getByRole("link", { name: "us/behind" })).toHaveAttribute("href", "/ops/journey?citation=us%2Fbehind");
+    cleanup();
+  });
+
+  it("has no panel when nothing is open", () => {
+    const done = mineFlow(attemptEvents(pipelineAttempt({ id: "1", failed_step: "encode_apply", tries: [tryOf(1, false)] })), { now: NOW, days: 30 });
+    render(<FlowLine model={done} error={null} params={params} jurisdictions={[]} />);
+    expect(screen.queryByRole("table", { name: "Waiting now" })).toBeNull();
+    cleanup();
   });
 });

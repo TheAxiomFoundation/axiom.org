@@ -527,6 +527,7 @@ function TierHeader({
   const changed = [...snapshots]
     .sort((a, b) => b.day.localeCompare(a.day))
     .find((s) => (count === "documents" ? s.counts.documents : s.counts.provisions) !== total);
+  const changedTotal = changed ? (count === "documents" ? changed.counts.documents : changed.counts.provisions) : 0;
   return (
     <span role="columnheader" className={styles.tierHeader}>
       <span className={styles.tierIndex}>Tier {index}</span>
@@ -540,7 +541,7 @@ function TierHeader({
       </span>
       {changed && (
         <span className={styles.tierChange}>
-          Changed from {number(count === "documents" ? changed.counts.documents : changed.counts.provisions)} on{" "}
+          Scope changed from {number(changedTotal)} {countWord(count, changedTotal, tier.id)} on{" "}
           {day(`${changed.day}T00:00:00Z`)}
         </span>
       )}

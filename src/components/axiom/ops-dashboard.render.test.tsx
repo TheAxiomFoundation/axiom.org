@@ -209,6 +209,12 @@ describe("OpsDashboard", () => {
     expect(
       screen.getByText(/Idle — no machines encoding/i),
     ).toBeInTheDocument();
+    // The board reads synced telemetry only, and says so.
+    expect(
+      within(screen.getByRole("region", { name: "Live encoding activity" })).getByText(
+        "Synced runs only; local runs with --no-sync are not shown.",
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByText(/Last encode/i)).toBeInTheDocument();
     expect(within(screen.getByText(/Last encode/i).parentElement!).getByText("completed")).toBeInTheDocument();
 

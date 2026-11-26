@@ -67,13 +67,18 @@ export const WHAT_WE_DO: readonly DoCard[] = [
 ] as const;
 
 /**
- * Licence URLs for the fine-print line under "What we do". The split is real
- * and verified against the repos — the `rulespec-*` jurisdiction repos carry
- * CC BY 4.0, while the engine, encoder, oracles, and this site carry
- * MIT. The PDF states the same thing; keep them in step.
+ * Licence URLs for the fine-print line under "What we do". The split is real.
+ * On 2026-11-25 Max had the `rulespec-*` jurisdiction repos relicensed from
+ * CC BY 4.0 to the CC0 1.0 public domain dedication, which covers their
+ * encodings, tests, parameter values, and provenance metadata; their
+ * incidental tooling stays Apache-2.0 under LICENSE-CODE. GitHub's licence
+ * field shows MIT for the engine (axiom-rules-engine), the encoder
+ * (axiom-encode), the oracles (axiom-oracles), and this site. Check a repo
+ * with `gh api repos/TheAxiomFoundation/<repo> --jq .license.spdx_id` before
+ * changing this. The PDF states the same thing; keep them in step.
  */
 export const LICENSE_LINKS = {
-  encodings: "https://creativecommons.org/licenses/by/4.0/",
+  encodings: "https://creativecommons.org/publicdomain/zero/1.0/",
   code: "https://opensource.org/license/mit",
 } as const;
 

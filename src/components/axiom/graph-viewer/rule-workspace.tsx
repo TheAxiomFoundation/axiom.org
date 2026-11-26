@@ -100,7 +100,7 @@ function SourceReader({ rule, id, consumers }: { rule?: RuleNode; id: string; co
   </section>;
 }
 
-export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, onViewChange, scopeLabel, truncated, runReady, scenario, graphControls, onOverview, valueOf, hasRun, stale, renderInput, onRun, running, members = [], run = null, explanationTrail = [], onExplanationTrailChange, roles, runUnavailableReason = null, headerSlot = null, subjectExtras = null, conflictsPanel = null }: {
+export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, onViewChange, scopeLabel, truncated, runReady, scenario, graphControls, onOverview, valueOf, hasRun, stale, renderInput, onRun, running, members = [], run = null, explanationTrail = [], onExplanationTrailChange, roles, runUnavailableReason = null, headerSlot = null, subjectExtras = null, conflictsPanel = null, runError = null }: {
   graph: ProgramGraph; rootTarget?: string; selectedId: string; onSelect: (id: string) => void;
   view: WorkspaceView; onViewChange: (view: WorkspaceView) => void;
   scopeLabel: string; truncated: boolean; runReady: boolean; scenario: ReactNode;
@@ -122,6 +122,9 @@ export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, o
   /** The selected rule's known source conflicts, shown in Read and
    *  Relationships (the graph view's inspector carries its own). */
   conflictsPanel?: ReactNode;
+  /** The last run's error, shown beside Run household: the graph stage's
+   *  copy is hidden outside Graph. */
+  runError?: string | null;
   onOverview?: () => void;
   valueOf: (id: string) => unknown; hasRun: boolean; stale: boolean;
 }) {
@@ -284,6 +287,9 @@ export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, o
     {view === "read" && <SourceReader key={selectedId} rule={rule} id={selectedId} consumers={consumers} />}
     {view === "structure" && <section className="workspace-structure" aria-label="Immediate dependencies">
       <div className="workspace-section-heading"><h2>Direct relationships</h2>{onRun && runReady && <div className="workspace-run-actions">{hasRun && stale && <span className="workspace-stale-inline" role="status">Inputs changed · run again to update</span>}<button className={`workspace-button${hasRun && stale && !running ? " workspace-run-needed" : ""}`} disabled={running} onClick={onRun}>{running ? "Running…" : hasRun ? "Run again" : "Run household"}</button></div>}</div>
+      {/* Shown even once a refusal folds Run household away (a rollback 404
+          clears run readiness): the graph stage's copy is hidden here. */}
+      {onRun && runError && <p className="run-error" role="alert">{runError}</p>}
       <RelationshipDiagram activeId={activeDependency}><div className={`workspace-neighborhood ${dependencies.length ? "has-dependencies" : ""} ${consumers.length ? "has-consumers" : ""}`} key={selectedId}>
         <NeighborColumn title="Built from" ids={dependencies} entries={entries} label={label} onSelect={navigate} hasRun={hasRun} value={value} activeId={activeDependency} onHighlight={setActiveDependency} renderInput={renderInput} empty="No dependencies recorded in this scope." />
         <div className="workspace-anchor" data-relationship-anchor><span className="relationship-caption">Selected rule</span><h3>{label(selectedId)}</h3>

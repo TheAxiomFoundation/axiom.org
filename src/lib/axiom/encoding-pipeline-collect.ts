@@ -33,8 +33,13 @@ import {
   type EncodeLoopTiming,
   type PipelineAttempt,
   type PipelineTry,
+  type PipelineTryCheck,
+  type DispatchRecord,
+  isInfraRule,
   type PipelineTryPhase,
 } from "./encoding-pipeline";
+import { parseRuleSpec } from "./rulespec/doc";
+import { moduleSourcePaths } from "./rulespec/source-citations";
 
 export interface WorkflowRun {
   id: number;
@@ -102,8 +107,21 @@ export interface ManifestPr {
   requestedReviewers?: string[];
   mergeCommit?: string | null;
   /** For a PR merged into a side branch, once looked up: that branch's own
-   *  PR into the default branch that carries it there, or null (see viaPrFor). */
+   *  PR into the default branch that carries it there, or null (see viaPrFor).
+   *  For a PR closed without a merge: the PR that carried its module to the
+   *  default branch in its place (a merge train), or null (see carrierPrFor). */
   via?: BranchPr | null;
+  /** The head commit and what GitHub says about merging it (see prGate). */
+  headSha?: string | null;
+  mergeState?: string | null;
+  commitCount?: number | null;
+  checksStartedAt?: string | null;
+  checksFinishedAt?: string | null;
+  approvedAt?: string | null;
+  approvalOnHead?: boolean | null;
+  approvalsDismissed?: number | null;
+  /** Pull requests that mention this one (GitHub cross-references). */
+  crossRefs?: CrossRefPr[];
   /** For one module of a PR merged outside the pipeline: the module's
    *  jurisdiction (a manifest PR's comes from its title) and the PR's author. */
   jurisdiction?: string | null;
@@ -121,6 +139,120 @@ export interface BranchPr {
   mergeCommit: string | null;
 }
 
+/** A pull request that mentions another one, with where it merged. */
+export interface CrossRefPr extends BranchPr {
+  repo: string;
+  baseRefName: string;
+  defaultBranch: string | null;
+}
+
+/** The part of a GraphQL PullRequest node prGate reads. */
+export interface PrGateNode {
+  state?: string | null;
+  headRefOid?: string | null;
+  mergeStateStatus?: string | null;
+  commits?: {
+    totalCount?: number | null;
+    nodes?: Array<{
+      commit?: {
+        statusCheckRollup?: {
+          contexts?: {
+            nodes?: Array<{ __typename?: string; status?: string | null; startedAt?: string | null; completedAt?: string | null } | null> | null;
+          } | null;
+        } | null;
+      } | null;
+    } | null> | null;
+  } | null;
+  reviews?: { nodes?: Array<{ state?: string | null; submittedAt?: string | null; commit?: { oid?: string | null } | null } | null> | null } | null;
+  timelineItems?: {
+    nodes?: Array<{
+      source?: {
+        __typename?: string;
+        number?: number;
+        url?: string;
+        state?: string;
+        isDraft?: boolean;
+        createdAt?: string;
+        mergedAt?: string | null;
+        baseRefName?: string;
+        mergeCommit?: { oid?: string | null } | null;
+        repository?: { name?: string; defaultBranchRef?: { name?: string } | null } | null;
+      } | null;
+    } | null> | null;
+  } | null;
+}
+
+export type PrGate = Required<
+  Pick<
+    ManifestPr,
+    | "headSha"
+    | "mergeState"
+    | "commitCount"
+    | "checksStartedAt"
+    | "checksFinishedAt"
+    | "approvedAt"
+    | "approvalOnHead"
+    | "approvalsDismissed"
+    | "crossRefs"
+  >
+>;
+
+/**
+ * What stands between a PR and its merge, from its GraphQL node: the head
+ * commit, GitHub's merge state (only an open PR has one), how many commits
+ * it holds, when the head commit's check runs started and finished (no
+ * finish while one still runs), the latest approval and whether it is on
+ * the head commit, how many reviews were dismissed, and the PRs that
+ * mention it.
+ */
+export function prGate(node: PrGateNode): PrGate {
+  const head = node.headRefOid ?? null;
+  const runs = (node.commits?.nodes?.[0]?.commit?.statusCheckRollup?.contexts?.nodes ?? []).filter(
+    (context): context is NonNullable<typeof context> => context?.__typename === "CheckRun"
+  );
+  const starts = runs.map((run) => run.startedAt).filter((at): at is string => !!at).sort();
+  const running = runs.some((run) => !run.completedAt || (run.status != null && run.status !== "COMPLETED"));
+  const ends = runs.map((run) => run.completedAt).filter((at): at is string => !!at).sort();
+  const reviews = (node.reviews?.nodes ?? []).filter((review): review is NonNullable<typeof review> => !!review);
+  const approval = reviews
+    .filter((review) => review.state === "APPROVED" && review.submittedAt)
+    .sort((a, b) => a.submittedAt!.localeCompare(b.submittedAt!))
+    .pop();
+  const crossRefs: CrossRefPr[] = [];
+  const seen = new Set<string>();
+  for (const item of node.timelineItems?.nodes ?? []) {
+    const source = item?.source;
+    if (source?.__typename !== "PullRequest" || !source.number || !source.repository?.name || !source.createdAt) continue;
+    const key = `${source.repository.name}#${source.number}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    crossRefs.push({
+      repo: source.repository.name,
+      number: source.number,
+      url: source.url ?? "",
+      state: source.state === "MERGED" ? "MERGED" : source.state === "CLOSED" ? "CLOSED" : "OPEN",
+      isDraft: !!source.isDraft,
+      createdAt: source.createdAt,
+      mergedAt: source.mergedAt ?? null,
+      mergeCommit: source.mergeCommit?.oid ?? null,
+      baseRefName: source.baseRefName ?? "",
+      defaultBranch: source.repository.defaultBranchRef?.name ?? null,
+    });
+  }
+  const mergeState = node.state === "OPEN" && node.mergeStateStatus && node.mergeStateStatus !== "UNKNOWN" ? node.mergeStateStatus : null;
+  return {
+    headSha: head,
+    mergeState,
+    commitCount: node.commits?.totalCount ?? null,
+    checksStartedAt: starts[0] ?? null,
+    checksFinishedAt: runs.length && !running ? ends[ends.length - 1] ?? null : null,
+    approvedAt: approval?.submittedAt ?? null,
+    approvalOnHead: approval ? (head && approval.commit?.oid ? approval.commit.oid === head : null) : null,
+    approvalsDismissed: reviews.filter((review) => review.state === "DISMISSED").length,
+    crossRefs,
+  };
+}
+
 export interface FailedJob {
   name: string;
   id: number;
@@ -135,6 +267,13 @@ export interface MirrorRow {
   raw_yaml_sha256: string | null;
   /** The commit the sync read (once the commit_sha column exists). */
   commit_sha?: string | null;
+  /** The provisions the module's rules are grounded in, with its singular
+   *  source (`source_verification.corpus_citation_path`), when read. */
+  value_citation_paths?: string[] | null;
+  /** The module's singular `source_verification.corpus_citation_path`, once
+   *  read from its YAML (see moduleSourceLookups): null when it declares none
+   *  (a legacy plural list, or no source); absent until read. */
+  module_source?: string | null;
 }
 
 export interface CompileSweepRow {
@@ -225,9 +364,46 @@ export function encoderTries(row: EncoderRunRow): PipelineTry[] | null {
       const wallMs = number(entry.wall_duration_ms);
       const phases = tryPhases(entry.phases);
       if (startedAt && wallMs !== null && phases) Object.assign(attempt, { startedAt, wallMs, phases });
+      const { checks, more } = tryChecks(errors);
+      if (checks.length) attempt.checks = checks;
+      if (more) attempt.checksMore = more;
       return attempt;
     });
   return tries.length ? tries : null;
+}
+
+/** How many typed checks a try keeps, and how long an id may be: the tries column stays small. */
+export const TRY_CHECKS_MAX = 12;
+const TRY_CHECK_ID_MAX = 120;
+
+/**
+ * The typed checks in a try's errors: the encoder's issue document lists each
+ * finding with its registry check id and gate. One entry per check id, with
+ * its number of findings, most findings first; a finding with no check id is
+ * left out (the first error message still shows it).
+ */
+function tryChecks(errors: unknown[]): { checks: PipelineTryCheck[]; more: number } {
+  const byId = new Map<string, PipelineTryCheck>();
+  for (const error of errors) {
+    const document = error && typeof error === "object" ? (error as Record<string, unknown>).issue_document : null;
+    const issues = document && typeof document === "object" ? (document as Record<string, unknown>).issues : null;
+    if (!Array.isArray(issues)) continue;
+    for (const issue of issues) {
+      if (!issue || typeof issue !== "object") continue;
+      const { check, gate } = issue as Record<string, unknown>;
+      if (typeof check !== "string" || !check.trim()) continue;
+      const id = check.trim().slice(0, TRY_CHECK_ID_MAX);
+      const known = byId.get(id);
+      if (known) {
+        known.n += 1;
+        if (!known.gate && typeof gate === "string" && gate) known.gate = gate.slice(0, 40);
+      } else {
+        byId.set(id, { id, gate: typeof gate === "string" && gate ? gate.slice(0, 40) : null, n: 1 });
+      }
+    }
+  }
+  const all = [...byId.values()].sort((a, b) => b.n - a.n || a.id.localeCompare(b.id));
+  return { checks: all.slice(0, TRY_CHECKS_MAX), more: Math.max(0, all.length - TRY_CHECKS_MAX) };
 }
 
 /** A try's phases as the encoder lists them, each with its time and, for a check phase, its time by tool. */
@@ -303,6 +479,40 @@ export function rulespecModulePaths(files: string[]): string[] {
     .sort();
 }
 
+const MANIFEST_RE = /^(?:([^/.][^/]*)\/)?\.axiom\/encoding-manifests\/(.+)\.json$/;
+
+/**
+ * The modules a PR's signed manifests stand for. A manifest sits at
+ * `.axiom/encoding-manifests/<module path>.json`, at the repo root or under
+ * a jurisdiction folder (`us-az/.axiom/encoding-manifests/<rest>.json` is
+ * `us-az/<rest>.yaml`). A promotion lane's signed PR into a candidate's
+ * branch holds only the manifest: its module is in the branch.
+ */
+export function manifestModulePaths(files: string[]): string[] {
+  const modules = new Set<string>();
+  for (const path of files) {
+    const match = MANIFEST_RE.exec(path);
+    if (match) modules.add(`${match[1] ? `${match[1]}/` : ""}${match[2]}.yaml`);
+  }
+  return [...modules].sort();
+}
+
+/** A PR's modules: its own module files, else (a PR of signed manifests only) the modules they stand for. */
+function ownOrSignedModules(files: string[]): string[] {
+  const own = rulespecModulePaths(files);
+  return own.length ? own : manifestModulePaths(files);
+}
+
+/**
+ * The modules a PR's change brought to the default branch. A PR that holds
+ * only signed manifests and reached the default branch through another PR
+ * (its side branch's own PR, or a merge train that replaced it) brought the
+ * modules those manifests stand for: that PR merged them, at its merge commit.
+ */
+export function landedModulePaths(pr: Pick<ManifestPr, "files" | "via">): string[] {
+  return pr.via?.state === "MERGED" ? ownOrSignedModules(pr.files) : rulespecModulePaths(pr.files);
+}
+
 /** The first day a PR merged outside the pipeline is collected from. */
 export const OUTSIDE_SINCE = "2026-07-22T00:00:00Z";
 /** How far before the previous pass a pass lists merged PRs again: a pass that failed to write loses nothing. */
@@ -369,6 +579,59 @@ export function derivedCitation(repo: string, path: string): string {
   return [jurisdiction, CITATION_BUCKETS[bucket] ?? bucket, ...tail].join("/");
 }
 
+/**
+ * The provision an index row's module encodes, as a dispatch and the bundle
+ * documents name it: its singular source (`source_verification
+ * .corpus_citation_path`) when that is its one grounding citation
+ * (`value_citation_paths`). rulespec-us
+ * `us-az/policies/des/faa5/.../block-7.yaml` encodes
+ * `us-az/manual/des/faa5/.../block-7`. A module keeps its own citation when
+ * that is the source or a provision under it (`us/statutes/26/63/c.yaml`
+ * stays `us/statute/26/63/c`, not section 63), when it is grounded in
+ * several provisions, when it declares a legacy plural list of sources
+ * (`salt_deduction_pipeline`: six sections), and until its source is read.
+ */
+export function moduleCitation(
+  row: Pick<MirrorRow, "citation_path" | "value_citation_paths" | "module_source">
+): string {
+  const source = moveTarget(row);
+  return source !== null && row.module_source === source ? source : row.citation_path;
+}
+
+/** The one grounding citation a row's module might move to, or null when its own citation stays. */
+function moveTarget(row: Pick<MirrorRow, "citation_path" | "value_citation_paths">): string | null {
+  const values = row.value_citation_paths;
+  if (!Array.isArray(values) || values.length !== 1 || typeof values[0] !== "string" || !values[0]) return null;
+  const [source] = values;
+  if (row.citation_path === source || row.citation_path.startsWith(`${source}/`)) return null;
+  return source;
+}
+
+/**
+ * Index rows of modules merged outside the pipeline whose citation depends on
+ * the module's declared source, not read yet: the collector reads their YAML
+ * (moduleSourceOf) and sets `module_source`, then builds the modules again.
+ */
+export function moduleSourceLookups(modules: OutsideModule[], mirror: MirrorRow[] | MirrorIndex): MirrorRow[] {
+  const index = Array.isArray(mirror) ? buildMirrorIndex(mirror) : mirror;
+  const rows = new Set<MirrorRow>();
+  for (const module of modules) {
+    const row = index.byPath.get(`${module.pr.repo}:${module.path}`);
+    if (row && row.module_source === undefined && moveTarget(row) !== null) rows.add(row);
+  }
+  return [...rows];
+}
+
+/** A module's singular `source_verification.corpus_citation_path`, or null (none, a plural list, or YAML that does not parse). */
+export function moduleSourceOf(rawYaml: string | null | undefined): string | null {
+  if (typeof rawYaml !== "string") return null;
+  try {
+    return moduleSourcePaths(parseRuleSpec(rawYaml)).singular;
+  } catch {
+    return null;
+  }
+}
+
 /** A module's citation: from the index, else what an earlier pass stored, else its path. */
 function outsideCitation(
   repo: string,
@@ -377,7 +640,7 @@ function outsideCitation(
   stored: string | null | undefined
 ): Pick<OutsideModule, "citation" | "citationFrom"> {
   const row = index.byPath.get(`${repo}:${path}`);
-  if (row) return { citation: row.citation_path, citationFrom: "index" };
+  if (row) return { citation: moduleCitation(row), citationFrom: "index" };
   if (stored) return { citation: stored, citationFrom: "stored" };
   return { citation: derivedCitation(repo, path), citationFrom: "path" };
 }
@@ -517,7 +780,8 @@ export function outsideModules(
     if (!pr.via) continue;
     const key = prKey(pr.repo, pr.via.number);
     const paths = carried.get(key) ?? new Set<string>();
-    for (const path of rulespecModulePaths(pr.files)) paths.add(path);
+    // A manifest-only PR's module is the one its side branch's PR or merge train merged.
+    for (const path of ownOrSignedModules(pr.files)) paths.add(path);
     carried.set(key, paths);
   }
   const stored = storedOutside(previous);
@@ -648,10 +912,152 @@ export function viaPrFor(pr: ManifestPr, branchPrs: BranchPr[]): BranchPr | null
  * into it, or the merge of the side branch's own PR. Null until it has.
  */
 export function mainMerge(pr: ManifestPr): { mergedAt: string; mergeCommit: string | null } | null {
+  if (pr.state === "CLOSED") {
+    // Closed without a merge: a merge train may have carried its module (see carrierPrFor).
+    const carrier = pr.via;
+    return carrier?.state === "MERGED" && carrier.mergedAt ? { mergedAt: carrier.mergedAt, mergeCommit: carrier.mergeCommit } : null;
+  }
   if (pr.state !== "MERGED" || !pr.mergedAt) return null;
   if (!mergedOffDefault(pr)) return { mergedAt: pr.mergedAt, mergeCommit: pr.mergeCommit ?? null };
   const via = pr.via;
   return via?.state === "MERGED" && via.mergedAt ? { mergedAt: via.mergedAt, mergeCommit: via.mergeCommit } : null;
+}
+
+/** What says which merged PR holds which files, for carrierPrFor. */
+export interface CarrierIndex {
+  /** Paths per merged PR ("repo#number"): its whole file list when this pass read it, else the modules its stored outside rows name. */
+  files: Map<string, Set<string>>;
+  /** The carrier an earlier pass recorded per closed PR ("repo#number"). */
+  recorded: Map<string, number>;
+  /** Merged PRs whose whole file list this pass read (manifests too); stored rows name modules only. */
+  read: Set<string>;
+}
+
+/** A merged PR whose files a pass reads to check that it carried a closed signed PR (see carrierFileLookups). */
+export interface CarrierCandidate {
+  repo: string;
+  number: number;
+  /** Repo-relative paths it added or changed (deletions left out); undefined until read. */
+  files?: string[];
+}
+
+export function carrierIndex(
+  merged: MergedPr[],
+  previous: Map<string, Partial<PipelineAttempt>>,
+  candidates: CarrierCandidate[] = []
+): CarrierIndex {
+  const files = new Map<string, Set<string>>();
+  const add = (key: string, path: string) => files.set(key, (files.get(key) ?? new Set<string>()).add(path));
+  const read = new Set<string>();
+  for (const pr of [...merged, ...candidates]) {
+    if (pr.files === undefined) continue;
+    const key = prKey(pr.repo, pr.number);
+    read.add(key);
+    files.set(key, files.get(key) ?? new Set<string>());
+    for (const path of pr.files) add(key, path);
+  }
+  const recorded = new Map<string, number>();
+  for (const row of previous.values()) {
+    const parts = row.id ? outsideIdParts(row.id) : null;
+    if (parts) {
+      // A PR read this pass is known by that read alone, not by what an earlier pass stored.
+      const key = prKey(parts.repo, parts.number);
+      if (!read.has(key)) add(key, parts.path);
+    } else if (row.pr_repo && row.pr_number != null && row.pr_via_number != null && row.pr_via_state === "merged") {
+      recorded.set(prKey(row.pr_repo, Number(row.pr_number)), Number(row.pr_via_number));
+    }
+  }
+  return { files, recorded, read };
+}
+
+/** The signed manifests among a PR's files. */
+function signedManifests(files: string[]): string[] {
+  return files.filter((path) => MANIFEST_RE.test(path));
+}
+
+/** The PRs that mention a closed PR and could have carried it: merged into the same repo's default branch after it was opened. */
+function carrierRefs(pr: ManifestPr): CrossRefPr[] {
+  return (pr.crossRefs ?? []).filter(
+    (ref) =>
+      ref.repo === pr.repo &&
+      ref.state === "MERGED" &&
+      !!ref.mergedAt &&
+      ref.mergedAt >= pr.createdAt &&
+      !!ref.defaultBranch &&
+      ref.baseRefName === ref.defaultBranch
+  );
+}
+
+/**
+ * Merged PRs whose files to read before a closed signed PR can link to them:
+ * a PR that mentions it and whose stored outside rows name every module of
+ * it, but whose files this pass did not read. Stored rows name modules
+ * only, so they cannot show that the PR holds the signed manifests
+ * (rulespec-us#2046 holds block 7 unsigned). A closed PR an earlier pass
+ * linked, and one that holds no manifest, need no read.
+ */
+export function carrierFileLookups(
+  prs: ManifestPr[],
+  merged: MergedPr[],
+  previous: Map<string, Partial<PipelineAttempt>>
+): CarrierCandidate[] {
+  const index = carrierIndex(merged, previous);
+  const lookups = new Map<string, CarrierCandidate>();
+  for (const pr of prs) {
+    if (pr.state !== "CLOSED") continue;
+    const modules = ownOrSignedModules(pr.files);
+    if (modules.length === 0 || signedManifests(pr.files).length === 0) continue;
+    const refs = carrierRefs(pr);
+    const recorded = index.recorded.get(prKey(pr.repo, pr.number));
+    if (refs.some((ref) => ref.number === recorded)) continue;
+    for (const ref of refs) {
+      const key = prKey(ref.repo, ref.number);
+      if (index.read.has(key)) continue;
+      const held = index.files.get(key);
+      if (held && modules.every((path) => held.has(path))) lookups.set(key, { repo: ref.repo, number: ref.number });
+    }
+  }
+  return [...lookups.values()];
+}
+
+/**
+ * The PR that carried a closed manifest PR's module to the default branch
+ * (a merge train that replaces several PRs): one that mentions the closed
+ * PR, merged into the default branch of the same repo after the PR was
+ * opened, and holds every module file of it. A mention alone is not
+ * enough: a PR can name another without replacing it.
+ * A promotion lane's signed PR holds only the manifest: the train must hold
+ * the module it stands for (rulespec-us#2204's block-7, carried by #2205).
+ * A new link to a train also needs the closed PR's signed manifests in the
+ * train's whole file list, read this pass: a candidate PR that holds the
+ * module unsigned (#2046) did not carry the signed encoding. The train's
+ * stored outside rows name modules only, so they never make a new link for
+ * a PR that holds a manifest (the collector reads the train's files first,
+ * see carrierFileLookups; a read that fails leaves the PR unlinked this
+ * pass). The link an earlier pass recorded is kept: the train's outside
+ * rows are dropped once linked. A closed PR with no manifest has nothing
+ * signed to check, so the module files decide, from either source.
+ */
+export function carrierPrFor(pr: ManifestPr, index: CarrierIndex): BranchPr | null {
+  if (pr.state !== "CLOSED" || !pr.crossRefs?.length) return null;
+  const modules = ownOrSignedModules(pr.files);
+  if (modules.length === 0) return null;
+  const manifests = signedManifests(pr.files);
+  const recorded = index.recorded.get(prKey(pr.repo, pr.number));
+  const carriers = carrierRefs(pr)
+    .filter((ref) => {
+      if (ref.number === recorded) return true;
+      const key = prKey(ref.repo, ref.number);
+      const held = index.files.get(key);
+      if (!held || !modules.every((path) => held.has(path))) return false;
+      if (manifests.length === 0) return true;
+      return index.read.has(key) && manifests.every((path) => held.has(path));
+    })
+    .sort((a, b) => a.mergedAt!.localeCompare(b.mergedAt!));
+  const carrier = carriers[0];
+  if (!carrier) return null;
+  const { number, url, state, isDraft, createdAt, mergedAt, mergeCommit } = carrier;
+  return { number, url, state, isDraft, createdAt, mergedAt, mergeCommit };
 }
 
 function branchPrState(pr: BranchPr): NonNullable<PipelineAttempt["pr_via_state"]> {
@@ -727,6 +1133,76 @@ export function indexEncoderRows(rows: EncoderRunRow[]): EncoderIndex {
     else if (row.citation) add(byCitation, row.citation, row);
   }
   return { byCitation, byRunId };
+}
+
+/**
+ * One row of encodings.live_encoding_runs that names its Actions run: the
+ * encoder's own presence record for one `axiom-encode encode` invocation
+ * (axiom-encode #1750 on). outcome_status and error_rule arrive by
+ * migration and are absent before it.
+ */
+export interface LiveRunRow {
+  id: string;
+  citation: string | null;
+  status: string | null;
+  phase: string | null;
+  started_at: string | null;
+  /** runner.github_run_id and runner.github_run_attempt, as text. */
+  github_run_id: string | null;
+  github_run_attempt?: string | number | null;
+  /** runner.reported_via: "public_ingest" marks a self-reported row. */
+  reported_via?: string | null;
+  outcome_status?: string | null;
+  error_rule?: string | null;
+}
+
+/** How a dispatch's encode ended, as its row stores it. */
+export type EncodeExitFields = Pick<PipelineAttempt, "encode_exit_status" | "encode_exit_rule" | "encode_last_phase">;
+
+const NO_EXIT: EncodeExitFields = { encode_exit_status: null, encode_exit_rule: null, encode_last_phase: null };
+const EXIT_TOKEN_RE = /^[A-Za-z0-9_.:/-]+$/;
+
+/** A machine token within its bound, or null: these columns never hold free text. */
+function exitToken(value: unknown, maxLength: number): string | null {
+  return typeof value === "string" && value.length <= maxLength && EXIT_TOKEN_RE.test(value) ? value : null;
+}
+
+/** Live rows by the Actions run they name. Self-reported rows (the public ingest) are left out: their run id is unverified. */
+export function indexLiveRuns(rows: LiveRunRow[]): Map<string, LiveRunRow[]> {
+  const byRun = new Map<string, LiveRunRow[]>();
+  for (const row of rows) {
+    if (!row.github_run_id || row.reported_via === "public_ingest") continue;
+    const id = String(row.github_run_id);
+    byRun.set(id, [...(byRun.get(id) ?? []), row]);
+  }
+  return byRun;
+}
+
+/**
+ * How a run's encode ended, from the live rows that name the run: null when
+ * none does (every run before axiom-encode #1750). A row of another attempt
+ * of the run is left out; a row with no attempt counts. Among several
+ * invocations in one run, the run's own citation first, then the latest to
+ * start: the encode that was running when the step ended.
+ */
+export function liveRunExit(
+  run: Pick<WorkflowRun, "id" | "run_attempt">,
+  citation: string,
+  index: Map<string, LiveRunRow[]>
+): EncodeExitFields | null {
+  const rows = (index.get(String(run.id)) ?? []).filter(
+    (row) => row.github_run_attempt == null || run.run_attempt == null || String(row.github_run_attempt) === String(run.run_attempt)
+  );
+  if (!rows.length) return null;
+  const own = rows.filter((row) => row.citation === citation);
+  const row = (own.length ? own : rows).reduce((latest, next) =>
+    (next.started_at ?? "") >= (latest.started_at ?? "") ? next : latest
+  );
+  return {
+    encode_exit_status: exitToken(row.outcome_status, 64),
+    encode_exit_rule: exitToken(row.error_rule, 160),
+    encode_last_phase: exitToken(row.phase, 64),
+  };
 }
 
 /** What a run's jobs said, as matchEncoderRuns needs it: this pass's read or the stored one. */
@@ -1000,7 +1476,7 @@ export function containmentQueries(
     const main = mainMerge(pr);
     const mergeCommit = main?.mergeCommit;
     if (!main || !mergeCommit) continue;
-    const modules = rulespecModulePaths(pr.files);
+    const modules = landedModulePaths(pr);
     const indexed = modules.every((path) => index.byPath.has(`${pr.repo}:${path}`));
     const key = prKey(pr.repo, pr.number);
     const synced = stored.has(key) && !unsynced.has(key);
@@ -1056,6 +1532,24 @@ export function activeWaivers(doc: unknown): Set<string> {
     }
   }
   return waived;
+}
+
+/**
+ * Module paths with an output that awaits an oracle comparison: the entries
+ * of a repo's oracle-coverage-pending.yaml, each a legal id such as
+ * `us-hi:policies/income_tax/x#output`. Both repo layouts of each path (see
+ * conceptModuleKeys), without the repo.
+ */
+export function pendingOracleModules(doc: unknown): Set<string> {
+  const entries = (doc as { entries?: unknown } | null)?.entries;
+  const pending = new Set<string>();
+  if (!Array.isArray(entries)) return pending;
+  for (const entry of entries) {
+    const legalId = entry && typeof entry === "object" ? (entry as { legal_id?: unknown }).legal_id : null;
+    if (typeof legalId !== "string") continue;
+    for (const key of conceptModuleKeys(legalId)) pending.add(key.slice(key.indexOf(":") + 1));
+  }
+  return pending;
 }
 
 /** One module's verdict from the axiom-oracles comparison reports. */
@@ -1178,6 +1672,13 @@ export interface RunDetail {
   cancelStage: PipelineAttempt["cancel_stage"];
   /** The encode job's parts in seconds (see jobPhases); null for a part that did not run. */
   phases: JobPhases;
+  /** For a run that passed: whether it was asked to open a PR (false when
+   *  its open-PR step was skipped: open_pr false). Null for any other run. */
+  prRequested?: boolean | null;
+  /** True when the run passed and its encode job did not run (skipped): it encoded nothing. */
+  skipped?: boolean;
+  /** What the dispatch asked for, when the run has a "Record dispatch" job with a readable tag. */
+  dispatch?: DispatchRecord;
 }
 
 export interface JobPhases {
@@ -1195,6 +1696,7 @@ interface RunStep {
 
 interface RunJob {
   name: string;
+  conclusion?: string | null;
   steps?: RunStep[] | null;
 }
 
@@ -1207,6 +1709,9 @@ const ENCODE_STEP_RE = /^Encode, review, validate, and apply$/i;
 const LANE_STEP_RE = /^Apply prepared signature \d+$/i;
 /** Steps outside the three parts: bookkeeping, failure bundles, and cleanup. */
 const UNTIMED_STEP_RE = /^(?:Post |Complete job$|Summarize model spend$|(?:Package|Upload) failed re-encode diagnostics$)/i;
+
+/** The step that pushes the lane branch and opens the signed manifest PR. */
+const OPEN_PR_STEP_RE = /open (?:a )?draft pull request/i;
 
 const seconds = (from: string, to: string) =>
   Math.max(0, Math.round((Date.parse(to) - Date.parse(from)) / 1000));
@@ -1252,9 +1757,11 @@ export function jobPhases(steps: RunStep[]): JobPhases {
  * for approval.
  */
 export function parseRunJobs(jobs: RunJob[], conclusion: string | null): RunDetail {
+  // The telemetry job is never the encode job, also when the encode job is missing.
+  const record = jobs.find((job) => DISPATCH_RECORD_JOB_RE.test(job.name)) ?? null;
   const encode =
     jobs.find((job) => /re-encode/i.test(job.name)) ??
-    jobs.find((job) => !/budget/i.test(job.name)) ??
+    jobs.find((job) => !/budget/i.test(job.name) && job !== record) ??
     null;
   const ran = (encode?.steps ?? []).filter(
     (step) => step.conclusion && step.conclusion !== "skipped"
@@ -1267,7 +1774,89 @@ export function parseRunJobs(jobs: RunJob[], conclusion: string | null): RunDeta
   if (conclusion === "cancelled") {
     cancelStage = !encode ? "before_job" : ran.length === 0 ? "approval" : "running";
   }
-  return { encodeStartedAt: starts[0] ?? null, cancelStage, phases: jobPhases(encode?.steps ?? []) };
+  // A run that passed with its open-PR step skipped was dispatched with
+  // open_pr false: it ends at its signed artifact by design.
+  const openPr = (encode?.steps ?? []).find((step) => OPEN_PR_STEP_RE.test(step.name ?? ""));
+  // A run whose protected jobs both skipped (a dispatch from another ref, a
+  // re-run of a queue dispatch) ends "success" once it has a record job: the
+  // jobs say it encoded nothing.
+  const skipped = conclusion === "success" && (encode?.conclusion === "skipped" || (!encode && !!record));
+  const prRequested = conclusion === "success" && !skipped ? openPr?.conclusion !== "skipped" : null;
+  const dispatch = record ? dispatchRecord(record) : undefined;
+  return {
+    encodeStartedAt: starts[0] ?? null,
+    cancelStage,
+    phases: jobPhases(encode?.steps ?? []),
+    prRequested,
+    ...(skipped ? { skipped } : {}),
+    ...(dispatch ? { dispatch } : {}),
+  };
+}
+
+/** The job that records what a dispatch asked for (axiom-encode's dispatch record): telemetry, never the cause of a failure. */
+export const DISPATCH_RECORD_JOB_RE = /^Record dispatch$/i;
+/** Its upload step repeats the record's main fields in its name. */
+const DISPATCH_TAG_PREFIX = "Upload dispatch record: ";
+const DISPATCH_KINDS = new Set(["promotion", "repair", "queue", "adhoc"]);
+
+/**
+ * Read a dispatch record's tag, `kind=<kind> open_pr=<bool>
+ * pr_base_branch=<branch> repair_run_id=<id>`. A value of `none` or
+ * `invalid`, or one this reader does not know, is null. Null when the tag
+ * names no field (the record step failed and left the name empty).
+ */
+export function parseDispatchTag(tag: string): DispatchRecord | null {
+  const fields = new Map<string, string>();
+  for (const token of tag.trim().split(/\s+/)) {
+    const at = token.indexOf("=");
+    if (at > 0) fields.set(token.slice(0, at), token.slice(at + 1));
+  }
+  const value = (name: string) => {
+    const text = fields.get(name);
+    return !text || text === "none" || text === "invalid" ? null : text.slice(0, 200);
+  };
+  const kind = value("kind");
+  const openPr = value("open_pr");
+  const record: DispatchRecord = {
+    kind: kind && DISPATCH_KINDS.has(kind) ? (kind as DispatchRecord["kind"]) : null,
+    open_pr: openPr === "true" ? true : openPr === "false" ? false : null,
+    pr_base_branch: value("pr_base_branch"),
+    repair_run_id: /^\d+$/.test(value("repair_run_id") ?? "") ? value("repair_run_id") : null,
+  };
+  return Object.values(record).some((field) => field !== null) ? record : null;
+}
+
+function dispatchRecord(job: RunJob): DispatchRecord | undefined {
+  const step = (job.steps ?? []).find((s) => s.name?.startsWith(DISPATCH_TAG_PREFIX));
+  return (step && parseDispatchTag(step.name!.slice(DISPATCH_TAG_PREFIX.length))) || undefined;
+}
+
+/** The workflow whose step checks the registry declares. */
+export const STEP_CHECK_WORKFLOW = ".github/workflows/targeted-signed-reencode.yml";
+
+/**
+ * Step name → check id, from axiom-encode's check registry: the checks whose
+ * `site` is `<workflow>:<step name>`. Empty for a registry without them.
+ */
+export function stepChecks(registry: unknown, workflow = STEP_CHECK_WORKFLOW): Map<string, string> {
+  const checks = new Map<string, string>();
+  const list = (registry as { checks?: unknown } | null)?.checks;
+  if (!Array.isArray(list)) return checks;
+  const prefix = `${workflow}:`;
+  for (const entry of list) {
+    const { id, site } = (entry ?? {}) as { id?: unknown; site?: unknown };
+    if (typeof id !== "string" || typeof site !== "string" || !site.startsWith(prefix)) continue;
+    const step = site.slice(prefix.length).trim();
+    if (step && id) checks.set(step, id.slice(0, 120));
+  }
+  return checks;
+}
+
+/** The check a failed step has: `failed_step` reads "<job> / <step>", or the bare step. */
+export function stepCheckId(failedStep: string | null | undefined, checks: Map<string, string>): string | null {
+  if (!failedStep) return null;
+  const name = failedStep.includes(" / ") ? failedStep.slice(failedStep.lastIndexOf(" / ") + 3) : failedStep;
+  return checks.get(name.trim()) ?? null;
 }
 
 /** The attempt fields a run's jobs, read at `readAt`, fill in. */
@@ -1280,6 +1869,10 @@ export function runDetailFields(detail: RunDetail, readAt: string): Partial<Pipe
     encode_seconds: detail.phases.encode,
     publish_seconds: detail.phases.publish,
     steps_read_at: readAt,
+    ...(detail.prRequested !== undefined ? { pr_requested: detail.prRequested } : {}),
+    ...(detail.dispatch ? { dispatch_record: detail.dispatch } : {}),
+    // The run's own conclusion is "success" (its record job passed): its jobs say nothing ran.
+    ...(detail.skipped ? { run_conclusion: "skipped" } : {}),
   };
 }
 
@@ -1294,13 +1887,20 @@ export function runDetailLookups(
   runs: WorkflowRun[],
   previous: Map<string, Partial<PipelineAttempt>>,
   limit: number,
-  { steps = false }: { steps?: boolean } = {}
+  { steps = false, prRequest = false }: { steps?: boolean; prRequest?: boolean } = {}
 ): WorkflowRun[] {
   const unread = (run: WorkflowRun) => !previous.get(String(run.id))?.jobs_checked_at;
   const stepsUnread = (run: WorkflowRun) => steps && !previous.get(String(run.id))?.steps_read_at;
+  // With `prRequest`, a run that passed and has no PR is read once more to
+  // learn whether it was asked for one (its jobs always answer yes or no).
+  const prUnread = (run: WorkflowRun) => {
+    const known = previous.get(String(run.id));
+    // A run its jobs showed skipped encoded nothing: it has no answer, and is not read again.
+    return prRequest && run.conclusion === "success" && !!known && known.run_conclusion !== "skipped" && known.pr_number == null && known.pr_requested == null;
+  };
   const storable = (run: WorkflowRun) => !!parseRunTitle(run.display_title) || previous.has(String(run.id));
   return runs
-    .filter((run) => run.status === "completed" && storable(run) && (unread(run) || stepsUnread(run)))
+    .filter((run) => run.status === "completed" && storable(run) && (unread(run) || stepsUnread(run) || prUnread(run)))
     .sort(
       (a, b) =>
         Number(unread(b)) - Number(unread(a)) ||
@@ -1434,6 +2034,14 @@ export interface CollectInputs {
   /** Oracle verdicts read this pass; absent between refreshes, when each
    *  attempt keeps the verdict its previous collection stored. */
   oracle?: Map<string, OracleVerdict>;
+  /** Per repo, module paths its oracle-coverage-pending.yaml lists (see pendingOracleModules);
+   *  a repo absent from the map was not read this pass. */
+  oraclePending?: Map<string, Set<string>>;
+  /** Step name → check id from axiom-encode's check registry (see stepChecks); none when it was not read. */
+  stepChecks?: Map<string, string>;
+  /** Live encoder rows that name an Actions run (see liveRunExit); absent when
+   *  they were not read this pass, when each row keeps what it stored. */
+  liveRuns?: LiveRunRow[];
   /** Jobs read this pass, by run id (see runDetailLookups). */
   runDetails?: Map<string, RunDetail>;
   /** Package versions read this pass, by axiom-encode commit (see versionLookups). */
@@ -1460,6 +2068,7 @@ interface JoinContext {
   validation: ValidationIndex;
   waivers: Map<string, Set<string>>;
   oracle: Map<string, OracleVerdict> | null;
+  oraclePending: Map<string, Set<string>>;
   checkErrors: Map<string, string>;
   syncRuns: SyncRun[] | null;
   syncSince: string | null;
@@ -1555,7 +2164,7 @@ function withPr(
   const { mirror, compile, compileAt: compileGeneratedAt, contains, validation, waivers, oracle } =
     context;
   const state = prState(pr);
-  const modules = rulespecModulePaths(pr.files);
+  const modules = landedModulePaths(pr);
   const targetsDefault = pr.defaultBranch ? pr.baseRefName === pr.defaultBranch : null;
   const attempt: PipelineAttempt = {
     ...base,
@@ -1578,11 +2187,23 @@ function withPr(
       : {}),
     ...(pr.mergeCommit !== undefined ? { pr_merge_commit: pr.mergeCommit } : {}),
     ...prCheckError(pr, state, context.checkErrors, previous),
-    ...(pr.via !== undefined ? viaFields(state === "merged" && targetsDefault === false ? pr.via : null) : {}),
+    ...(pr.via !== undefined
+      ? viaFields(
+          (state === "merged" && targetsDefault === false) || (state === "closed" && pr.via?.state === "MERGED") ? pr.via : null
+        )
+      : {}),
+    ...(pr.headSha !== undefined ? { pr_head_sha: pr.headSha } : {}),
+    ...(pr.mergeState !== undefined ? { pr_merge_state: pr.mergeState } : {}),
+    ...(pr.commitCount !== undefined ? { pr_commit_count: pr.commitCount } : {}),
+    ...(pr.checksStartedAt !== undefined ? { pr_checks_started_at: pr.checksStartedAt } : {}),
+    ...(pr.checksFinishedAt !== undefined ? { pr_checks_finished_at: pr.checksFinishedAt } : {}),
+    ...(pr.approvedAt !== undefined ? { pr_approved_at: pr.approvedAt } : {}),
+    ...(pr.approvalOnHead !== undefined ? { pr_approval_on_head: pr.approvalOnHead } : {}),
+    ...(pr.approvalsDismissed !== undefined ? { pr_approvals_dismissed: pr.approvalsDismissed } : {}),
   };
   // From here on, the merge into the default branch: the PR's own, or its side branch's.
   const main = mainMerge(pr);
-  if (state !== "merged" || !main) return attempt;
+  if (!main) return attempt;
   const { mergedAt, mergeCommit } = main;
 
   // The merge commit's own validation on main: the first tests the merge
@@ -1658,16 +2279,24 @@ function withPr(
   // commit it recorded contains the merge, or, for a report that records no
   // commit (EUROMOD/UKMOD), it was generated after the merge. A re-emission
   // never counts: it re-stamps an earlier run.
+  // With no report on the module, its repo's pending ledger says whether an
+  // oracle is still to come. A repo whose ledger was not read keeps what the
+  // previous collection stored.
+  const ledger = context.oraclePending.get(pr.repo);
+  const pending = ledger ? modules.some((path) => ledger.has(path)) : previous?.oracle_status === "pending";
   if (!oracle) {
-    if (previous?.oracle_status) {
+    if (previous?.oracle_status && previous.oracle_status !== "pending") {
       attempt.oracle_status = previous.oracle_status;
       attempt.oracle_report = previous.oracle_report ?? null;
       attempt.oracle_engine = previous.oracle_engine ?? null;
       attempt.oracle_checked_at = previous.oracle_checked_at ?? null;
+    } else if (pending) {
+      attempt.oracle_status = "pending";
     }
     return compileVerdict(attempt, mirrorRows, compile, compileGeneratedAt);
   }
   const verdict = moduleVerdict(oracle, pr.repo, modules);
+  if (!verdict && pending) attempt.oracle_status = "pending";
   if (verdict) {
     const current =
       !verdict.reemitted &&
@@ -1760,6 +2389,8 @@ function emptyAttempt(nowIso: string): Omit<PipelineAttempt, "id" | "citation" |
   };
 }
 
+const NO_STEP_CHECKS = new Map<string, string>();
+
 function isFailedRun(run: WorkflowRun): boolean {
   return (
     run.status === "completed" &&
@@ -1781,6 +2412,7 @@ export function buildAttempts(inputs: CollectInputs): PipelineAttempt[] {
     validation: inputs.validation ?? new Map(),
     waivers: inputs.waivers ?? new Map(),
     oracle: inputs.oracle ?? null,
+    oraclePending: inputs.oraclePending ?? new Map(),
     checkErrors: inputs.checkErrors ?? new Map(),
     syncRuns: inputs.syncRuns ?? null,
     syncSince: inputs.syncSince ?? null,
@@ -1790,6 +2422,7 @@ export function buildAttempts(inputs: CollectInputs): PipelineAttempt[] {
   for (const [sha, version] of inputs.encoderVersions ?? []) versions.set(sha, version);
   const encoderIndex = indexEncoderRows(inputs.encoderRuns);
   const { byRun, orphans } = linkPrsToRuns(inputs.runs, inputs.prs);
+  const liveIndex = inputs.liveRuns ? indexLiveRuns(inputs.liveRuns) : null;
 
   const runAttempts: Array<{ run: WorkflowRun; attempt: PipelineAttempt }> = [];
   for (const run of inputs.runs) {
@@ -1835,6 +2468,10 @@ export function buildAttempts(inputs: CollectInputs): PipelineAttempt[] {
       attempt.encode_started_at = previous.encode_started_at ?? null;
       attempt.cancel_stage = previous.cancel_stage ?? null;
       attempt.jobs_checked_at = previous.jobs_checked_at;
+      if (previous.pr_requested != null) attempt.pr_requested = previous.pr_requested;
+      if (previous.dispatch_record) attempt.dispatch_record = previous.dispatch_record;
+      // A run its jobs showed skipped stays skipped: the run itself reads "success".
+      if (previous.run_conclusion === "skipped" && attempt.run_conclusion === "success") attempt.run_conclusion = "skipped";
       if (previous.steps_read_at) {
         attempt.setup_seconds = previous.setup_seconds ?? null;
         attempt.encode_seconds = previous.encode_seconds ?? null;
@@ -1860,6 +2497,21 @@ export function buildAttempts(inputs: CollectInputs): PipelineAttempt[] {
     attempt.tries = null;
     attempt.encode_loop = null;
     if (encoder) applyEncoderRecord(attempt, encoder);
+    // A finished run whose encode step ran and left no record: the encoder's
+    // live row for the run says how it ended. A live row gone from the table
+    // (or not read this pass) keeps what an earlier pass stored for the same
+    // run attempt: a row's id is its run id, so after a re-run the stored end
+    // is the earlier attempt's, and is dropped.
+    Object.assign(attempt, NO_EXIT);
+    if (!encoder && run.status === "completed" && encodeWindow(run, attempt, inputs.nowMs)) {
+      const exit = liveIndex && liveRunExit(run, attempt.citation, liveIndex);
+      if (exit) Object.assign(attempt, exit);
+      else if (previous && previous.run_attempt != null && previous.run_attempt === (run.run_attempt ?? null)) {
+        attempt.encode_exit_status = previous.encode_exit_status ?? null;
+        attempt.encode_exit_rule = previous.encode_exit_rule ?? null;
+        attempt.encode_last_phase = previous.encode_last_phase ?? null;
+      }
+    }
 
     if (isFailedRun(run) && !attempt.failure_source) {
       const detail = inputs.failureDetails.get(id);
@@ -1875,6 +2527,11 @@ export function buildAttempts(inputs: CollectInputs): PipelineAttempt[] {
         attempt.encoder_error = previous.encoder_error ?? null;
         attempt.encoder_error_rule = previous.encoder_error_rule ?? null;
       }
+    }
+    // A failed step with no typed id in its error still has a check: the
+    // registry's step check. A typed id is more specific and wins.
+    if (isFailedRun(run) && !attempt.encoder_error_rule) {
+      attempt.encoder_error_rule = stepCheckId(attempt.failed_step, inputs.stepChecks ?? NO_STEP_CHECKS);
     }
 
     attempts.push(withPr(attempt, byRun.get(id), context, previous));
@@ -2010,7 +2667,8 @@ export function needsLogRead(known: Partial<PipelineAttempt>): boolean {
   return (
     (known.failure_source === "diagnostics" || known.failure_source === "jobs") &&
     !known.encoder_error &&
-    !known.encoder_error_rule
+    // A step's own check (infra:<step>) names the step, not what it printed.
+    (!known.encoder_error_rule || isInfraRule(known.encoder_error_rule))
   );
 }
 

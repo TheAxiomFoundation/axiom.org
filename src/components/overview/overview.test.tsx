@@ -1,4 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
+import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, it, expect } from 'vitest'
 
 import OverviewPage, { metadata } from '@/app/overview/page'
@@ -67,7 +70,7 @@ describe('Overview page', () => {
     render(<OverviewPage />)
     // The split is the point: encodings and code carry different licences,
     // and the PDF makes the same claim — they must not drift apart.
-    expect(screen.getByRole('link', { name: /cc by 4\.0/i })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /^cc0 1\.0$/i })).toHaveAttribute(
       'href',
       LICENSE_LINKS.encodings,
     )
@@ -75,6 +78,56 @@ describe('Overview page', () => {
       'href',
       LICENSE_LINKS.code,
     )
+  })
+
+  // The rulespec-* repos moved from CC BY 4.0 to CC0 1.0 on 2026-11-25. The
+  // page, its link and the PDF print source must all say CC0, and none may
+  // keep the old attribution condition for the encodings.
+  it('dedicates the encodings under CC0 1.0 on the page and in the PDF', () => {
+    expect(LICENSE_LINKS.encodings).toBe(
+      'https://creativecommons.org/publicdomain/zero/1.0/',
+    )
+    const { container } = render(<OverviewPage />)
+    const page = container.textContent ?? ''
+    expect(page).toMatch(/encodings to the public domain under CC0 1\.0/)
+    // Each rulespec repo's incidental tooling stays Apache-2.0, so the MIT
+    // claim names its four projects instead of "our software".
+    expect(page).toMatch(/engine, encoder, oracles, and site under MIT/)
+    expect(page).toMatch(/keep its copyright and permission notices/)
+    expect(page).not.toMatch(/cc by|attribution|our software/i)
+
+    const html = readFileSync(
+      join(process.cwd(), 'pdf/overview/axiom-overview.html'),
+      'utf8',
+    ).replace(/<!--[\s\S]*?-->/g, '')
+    expect(html).toMatch(/encodings to the public domain under CC0 1\.0/)
+    expect(html).toMatch(/engine, encoder, oracles, and site under MIT/)
+    expect(html).not.toMatch(/cc by|attribution|our software/i)
+  })
+
+  // The download button promises one page (pdf/overview/README.md). The text
+  // of the rendered PDF is compressed, so the render step checks it with
+  // pdftotext; this guards the page count of the copy we publish.
+  it('publishes a one-page overview PDF', () => {
+    const pdf = readFileSync(
+      join(process.cwd(), 'public/Axiom-Foundation-Overview.pdf'),
+    ).toString('latin1')
+    expect(pdf.match(/\/Type \/Pages\b[\s\S]{0,200}?\/Count (\d+)/)?.[1]).toBe('1')
+  })
+
+  // The tests above read the print source; the download is a separate file.
+  // pdf/overview/published-pdf.json pins the pair, so a stale PDF (say, the
+  // CC BY version) can't ship behind updated HTML. See pdf/overview/README.md.
+  it('publishes the PDF rendered from the current print source', () => {
+    const sha = (path: string) =>
+      createHash('sha256').update(readFileSync(join(process.cwd(), path))).digest('hex')
+    const stamp = JSON.parse(
+      readFileSync(join(process.cwd(), 'pdf/overview/published-pdf.json'), 'utf8'),
+    )
+    expect({
+      html: sha('pdf/overview/axiom-overview.html'),
+      pdf: sha('public/Axiom-Foundation-Overview.pdf'),
+    }).toEqual({ html: stamp.html, pdf: stamp.pdf })
   })
 
   it('anchors the sections the PDF links back to', () => {
