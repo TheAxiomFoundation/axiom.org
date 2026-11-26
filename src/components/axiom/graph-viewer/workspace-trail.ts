@@ -33,10 +33,13 @@ export interface Trail {
 export const EMPTY_TRAIL: Trail = { past: [], current: null, future: [] };
 
 /** A URL as the trail compares it: the source reader's own entries
- *  (?source=) and fragments belong to the location they open from. */
+ *  (?source=) and fragments belong to the location they open from, and
+ *  the run month (?period=) is a setting of the whole workspace, not a
+ *  location, so changing it rewrites the current entry in place. */
 export function trailUrl(href: string): string {
   const url = new URL(href, "http://axiom.invalid");
   url.searchParams.delete("source");
+  url.searchParams.delete("period");
   return `${url.pathname}?${url.searchParams.toString()}`;
 }
 

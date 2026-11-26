@@ -99,7 +99,35 @@ describe("buildRunRequestBody", () => {
   });
 });
 
+describe("buildRunRequestBody period", () => {
+  it("sends the month a composed run computes", () => {
+    expect(
+      buildRunRequestBody("us:statutes/42/1396a/xx", null, { age: 30 }, ["out"], undefined, undefined, undefined, "2027-01"),
+    ).toEqual({ root: "us:statutes/42/1396a/xx", facts: { age: 30 }, period: "2027-01", variables: ["out"] });
+  });
+
+  it("leaves the period out when none is set, so the runtime picks its default", () => {
+    expect(buildRunRequestBody("us:statutes/42/1396a/xx", null, {}, [], undefined, undefined, undefined, null)).toEqual({
+      root: "us:statutes/42/1396a/xx",
+      facts: {},
+      variables: [],
+    });
+  });
+
+  it("keeps package programs on their own coordinates", () => {
+    expect(
+      buildRunRequestBody(null, { jurisdiction: "us-co", programId: "snap" }, {}, [], undefined, undefined, undefined, "2027-01"),
+    ).not.toHaveProperty("period");
+  });
+});
+
 describe("scenarioKey (explicit runs only — edits mark staleness)", () => {
+  it("treats a different month as a different run, and no month as before", () => {
+    expect(scenarioKey({ a: 1 }, "2027-01")).not.toBe(scenarioKey({ a: 1 }, "2027-02"));
+    expect(scenarioKey({ a: 1 }, "2027-01")).not.toBe(scenarioKey({ a: 1 }));
+    expect(scenarioKey({ a: 1 }, null)).toBe(scenarioKey({ a: 1 }));
+  });
+
   it("ignores insertion order, catches value and key changes", () => {
     expect(
       scenarioKey({ household_size: 2, member_age: 40 }),

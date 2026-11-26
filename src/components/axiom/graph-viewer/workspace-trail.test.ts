@@ -45,6 +45,16 @@ describe("workspace trail", () => {
     expect(trailUrl(withSource)).toBe(trailUrl(at("band", "read").url));
   });
 
+  it("keeps its place when the run month changes", () => {
+    const trail = pushStep(pushStep({ ...EMPTY_TRAIL, current: open }, at("band")), at("band", "run"));
+    const withMonth = `${at("band", "run").url}&period=2027-03`;
+    expect(trailUrl(withMonth)).toBe(trailUrl(at("band", "run").url));
+    expect(arrive(trail, withMonth).trail).toBe(trail);
+    const back = arrive(trail, `${at("band").url}&period=2027-01`);
+    expect(back.entry?.view).toBe("map");
+    expect(back.trail.past).toEqual([open]);
+  });
+
   it("keeps one trail per graph across a reload, and survives unreadable storage", () => {
     const trail = pushStep({ ...EMPTY_TRAIL, current: open }, at("band"));
     saveTrail("us-ny:statutes/NYC/11-1701", trail);
