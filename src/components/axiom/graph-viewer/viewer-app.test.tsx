@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { describeRelation } from "@/lib/axiom/runtime/relation-roles";
 import type { ProgramGraph } from "./types";
 import { GraphViewerApp } from "./viewer-app";
+import { fetchRootCatalog } from "./api";
 
 const fixture = vi.hoisted(() => {
   const root = "us:statutes/26/22";
@@ -33,6 +34,19 @@ const withUntraceableRule: ProgramGraph = {
     withTraceOnlyRule.rules[1]!,
     { ...withTraceOnlyRule.rules[1]!, legalId: untraceable, name: "untraceable" },
   ],
+};
+// credit reads phase_in and `count` rules this engine cannot trace. With
+// 13 names the probe chunks hold four, so credit is never probed alone.
+const withUntraceables = (count: number): ProgramGraph => {
+  const ids = Array.from({ length: count }, (_, index) => `${fixture.root}#untraceable_${index + 1}`);
+  return {
+    ...withTraceOnlyRule,
+    rules: [
+      { ...withTraceOnlyRule.rules[0]!, ruleDeps: [phaseIn, ...ids] },
+      withTraceOnlyRule.rules[1]!,
+      ...ids.map((legalId) => ({ ...withTraceOnlyRule.rules[1]!, legalId, name: legalId.split("#").pop() ?? legalId })),
+    ],
+  };
 };
 // The graph the composed-graph mock serves; a test may swap it.
 let composedGraph = graph;
@@ -77,7 +91,7 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
-type CalculateRequest = { period?: string; variables: string[] };
+type CalculateRequest = { root?: string; period?: string; variables: string[] };
 /** Serves calculate requests from `answer`, recording each one. */
 function stubCalculate(answer: (request: CalculateRequest) => Response | Promise<Response>) {
   const requests: CalculateRequest[] = [];
@@ -254,6 +268,98 @@ it("lets no partial trace stand for a root with no version at the month", async 
   expect(requests.at(-1)?.variables).toEqual([]);
 });
 
+const computedCredit = (credit: number) => Response.json({ outputs: { credit }, trace: [], allocated_instances: { Payment: {} } });
+const untraceableName = (name: string) => Response.json({ error: "runtime_error", message: `unknown derived output: ${name}` }, { status: 422 });
+
+it("checks a rule focus's root by the rule's own name, not the file's default outputs", async () => {
+  composedGraph = withTraceOnlyRule;
+  window.history.replaceState({}, "", `/app?compose=${encodeURIComponent(fixture.output)}&period=2026-11&view=structure`);
+  // The request's root is the file, so `[]` asks for every rule it owns,
+  // phase_in included, which has no version at 2026-11. credit itself
+  // computes there without it.
+  const requests = stubCalculate(({ variables }) => (
+    variables.length === 0 || variables.includes("phase_in") ? noVersion("phase_in") : computedCredit(4321)
+  ));
+  render(<GraphViewerApp />);
+  fireEvent.click(await screen.findByRole("button", { name: "Run" }));
+  fireEvent.click(screen.getByRole("button", { name: "Run scenario" }));
+  await screen.findByRole("button", { name: "Dismiss results" });
+  expect(screen.queryByText(/has no formula version/)).not.toBeInTheDocument();
+  expect(screen.getByTestId("canvas-evidence")).toHaveTextContent("4321");
+  // The root check asks for credit by name; the trace that sheds phase_in
+  // is that same request, so its answer stands without a second send.
+  expect(requests.map(({ root, period, variables }) => [root, period, variables])).toEqual([
+    [fixture.root, "2026-11", ["credit", "phase_in"]],
+    [fixture.root, "2026-11", ["credit"]],
+  ]);
+});
+
+it("checks a file focus's root by the file's default outputs", async () => {
+  composedGraph = withTraceOnlyRule;
+  window.history.replaceState({}, "", `/app?compose=${encodeURIComponent(fixture.root)}&period=2026-11&view=structure`);
+  // The same answers as above: for a file focus phase_in is the root's own
+  // output, so its refusal is the run's.
+  const requests = stubCalculate(({ variables }) => (
+    variables.length === 0 || variables.includes("phase_in") ? noVersion("phase_in") : computedCredit(4321)
+  ));
+  render(<GraphViewerApp />);
+  fireEvent.click(await screen.findByRole("button", { name: "Run" }));
+  fireEvent.click(screen.getByRole("button", { name: "Run scenario" }));
+  expect((await screen.findAllByText(/derived `phase_in` has no formula version at 2026-11-01\. Set the Month field/)).length).toBeGreaterThan(0);
+  expect(screen.queryByRole("button", { name: "Dismiss results" })).not.toBeInTheDocument();
+  expect(requests.map(({ variables }) => variables)).toEqual([["credit", "phase_in"], []]);
+});
+
+it("lets the root check decide when a rule focus's outputs-only request refuses for a helper's month", async () => {
+  composedGraph = withUntraceables(11);
+  window.history.replaceState({}, "", `/app?compose=${encodeURIComponent(fixture.output)}&period=2026-11&view=structure`);
+  // This engine traces nothing but credit, and no traced request says
+  // anything about the month; only the file's default outputs reach a
+  // helper (other_rule) with no version at 2026-11.
+  const requests = stubCalculate(({ variables }) => {
+    if (variables.length === 0) return noVersion("other_rule");
+    if (variables.length === 1 && variables[0] === "credit") return computedCredit(4321);
+    return untraceableName(variables.at(-1) ?? "");
+  });
+  render(<GraphViewerApp />);
+  fireEvent.click(await screen.findByRole("button", { name: "Run" }));
+  fireEvent.click(screen.getByRole("button", { name: "Run scenario" }));
+  await screen.findByRole("button", { name: "Dismiss results" });
+  expect(screen.queryByText(/has no formula version/)).not.toBeInTheDocument();
+  expect(screen.getByTestId("canvas-evidence")).toHaveTextContent("4321");
+  // The trace, nine probes (credit never alone), then the outputs-only
+  // request and the root check it hands the month question to.
+  expect(requests).toHaveLength(12);
+  expect(requests.slice(-2).map(({ variables }) => variables)).toEqual([[], ["credit"]]);
+});
+
+it("sends the outputs-only request once when no chunk traces after a month refusal", async () => {
+  composedGraph = withUntraceables(11);
+  window.history.replaceState({}, "", `/app?compose=${encodeURIComponent(fixture.root)}&period=2026-11&view=structure`);
+  // The first refusal is an untraceable name; a halved chunk then refuses
+  // for phase_in's month and no chunk traces. The outputs-only answer is
+  // the run's: a second copy of it would meet the rate limit.
+  let untraced = 0;
+  const requests = stubCalculate(({ variables }) => {
+    if (variables.length === 0) {
+      untraced += 1;
+      return untraced === 1 ? computedCredit(4321) : new Response(null, { status: 429 });
+    }
+    const unknown = variables.find((name) => name.startsWith("untraceable"));
+    if (unknown) return untraceableName(unknown);
+    return variables.includes("phase_in") ? noVersion("phase_in") : computedCredit(4321);
+  });
+  render(<GraphViewerApp />);
+  fireEvent.click(await screen.findByRole("button", { name: "Run" }));
+  fireEvent.click(screen.getByRole("button", { name: "Run scenario" }));
+  await screen.findByRole("button", { name: "Dismiss results" });
+  expect(screen.queryByText(/Too many runs/)).not.toBeInTheDocument();
+  expect(screen.getByTestId("canvas-evidence")).toHaveTextContent("4321");
+  expect(requests.some(({ variables }) => variables.length === 2 && variables.includes("phase_in"))).toBe(true);
+  expect(requests.filter(({ variables }) => variables.length === 0)).toHaveLength(1);
+  expect(requests.at(-1)?.variables).toEqual([]);
+});
+
 it("keeps the previous month's results marked stale when a run at another month fails", async () => {
   window.history.replaceState({}, "", `/app?compose=${encodeURIComponent(fixture.root)}&period=2027-01&view=structure`);
   stubCalculate(({ period }) => (period === "2026-11" ? noVersion("credit") : computed()));
@@ -293,16 +399,42 @@ it("runs nothing while the Month field holds part of a month, from Relationships
   const relationships = screen.getByRole("region", { name: "Immediate dependencies" });
   expect(await within(relationships).findByRole("alert")).toHaveTextContent("Type a whole month as YYYY-MM in the Month field to run.");
   expect(requests).toEqual([]);
-  // Back in Run, emptying the last segment (value "" without badInput, so
-  // no change event) is a clear: the default month runs again.
+  // Back in Run the remounted picker shows the run's month; a new partial
+  // entry there, then emptying its last segment (value "" without
+  // badInput, so no change event), is a clear: the default month runs again.
   fireEvent.click(within(views).getByRole("button", { name: "Run" }));
   const field = screen.getByLabelText("Month") as HTMLInputElement;
+  Object.defineProperty(field, "validity", { configurable: true, value: { badInput: true } });
+  fireEvent.input(field, { target: { value: "" } });
+  expect(field).toHaveAttribute("aria-invalid", "true");
   Object.defineProperty(field, "validity", { configurable: true, value: { badInput: false } });
   fireEvent.input(field, { target: { value: "" } });
   await waitFor(() => expect(new URL(window.location.href).searchParams.has("period")).toBe(false));
   expect(screen.getByText("blank runs the runtime's default month")).toBeInTheDocument();
   expect(screen.queryByText("Type a whole month as YYYY-MM in the Month field to run.")).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Run scenario" })).toBeEnabled();
+});
+
+it("shows the run's month, not a stale partial, when the Month picker mounts again", async () => {
+  window.history.replaceState({}, "", `/app?compose=${encodeURIComponent(fixture.root)}&period=2027-01&view=structure`);
+  stubCalculate(() => computed());
+  render(<GraphViewerApp />);
+  fireEvent.click(await screen.findByRole("button", { name: "Run" }));
+  const month = screen.getByLabelText("Month") as HTMLInputElement;
+  Object.defineProperty(month, "validity", { configurable: true, value: { badInput: true } });
+  fireEvent.change(month, { target: { value: "" } });
+  expect(month).toHaveAttribute("aria-invalid", "true");
+  // Leaving Run unmounts the picker and its partial segments with it.
+  const views = screen.getByRole("navigation", { name: "Workspace views" });
+  fireEvent.click(within(views).getByRole("button", { name: "Relationships" }));
+  fireEvent.click(within(views).getByRole("button", { name: "Run" }));
+  const field = screen.getByLabelText("Month") as HTMLInputElement;
+  expect(field).not.toBe(month);
+  expect(field.value).toBe("2027-01");
+  expect(field).not.toHaveAttribute("aria-invalid");
+  expect(screen.getByText("the month this run computes")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Run scenario" })).toBeEnabled();
+  expect(new URL(window.location.href).searchParams.get("period")).toBe("2027-01");
 });
 
 it("shows a run error in Relationships after the graph has been visited", async () => {
@@ -317,6 +449,21 @@ it("shows a run error in Relationships after the graph has been visited", async 
   // the user ran.
   const relationships = screen.getByRole("region", { name: "Immediate dependencies" });
   expect(await within(relationships).findByRole("alert")).toHaveTextContent(/has no formula version at 2026-11-01\. Set the Month field/);
+});
+
+it("keeps a rollback 404's error in Relationships after Run household folds away", async () => {
+  // A convention-mode scope with no added members: the 404 means the
+  // deployment lost the root endpoint, so run readiness clears.
+  vi.mocked(fetchRootCatalog).mockResolvedValueOnce({ inputs: [], relationMembership: "convention", relations: [] });
+  const requests = stubCalculate(() => new Response(null, { status: 404 }));
+  render(<GraphViewerApp />);
+  const views = await screen.findByRole("navigation", { name: "Workspace views" });
+  fireEvent.click(within(views).getByRole("button", { name: "Relationships" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Run household" }));
+  const relationships = screen.getByRole("region", { name: "Immediate dependencies" });
+  expect(await within(relationships).findByRole("alert")).toHaveTextContent("Running composed views isn't available on this deployment yet.");
+  expect(screen.queryByRole("button", { name: "Run household" })).not.toBeInTheDocument();
+  expect(requests).toHaveLength(1);
 });
 
 it("locks the Month field while a run is in flight", async () => {

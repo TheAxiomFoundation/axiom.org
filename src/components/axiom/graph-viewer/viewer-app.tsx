@@ -9,7 +9,7 @@ import { isRunPeriodCoverageRefusal, parseRunPeriod, runPeriodCoverageRule } fro
 import { ResultExplanation, inputAwareEvidence, recordedEvidence, recordedTableRow } from "./result-explanation";
 import { ParameterTableView } from "./parameter-table";
 import { GraphLoading } from "./graph-loading";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   InputEditContext,
   InteractiveRuleGraph,
@@ -180,6 +180,17 @@ export function GraphViewerApp({
     const month = parseRunPeriod(text);
     if (!partial && (month || text.trim() === "")) setRunPeriod(month);
   };
+  // A picker that mounts again (after a tab switch) has lost its partial
+  // segments: the stale flag would mark the blank field invalid and hold
+  // Run. The field shows the run's month again instead. While the field is
+  // away the flag stands, so Relationships still waits for a whole month.
+  const runPeriodNow = useRef({ period: runPeriod, partial: runPeriodPartial });
+  runPeriodNow.current = { period: runPeriod, partial: runPeriodPartial };
+  const runPeriodFieldRef = useCallback((field: HTMLInputElement | null) => {
+    if (!field || !runPeriodNow.current.partial) return;
+    setRunPeriodPartial(false);
+    setRunPeriodText(runPeriodNow.current.period ?? "");
+  }, []);
   // The guard's message clears once the field holds a whole month or none.
   useEffect(() => {
     if (!runPeriodTextIncomplete) setRunError((current) => (current === RUN_PERIOD_INCOMPLETE ? null : current));
@@ -1289,8 +1300,32 @@ export function GraphViewerApp({
       // the run's month (recovery sheds the rule it names), and whether
       // any request so far refused that way.
       const refusal: { coverage: string | null; seen: boolean } = { coverage: null, seen: false };
+      // The root's own outputs. The request's root drops a focus's "#rule"
+      // fragment, so for a focus on one rule `variables: []` asks for every
+      // derived rule the file owns, helpers included: the rule's bare name
+      // (the trace's form) asks for the root alone. A file focus's default
+      // outputs are its root.
+      const focusRule = composeFocus?.includes("#") ? byId.get(composeFocus) : undefined;
+      const rootVariables = focusRule?.kind === "derived" ? [focusRule.legalId.split("#").pop() ?? focusRule.legalId] : [];
+      // A request for exactly these names computes exactly the root,
+      // whichever step sends it: it is the root check.
+      const asksForRoot = (variables: string[]) =>
+        variables.length === rootVariables.length && variables.every((name, index) => name === rootVariables[index]);
+      // The root check's answer once it computed. After a month refusal
+      // recovery reuses it rather than asking again (a 429 on a repeat
+      // would discard it); a run with no month refusal sends what it did.
+      let rootAnswer: Response | null = null;
+      // The request each answer came from, so the request on record is the
+      // one whose answer is shown.
+      const askedFor = new WeakMap<Response, string[]>();
       const attempt = async (variables: string[]) => {
         refusal.coverage = null;
+        const root = asksForRoot(variables);
+        if (root && rootAnswer && refusal.seen) {
+          const reused = rootAnswer.clone();
+          askedFor.set(reused, variables);
+          return reused;
+        }
         const response = await fetch("/api/axiom/runtime/calculate", {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -1355,12 +1390,13 @@ export function GraphViewerApp({
             // If even the bare run refuses, the caller styles the
             // blocked state from this same payload.
             // A rule with no version at the run's month. A traced request
-            // also asks for rules in branches the root skips, so its
-            // refusal goes to recovery. The outputs-only request speaks for
-            // the root: its refusal is a run error the user fixes with the
-            // Month field (Run and the field stay), not a blocked scope.
+            // (or a rule focus's file outputs) also asks for rules in
+            // branches the root skips, so its refusal goes to recovery. The
+            // root check speaks for the root: its refusal is a run error the
+            // user fixes with the Month field (Run and the field stay), not
+            // a blocked scope.
             if (payload.error === "runtime_error" && isRunPeriodCoverageRefusal(payload.message)) {
-              if (variables.length > 0) {
+              if (!root) {
                 refusal.coverage = payload.message ?? null;
                 refusal.seen = true;
                 return response;
@@ -1403,6 +1439,8 @@ export function GraphViewerApp({
             }`,
           );
         }
+        if (root && response.ok) rootAnswer = response.clone();
+        askedFor.set(response, variables);
         return response;
       };
       // The runtime resolves variables by bare rule name (legalId
@@ -1427,14 +1465,11 @@ export function GraphViewerApp({
       // the primary run.
       const overflowNames = allNames.slice(TRACE_BATCH_SIZE, 2 * TRACE_BATCH_SIZE);
       const tryVariables = async (variables: string[]) => {
-        lastRunRequest.current = requestBody(variables);
         const result = await attempt(variables);
         return result.ok ? result : null;
       };
-      // The outputs-only request: the root's own outputs, no trace.
-      const runOutputsOnly = async () => {
-        lastRunRequest.current = requestBody([]);
-        const bare = await attempt([]);
+      // An untraced request answers or the run stops.
+      const untraced = async (bare: Response) => {
         if (!bare.ok) {
           // Even outputs-only failed: the package itself can't run.
           if (bare.status === 422) {
@@ -1461,6 +1496,17 @@ export function GraphViewerApp({
         }
         return bare;
       };
+      // The root check, sent only after a month refusal: whether the root
+      // itself computes at the run's month (it throws the run error if not).
+      const runRootOutputs = async () => untraced(await attempt(rootVariables));
+      // The outputs-only request: the root file's default outputs, no trace.
+      // For a rule focus a month refusal there can be a helper's: the root
+      // check decides.
+      const runOutputsOnly = async () => {
+        const bare = await attempt([]);
+        if (!bare.ok && refusal.coverage) return runRootOutputs();
+        return untraced(bare);
+      };
       // One bad name fails the WHOLE trace. Try everything; on
       // failure, probe chunks under a bounded request budget and keep
       // the good ones — so the middle of the graph still lights up
@@ -1470,12 +1516,12 @@ export function GraphViewerApp({
       let outputsOnly: Response | null = null;
       let probes = 0;
       if (!response && refusal.coverage) {
-        // A traced rule has no version at the run's month. Only the
-        // outputs-only request says whether the root computes at it (it
-        // throws the run error if not); if the root does, drop each rule a
-        // refusal names, within the probe budget, before probing chunks.
+        // A traced rule has no version at the run's month. Only the root
+        // check says whether the root computes at it (it throws the run
+        // error if not); if the root does, drop each rule a refusal names,
+        // within the probe budget, before probing chunks.
         let named = runPeriodCoverageRule(refusal.coverage);
-        outputsOnly = await runOutputsOnly();
+        outputsOnly = await runRootOutputs();
         while (!response && named && probes < 9) {
           const rule = named.split("#").pop() ?? named;
           if (!names.includes(rule)) break;
@@ -1506,13 +1552,15 @@ export function GraphViewerApp({
         for (let i = 0; i < names.length; i += size) {
           await probe(names.slice(i, i + size), 0);
         }
-        // Nothing traced cleanly after an outputs-only answer: it stands.
-        if (good.length > 0 || !outputsOnly) response = await tryVariables(good);
+        // Only chunks that traced cleanly earn a traced request. With none,
+        // the untraced answer below stands, asked once.
+        if (good.length > 0) response = await tryVariables(good);
       }
       // A probe refused for the month too: no trace stands for the run
       // until the root itself computes at it.
-      if (refusal.seen && !outputsOnly) outputsOnly = await runOutputsOnly();
+      if (refusal.seen && !outputsOnly) outputsOnly = await runRootOutputs();
       if (!response) response = outputsOnly ?? (await runOutputsOnly());
+      lastRunRequest.current = requestBody(askedFor.get(response) ?? []);
       let data = (await response.json()) as RunPayload & {
         provenance?: {
           ledger_id: string;
@@ -2533,6 +2581,7 @@ export function GraphViewerApp({
             <div className="run-period">
               <label htmlFor="run-period-input" className="run-period-label">Month</label>
               <input
+                ref={runPeriodFieldRef}
                 id="run-period-input"
                 type="month"
                 className="run-period-input"
