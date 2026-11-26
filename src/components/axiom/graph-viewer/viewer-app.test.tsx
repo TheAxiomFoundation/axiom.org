@@ -511,6 +511,35 @@ it("drops a corrective run error when the catalog it refreshes says Run is unava
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 });
 
+it("keeps a newer run error when a pending catalog re-read finds Run unavailable", async () => {
+  window.history.replaceState({}, "", `/app?compose=${encodeURIComponent(fixture.root)}&period=2026-11&view=structure`);
+  const requests = stubCalculate(() => Response.json({ error: "unknown_relation", message: "Relation payment_of_tax_unit is no longer declared." }, { status: 422 }));
+  render(<GraphViewerApp />);
+  const views = await screen.findByRole("navigation", { name: "Workspace views" });
+  // The re-read the corrective refusal asks for stays pending.
+  let fail: (error: Error) => void = () => {};
+  vi.mocked(fetchRootCatalog).mockImplementationOnce(() => new Promise((_resolve, reject) => { fail = reject; }));
+  fireEvent.click(within(views).getByRole("button", { name: "Relationships" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Run household" }));
+  const relationships = () => screen.getByRole("region", { name: "Immediate dependencies" });
+  expect(await within(relationships()).findByRole("alert")).toHaveTextContent("no longer declared");
+  expect(requests).toHaveLength(1);
+  // Meanwhile a partial month makes the guard's message the current error.
+  fireEvent.click(within(views).getByRole("button", { name: "Run" }));
+  const month = screen.getByLabelText("Month") as HTMLInputElement;
+  Object.defineProperty(month, "validity", { configurable: true, value: { badInput: true } });
+  fireEvent.change(month, { target: { value: "" } });
+  fireEvent.click(within(views).getByRole("button", { name: "Relationships" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Run household" }));
+  expect(await within(relationships()).findByRole("alert")).toHaveTextContent("Type a whole month as YYYY-MM in the Month field to run.");
+  // The re-read then finds Run unavailable: it clears only the error that
+  // asked for it, which is no longer the current one.
+  fail(Object.assign(new Error("This source relates people to units in a way a scenario cannot represent yet."), { name: "RunUnavailableError" }));
+  expect(await screen.findByText("Run unavailable.")).toBeInTheDocument();
+  expect(within(relationships()).getByRole("alert")).toHaveTextContent("Type a whole month as YYYY-MM in the Month field to run.");
+  expect(requests).toHaveLength(1);
+});
+
 it("locks the Month field while a run is in flight", async () => {
   window.history.replaceState({}, "", `/app?compose=${encodeURIComponent(fixture.root)}&period=2027-01&view=structure`);
   // A late answer for the month a run asked about must not land on a month

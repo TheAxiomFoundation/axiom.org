@@ -411,6 +411,9 @@ export function GraphViewerApp({
   // Re-reads the root catalog alone (not the graph) when the server's
   // relation set has moved under a roles run.
   const [catalogNonce, setCatalogNonce] = useState(0);
+  // The corrective run error a catalog re-read answers (a relation set that
+  // moved), so a re-read that finds Run unavailable clears only that one.
+  const correctiveRunErrorRef = useRef<string | null>(null);
 
   const lastRunRequest = useRef<Record<string, unknown> | null>(null);
   // The results sheet's quick-adjust strip pages through answered
@@ -1411,12 +1414,12 @@ export function GraphViewerApp({
               // The server's relation set moved since the grid loaded:
               // re-read the catalog so the grid shows the relations a run
               // must answer (answers for relations still declared are kept).
+              const message = payload.message ?? "The runtime refused this household as entered.";
               if (payload.error === "relation_roles_required" || payload.error === "unknown_relation") {
+                correctiveRunErrorRef.current = message;
                 setCatalogNonce((n) => n + 1);
               }
-              throw new Error(
-                payload.message ?? "The runtime refused this household as entered.",
-              );
+              throw new Error(message);
             }
             if (classifyRunRefusal(payload.error) === "scope_blocked") {
               const blocked = new Error(
@@ -1942,9 +1945,12 @@ export function GraphViewerApp({
           rememberRunCapability(root, false);
           setComposeRunReady(false);
           setRunUnavailableReason(error.message);
-          // Run is gone: a corrective run error (a relation set that moved)
-          // no longer applies, so "Run unavailable" stands alone.
-          setRunError(null);
+          // Run is gone: the corrective run error that asked for this
+          // re-read no longer applies, so "Run unavailable" stands alone. A
+          // newer error (another run, the partial-month guard) stays.
+          const corrective = correctiveRunErrorRef.current;
+          correctiveRunErrorRef.current = null;
+          if (corrective !== null) setRunError((current) => (current === corrective ? null : current));
           return;
         }
         // Unavailability is not evidence that the encoding cannot execute.

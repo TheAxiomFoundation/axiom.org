@@ -29,17 +29,18 @@ export function filterStandaloneRules(
     for (const dep of rule.ruleDeps) referenced.add(dep);
   }
   const isStandalone = (rule: RuleNode) =>
-    rule.legalId !== keep &&
     rule.ruleDeps.length === 0 &&
     rule.inputDeps.length === 0 &&
     (rule.relationDeps?.length ?? 0) === 0 &&
     !referenced.has(rule.legalId);
+  // The glossary exception counts the focus too: a page of nothing but
+  // definitions keeps every entry, whichever one the view focuses on.
+  if (graph.rules.every(isStandalone)) return { graph, hiddenCount: 0 };
+  const hides = (rule: RuleNode) => rule.legalId !== keep && isStandalone(rule);
 
-  const hiddenCount = graph.rules.filter(isStandalone).length;
-  if (hiddenCount === 0 || hiddenCount === graph.rules.length) {
-    return { graph, hiddenCount: 0 };
-  }
-  const kept = graph.rules.filter((rule) => !isStandalone(rule));
+  const hiddenCount = graph.rules.filter(hides).length;
+  if (hiddenCount === 0) return { graph, hiddenCount: 0 };
+  const kept = graph.rules.filter((rule) => !hides(rule));
   const keptIds = new Set(kept.map((rule) => rule.legalId));
   return {
     graph: {

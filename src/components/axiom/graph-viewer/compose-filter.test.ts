@@ -132,6 +132,17 @@ describe("filterStandaloneRules", () => {
     expect(unfocused.graph.ownOutputs).toEqual([]);
   });
 
+  it("filters nothing in a glossary whose focus is one of its definitions", () => {
+    const glossary = graph([
+      fosterCare,
+      rule({ legalId: "f#household", name: "household" }),
+      rule({ legalId: "f#dependent", name: "dependent" }),
+    ]);
+    const { graph: filtered, hiddenCount } = filterStandaloneRules(glossary, "f#household");
+    expect(hiddenCount).toBe(0);
+    expect(filtered).toBe(glossary);
+  });
+
   it("is a no-op on graphs with no standalone rules", () => {
     const clean = graph([netIncome, grossIncome]);
     const { graph: filtered, hiddenCount } = filterStandaloneRules(clean);
