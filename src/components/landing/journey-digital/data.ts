@@ -143,11 +143,19 @@ export function fmtValue(v: number, fmt: Fmt): string {
   }
 }
 
-// The rule graph: every node is a rule in a.yaml or one of its two
-// imports; every edge is a name the formula reads.
+// The rule graph: every node is a rule in a.yaml or a rule it imports;
+// every edge is a name the formula reads. The
+// allotment before the minimum reads the household's maximum allotment
+// (snap_maximum_allotment, a.yaml line 128); the minimum reads the cost of
+// the thrifty food plan for one person (snap_one_person_thrifty_food_plan_cost,
+// line 154), whatever the household's size. Both are $298 in test case 1,
+// but they are two rules: a two-person household's maximum is $546 and its
+// minimum is still $24 (a.test.yaml case 2). household_size and
+// snap_eligible are inputs, not rules, so the graph does not draw them.
 export type GraphNodeId =
   | "imp2014"
   | "impUsda"
+  | "impTfp"
   | "net"
   | "rate30"
   | "size2"
@@ -159,21 +167,23 @@ export type GraphNodeId =
 
 export const GRAPH_NODES: Array<{
   id: GraphNodeId;
+  rule: string; // the rule's name in a.yaml or the module it is imported from
   label: string;
   kind: "import" | "parameter" | "derived" | "output";
   line: number; // the code line the node grows out of
   value: string; // its value in test case 1
 }> = [
-  { id: "imp2014", label: "§ 2014(e)(6)(A) · snap_net_income", kind: "import", line: 10, value: "$386.50" },
-  { id: "impUsda", label: "USDA FY 2026 · maximum allotments", kind: "import", line: 11, value: "$298 · 1 person" },
-  { id: "net", label: "snap_net_income_for_allotment", kind: "derived", line: 61, value: "$386.50" },
-  { id: "rate30", label: "snap_household_food_contribution_rate", kind: "parameter", line: 13, value: "0.30" },
-  { id: "size2", label: "snap_minimum_allotment_household_size_limit", kind: "parameter", line: 45, value: "2" },
-  { id: "rate8", label: "snap_minimum_allotment_rate", kind: "parameter", line: 29, value: "0.08" },
-  { id: "contrib", label: "snap_household_food_contribution", kind: "derived", line: 86, value: "$115.95" },
-  { id: "minimum", label: "snap_minimum_monthly_allotment", kind: "derived", line: 130, value: "$24" },
-  { id: "before", label: "snap_allotment_before_minimum", kind: "derived", line: 105, value: "$182" },
-  { id: "regular", label: "snap_regular_month_allotment", kind: "output", line: 158, value: "$182" },
+  { id: "imp2014", rule: "snap_net_income", label: "§ 2014(e)(6)(A) · snap_net_income", kind: "import", line: 10, value: "$386.50" },
+  { id: "impUsda", rule: "snap_maximum_allotment", label: "USDA FY 2026 · maximum allotments", kind: "import", line: 11, value: "$298 · 1 person" },
+  { id: "impTfp", rule: "snap_one_person_thrifty_food_plan_cost", label: "USDA FY 2026 · one-person thrifty food plan", kind: "import", line: 11, value: "$298" },
+  { id: "net", rule: "snap_net_income_for_allotment", label: "snap_net_income_for_allotment", kind: "derived", line: 61, value: "$386.50" },
+  { id: "rate30", rule: "snap_household_food_contribution_rate", label: "snap_household_food_contribution_rate", kind: "parameter", line: 13, value: "0.30" },
+  { id: "size2", rule: "snap_minimum_allotment_household_size_limit", label: "snap_minimum_allotment_household_size_limit", kind: "parameter", line: 45, value: "2" },
+  { id: "rate8", rule: "snap_minimum_allotment_rate", label: "snap_minimum_allotment_rate", kind: "parameter", line: 29, value: "0.08" },
+  { id: "contrib", rule: "snap_household_food_contribution", label: "snap_household_food_contribution", kind: "derived", line: 86, value: "$115.95" },
+  { id: "minimum", rule: "snap_minimum_monthly_allotment", label: "snap_minimum_monthly_allotment", kind: "derived", line: 130, value: "$24" },
+  { id: "before", rule: "snap_allotment_before_minimum", label: "snap_allotment_before_minimum", kind: "derived", line: 105, value: "$182" },
+  { id: "regular", rule: "snap_regular_month_allotment", label: "snap_regular_month_allotment", kind: "output", line: 158, value: "$182" },
 ];
 
 export const GRAPH_EDGES: Array<[GraphNodeId, GraphNodeId]> = [
@@ -182,7 +192,7 @@ export const GRAPH_EDGES: Array<[GraphNodeId, GraphNodeId]> = [
   ["rate30", "contrib"],
   ["impUsda", "before"],
   ["contrib", "before"],
-  ["impUsda", "minimum"],
+  ["impTfp", "minimum"],
   ["size2", "minimum"],
   ["rate8", "minimum"],
   ["before", "regular"],
@@ -191,13 +201,65 @@ export const GRAPH_EDGES: Array<[GraphNodeId, GraphNodeId]> = [
 
 // Where each piece of the story leads once the scroll is done: the real
 // page behind each step. Shown as clickable cards in the end state.
+//
+// The about lines for steps 4 to 8 state what the encoder and the rules do,
+// read from code on 2026-11-24 (axiom-encode caa46624, rulespec-us
+// fbc74a69, axiom-rules-engine 82cf3aa6):
+// - encode applies a draft only after it passes the RuleSpec CI run
+//   (validator_pipeline _run_rulespec_ci; its _run_rulespec_ci_impl reads
+//   "Run RuleSpec compile, executable tests, and source-grounding checks"),
+//   in cmd_encode's overlay validation, built with oracles off and
+//   reviewers skipped. The draft passes in full; dependents written with it
+//   need only add no new failures. The companion-test check passes a module
+//   with no assertable rules and no tests, and apply-time repair can add
+//   default output tests that already pass. The line names those checks,
+//   not what they prove: grounding
+//   skips some numbers, such as 0.5 in half-up rounding, small integers
+//   (GROUNDING_ALLOWED_VALUES) and structural table keys, so it never
+//   matches the § 2017(a) minimum's + 0.5 to its source. One AI model
+//   reviews a draft once its first compile and CI checks pass, before the overlay
+//   validation; its verdict blocks apply only under --require-review,
+//   which is off by default and set by no signed or CI workflow, and a
+//   draft the first checks reject, or one encoded with --skip-reviewers,
+//   gets no review, so the line says "any" and "by default". Comparisons run in axiom-oracles, never in encode, each on the
+//   outputs its suite names.
+// - the engine will not compile a parameter or derived version with no
+//   effective date (rulespec.rs MissingEffectiveFrom; relations need none),
+//   and the encoder's validator refuses a parameter, derived or
+//   derived_relation rule with no source (data and source relations are
+//   exempt, and CI skips the check for waived modules). Every rule in the
+//   § 2017(a) module and its two imports has both, so step 8 speaks of
+//   those rules. Citations sit on rules, not values.
+// - the encoder takes one corpus citation at a time and resolves it against
+//   the pinned corpus release before it drafts, refusing a citation with no
+//   active match (corpus_resolver CorpusSourceNotFoundError). The release
+//   lacks some provisions (rulespec-us known-source-conflicts.yaml lists
+//   them under pending_texts, Minnesota Supplemental Aid's guardian fee
+//   among them), so no line claims every program or state; step 7's title
+//   says the corpus. /ops follows runs of the targeted re-encode workflow
+//   from dispatch to merge (scripts/collect-encoding-pipeline.mjs); from
+//   the merge on it also lists modules merged outside that workflow (pr:
+//   rows) and modules a run wrote for another citation (dep: rows).
+//
+// The walkthrough's worked example is § 2017(a), so step 5, where the code
+// card quotes the published module, carries the same kind of dated waiver
+// line as the journey film. At rulespec-us fbc74a69 (main on 2026-11-24),
+// known-validation-gaps.yaml lists 1,930 modules under validate_failures,
+// each with an active waiver, us/statutes/7/2017/a.yaml among them; the
+// shared workflow rulespec-us pins (TheAxiomFoundation/.github
+// validate-rulespec.yml@882c5f11) prints "SKIPPED (known-validation-gaps
+// validate_failures)" for each in its validate, companion-test and proof
+// steps. The list last changed on 2026-11-01, so the count held all day.
+export const WAIVER_LINE =
+  "On November 24, 2026 the published § 2017(a) module was one of 1,930 rulespec-us modules on the validation waiver list, whose checks CI skipped.";
+
 export const EXPLORE: Array<{ n: number; name: string; go: string; href: string; about: string }> = [
   { n: 1, name: "Off the shelf", go: "See what is covered", href: "/coverage", about: "Primary sources: the statutes, regulations and agency manuals that legislatures and agencies publish." },
   { n: 2, name: "The law, as published", go: "Read § 2017(a)", href: "/us/statute/7/2017/a", about: "The official text is captured word for word and stored in the corpus: a database of the law, exactly as published." },
   { n: 3, name: "The corpus", go: "Browse Title 7", href: "/us/statute/7", about: "The corpus splits each document into its provisions. Each one has its own address, which follows its legal citation." },
-  { n: 4, name: "Encode", go: "How the encoder works", href: "/encoder", about: "The encoder writes a draft of a rule. The draft then goes through a series of checks, from deterministic tests to reviews by AI judges." },
-  { n: 5, name: "Cited code", go: "Explore this encoding", href: "https://github.com/TheAxiomFoundation/rulespec-us/blob/main/us/statutes/7/2017/a.yaml#L105-L128", about: "The formula and the metadata of a rule are both derived from the text of the provision." },
-  { n: 6, name: "The graph", go: "Explore the rule graph", href: "/app?compose=us:statutes/7/2017/a", about: "The rules of a program form a single executable graph. It represents each provision and each dependency between provisions." },
-  { n: 7, name: "All the law", go: "Watch the pipeline", href: "/ops", about: "The process that encoded one provision applies to each program and each state. The record of each run is public." },
-  { n: 8, name: "Every system", go: "Build on it", href: "/docs", about: "The rules are open and versioned. Every system that uses them works from the same set." },
+  { n: 4, name: "Encode", go: "How the encoder works", href: "/encoder", about: "The encoder applies a draft only after it passes compile, companion-test and source-grounding checks. By default, any AI review of it advises and stops nothing." },
+  { n: 5, name: "Cited code", go: "Explore this encoding", href: "https://github.com/TheAxiomFoundation/rulespec-us/blob/main/us/statutes/7/2017/a.yaml#L105-L128", about: `Each rule cites the words it encodes. ${WAIVER_LINE}` },
+  { n: 6, name: "The graph", go: "Explore the rule graph", href: "/app?compose=us:statutes/7/2017/a", about: "The rules of a program form one executable graph: each node is a rule, and each line is a value one rule reads from another." },
+  { n: 7, name: "At scale", go: "Watch the pipeline", href: "/ops", about: "A public page follows targeted encoder runs from dispatch to merge." },
+  { n: 8, name: "Potential uses", go: "Build on it", href: "/docs", about: "The rules are open and versioned, so any tool can build on them." },
 ];

@@ -5,6 +5,7 @@
 
 import * as THREE from "three";
 import { GRAPH_EDGES, GRAPH_NODES } from "../journey-digital/data";
+import { HERO_INDEX, LEVEL, P2 } from "./lamplight-graph";
 import { contentsPage, STATUTE_TEXT, typesetPages } from "./pages";
 import { BOOK } from "./book-text";
 import { heroSpine } from "./lamplight0";
@@ -598,11 +599,8 @@ export function lamplightBeat5(ctx: BeatCtx): BeatSpec {
   const r = rng(21);
 
   // node positions: a left-to-right dependency layout, given depth by level
-  const level: Record<string, number> = { imp2014: 0, impUsda: 0, rate30: 1, size2: 1, rate8: 1, net: 1, contrib: 2, minimum: 2, before: 3, regular: 4 };
-  const P2: Record<string, [number, number]> = {
-    imp2014: [250, 110], impUsda: [250, 340], net: [600, 50], rate30: [600, 195], size2: [640, 470], rate8: [700, 600],
-    contrib: [960, 130], minimum: [1010, 520], before: [1290, 300], regular: [1330, 600],
-  };
+  // (lamplight-graph.ts, keyed by node so every node has a place)
+  const level: Record<string, number> = LEVEL;
   const SCALE = 0.0074;
   const pos = new Map<string, THREE.Vector3>();
   GRAPH_NODES.forEach((n) => {
@@ -743,7 +741,6 @@ export function lamplightBeat5(ctx: BeatCtx): BeatSpec {
   const camFrom = camTo.clone().add(new THREE.Vector3(-0.2, 0.08, 0.45));
   // the way out: the graph shrinks into its own small cluster in the
   // registry, each card into its node
-  const HERO_INDEX: Record<string, number> = { imp2014: 0, impUsda: 1, net: 2, rate30: 3, size2: 4, rate8: 5, contrib: 6, minimum: 7, before: 8, regular: 9 };
   const flies = GRAPH_NODES.map((n) => ({ id: n.id, fly: new QuadMorph(scene, cards.get(n.id)!.mesh) }));
   const right = new THREE.Vector3();
   const upV = new THREE.Vector3();

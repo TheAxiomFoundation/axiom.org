@@ -37,7 +37,7 @@ import {
   type MarkId,
 } from "./data";
 import { COLORS, drawConstellation, drawField, makeConstellation, makeField, pullState } from "./field";
-import { pickLayout, type Box, type Layout } from "./layout";
+import { graphEdgeD, pickLayout, type Box, type Layout } from "./layout";
 import "./journey-digital.css";
 
 const STEPS = ["address", "read", "mark", "encode", "run", "graph"];
@@ -243,15 +243,9 @@ function Graph({ L }: { L: Layout }) {
   return (
     <div className="jd-graph" style={{ width: L.W, height: L.H }}>
       <svg className="jd-edges" viewBox={`0 0 ${L.W} ${L.H}`} aria-hidden>
-        {GRAPH_EDGES.map(([a, b]) => {
-          const [x1, y1] = L.graph[a];
-          const [x2, y2] = L.graph[b];
-          const d =
-            L.kind === "wide"
-              ? `M ${x1} ${y1} C ${(x1 + x2) / 2} ${y1}, ${(x1 + x2) / 2} ${y2}, ${x2} ${y2}`
-              : `M ${x1} ${y1} C ${x1} ${(y1 + y2) / 2}, ${x2} ${(y1 + y2) / 2}, ${x2} ${y2}`;
-          return <path key={`${a}-${b}`} className="jd-edge" d={d} pathLength={1} />;
-        })}
+        {GRAPH_EDGES.map(([a, b]) => (
+          <path key={`${a}-${b}`} className="jd-edge" d={graphEdgeD(L, a, b)} pathLength={1} />
+        ))}
         {GRAPH_EDGES.map(([a, b]) => (
           <circle key={`p-${a}-${b}`} className="jd-packet" r={3} cx={-20} cy={-20} />
         ))}
@@ -575,7 +569,7 @@ function build(root: HTMLElement, L: Layout, k: number, reduced: boolean) {
   edgeEls.forEach((e, i) => {
     tl.to(e, { strokeDashoffset: 0, duration: 1.1, ease: "power1.inOut" }, 73.4 + i * 0.22);
   });
-  const depth: Record<string, number> = { imp2014: 0, impUsda: 0, rate30: 0, size2: 0, rate8: 0, net: 1, contrib: 2, minimum: 2, before: 3, regular: 4 };
+  const depth: Record<string, number> = { imp2014: 0, impUsda: 0, impTfp: 0, rate30: 0, size2: 0, rate8: 0, net: 1, contrib: 2, minimum: 2, before: 3, regular: 4 };
   GRAPH_EDGES.forEach(([a], i) => {
     const path = edgeEls[i];
     const dot = packets[i];

@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { CAPTIONS } from "../journey-lamplight/captions";
-import { CODE, GRAPH_NODES, MARKS } from "../journey-digital/data";
+import { CODE, GRAPH_EDGES, GRAPH_NODES, MARKS } from "../journey-digital/data";
 import { CLUSTERS } from "../registry-snapshot";
 import {
   CAPTION_OPEN, OPEN, REST_AT, WALK, WALK_CUT, toClock, toScroll, PAGE, SPINE7, SPINES, TARGET_CELL, cellAt, GRID,
-  AMBER, CAPTION_AT, CODE_CARD, DH, DRAFT, DW, GATE_X, HERO, NODE_AT, NODE_FIRE, NODE_H, NODE_W, SOURCE_CARD,
-  STATUTE_CARD, U, USER_CARD, USERS, clusterAt, draftX, panFor, rowIndex, seg,
+  AMBER, ASIDE, ASIDES, BAND, CAPTION_AT, CODE_CARD, DH, DRAFT, DW, GATE_H, GATE_W, GATE_X, GATE_Y, NODE_AT, NODE_FIRE, RAIL, SOURCE_CARD,
+  STATUTE_CARD, U, USER_CARD, USERS, USES_Y, asideY, clusterAt, draftX, edgeD, nodeBox, panFor, rowIndex, seg,
 } from "./layout";
 import { nextStop, prevStop, stepAt } from "./deck-clock";
 
@@ -34,9 +34,10 @@ describe("journey-live layout", () => {
     };
     inside(STATUTE_CARD.x, STATUTE_CARD.y, STATUTE_CARD.w, 1, "statute");
     GATE_X.forEach((_, i) => inside(draftX(i), DRAFT.y, DRAFT.w, DRAFT.h, `draft at gate ${i}`));
+    ASIDES.forEach((a, i) => inside(ASIDE.x, asideY(i), ASIDE.w, ASIDE.h, `aside ${a.id}`));
     inside(CODE_CARD.x, CODE_CARD.y, CODE_CARD.w, CODE_CARD.h, "code card");
     for (const n of GRAPH_NODES) {
-      const b = n.id === "regular" ? HERO : { w: NODE_W, h: NODE_H };
+      const b = nodeBox(n.id);
       inside(NODE_AT[n.id].x, NODE_AT[n.id].y, b.w, b.h, `node ${n.id}`);
     }
     for (const c of CLUSTERS) {
@@ -46,6 +47,69 @@ describe("journey-live layout", () => {
     inside(AMBER.x - AMBER.r, AMBER.y - AMBER.r, AMBER.r * 2, AMBER.r * 2, "amber");
     inside(SOURCE_CARD.x, SOURCE_CARD.y, SOURCE_CARD.w, SOURCE_CARD.h, "source");
     USERS.forEach((_, i) => inside(USER_CARD.x, USER_CARD.y0 + i * USER_CARD.gap, USER_CARD.w, USER_CARD.h, `user ${i}`));
+    inside(USER_CARD.x, USES_Y, 1, 11, "potential uses heading");
+  });
+
+  // The steps off the rail sit apart from the rail, its gates and the
+  // draft that stops at checks, so nothing draws them as part of the
+  // sequence a draft must pass.
+  it("keeps the steps off the rail clear of the rail, the gates and the draft", () => {
+    const last = GATE_X.length - 1;
+    expect(ASIDE.x).toBeGreaterThan(RAIL.x1);
+    expect(ASIDE.x).toBeGreaterThan(GATE_X[last] + GATE_W / 2);
+    expect(ASIDE.x).toBeGreaterThan(draftX(last) + DRAFT.w);
+    expect(asideY(0)).toBeGreaterThan(GATE_Y + GATE_H);
+    ASIDES.forEach((_, i) => {
+      if (i > 0) expect(asideY(i)).toBeGreaterThanOrEqual(asideY(i - 1) + ASIDE.h);
+    });
+  });
+
+  it("keeps every graph node inside the band the beats draw in", () => {
+    for (const n of GRAPH_NODES) {
+      expect(NODE_AT[n.id].y, n.id).toBeGreaterThanOrEqual(BAND[0]);
+      expect(NODE_AT[n.id].y + nodeBox(n.id).h, n.id).toBeLessThanOrEqual(BAND[1]);
+    }
+  });
+
+  it("sets the potential uses heading above the first branch", () => {
+    expect(USES_Y + 11).toBeLessThan(USER_CARD.y0);
+  });
+
+  // An edge is a cubic from its source's right side to its target's left
+  // side. Sampled along its length, it must not pass behind a card it
+  // does not join (the cards are opaque and drawn over the lines), and the
+  // output's two inputs, $182 and $24, must reach it at different points.
+  it("draws every edge clear of the cards it does not join, and the output's two inputs apart", () => {
+    const pts = (d: string) => {
+      // one cubic; a missing operand would sample as NaN and miss every card
+      expect(d).toMatch(/^M (-?[\d.]+ ){2}C (-?[\d.]+ -?[\d.]+, ){2}-?[\d.]+ -?[\d.]+$/);
+      const nums = d.match(/-?[\d.]+/g)!.map(Number);
+      expect(nums, d).toHaveLength(8);
+      for (const v of nums) expect(Number.isFinite(v), d).toBe(true);
+      const [x0, y0, x1, y1, x2, y2, x3, y3] = nums;
+      return Array.from({ length: 201 }, (_, i) => {
+        const t = i / 200;
+        const v = 1 - t;
+        return [
+          v ** 3 * x0 + 3 * v * v * t * x1 + 3 * v * t * t * x2 + t ** 3 * x3,
+          v ** 3 * y0 + 3 * v * v * t * y1 + 3 * v * t * t * y2 + t ** 3 * y3,
+        ];
+      });
+    };
+    for (const [a, b] of GRAPH_EDGES) {
+      for (const n of GRAPH_NODES) {
+        if (n.id === a || n.id === b) continue;
+        const { x, y } = NODE_AT[n.id];
+        const { w, h } = nodeBox(n.id);
+        for (const [px, py] of pts(edgeD(a, b))) {
+          expect(px >= x && px <= x + w && py >= y && py <= y + h, `${a}→${b} under ${n.id}`).toBe(false);
+        }
+      }
+    }
+    const end = (d: string) => d.trim().split(/[\s,]+/).slice(-2).join(" ");
+    expect(end(edgeD("before", "regular"))).not.toBe(end(edgeD("minimum", "regular")));
+    const into = GRAPH_EDGES.filter(([, b]) => b === "regular").map(([a]) => a).sort();
+    expect(into).toEqual(["before", "minimum"]);
   });
 
   it("places the opening on the stage: one Title 7 spine, the page, the target cell", () => {
@@ -92,9 +156,10 @@ describe("journey-live layout", () => {
   it("fires each graph node after the nodes it reads, within the flow", () => {
     expect(NODE_FIRE.net).toBeGreaterThan(NODE_FIRE.imp2014);
     expect(NODE_FIRE.contrib).toBeGreaterThan(Math.max(NODE_FIRE.net, NODE_FIRE.rate30));
-    expect(NODE_FIRE.minimum).toBeGreaterThan(Math.max(NODE_FIRE.impUsda, NODE_FIRE.size2, NODE_FIRE.rate8));
+    expect(NODE_FIRE.minimum).toBeGreaterThan(Math.max(NODE_FIRE.impTfp, NODE_FIRE.size2, NODE_FIRE.rate8));
     expect(NODE_FIRE.before).toBeGreaterThan(Math.max(NODE_FIRE.impUsda, NODE_FIRE.contrib));
     expect(NODE_FIRE.regular).toBeGreaterThan(Math.max(NODE_FIRE.before, NODE_FIRE.minimum));
+    for (const [a, b] of GRAPH_EDGES) expect(NODE_FIRE[b], `${a} → ${b}`).toBeGreaterThan(NODE_FIRE[a]);
     for (const f of Object.values(NODE_FIRE)) expect(U.flow[0] + f).toBeLessThan(U.flow[1]);
   });
 

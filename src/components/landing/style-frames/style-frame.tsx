@@ -56,7 +56,7 @@ const CAPTIONS: Record<string, { kicker: string; title: string }> = {
     title: "Every value cites the sentence it came from.",
   },
   "6": {
-    kicker: `7 / 8 · All the law · ${snapshotMonth()} snapshot`,
+    kicker: `7 / 8 · At scale · ${snapshotMonth()} snapshot`,
     title: "The same structure, at scale.",
   },
   "7": {

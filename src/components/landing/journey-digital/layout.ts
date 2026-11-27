@@ -70,7 +70,8 @@ export const WIDE: Layout = {
   },
   graph: {
     imp2014: [200, 140],
-    impUsda: [200, 450],
+    impUsda: [200, 330],
+    impTfp: [200, 480],
     net: [500, 105],
     rate30: [500, 220],
     size2: [500, 410],
@@ -110,21 +111,37 @@ export const TALL: Layout = {
     gutC: [14, 29, 46],
     gutR: [8, 17, 33, 46, 55, 64, 74],
   },
+  // The tall graph's lines run centre to centre under the cards, leaving
+  // and arriving vertically, so each node sits where no line passes a card
+  // it does not join: the minimum's three inputs come from three sides,
+  // and the line from the allotment before the minimum runs straight down
+  // a clear lane to the output.
   graph: {
     imp2014: [136, 96],
-    impUsda: [384, 96],
-    net: [136, 196],
-    rate30: [384, 196],
-    contrib: [260, 296],
-    before: [260, 396],
-    size2: [260, 496],
-    rate8: [260, 586],
-    minimum: [260, 676],
-    regular: [260, 776],
+    rate30: [384, 96],
+    net: [124, 196],
+    contrib: [180, 296],
+    impUsda: [395, 296],
+    before: [297, 396],
+    size2: [153, 506],
+    rate8: [413, 506],
+    impTfp: [153, 626],
+    minimum: [404, 626],
+    regular: [297, 776],
   },
   heroSlot: [260, 846],
   mapFilm: (x, y) => [30 + (y - 110) * 1.12, 70 + (x - 150) * 0.6],
 };
+
+// A graph edge's path, from its source's centre to its target's: in the
+// wide layout it leaves and arrives level; in the tall one, vertically.
+export function graphEdgeD(L: Layout, a: GraphNodeId, b: GraphNodeId): string {
+  const [x1, y1] = L.graph[a];
+  const [x2, y2] = L.graph[b];
+  return L.kind === "wide"
+    ? `M ${x1} ${y1} C ${(x1 + x2) / 2} ${y1}, ${(x1 + x2) / 2} ${y2}, ${x2} ${y2}`
+    : `M ${x1} ${y1} C ${x1} ${(y1 + y2) / 2}, ${x2} ${(y1 + y2) / 2}, ${x2} ${y2}`;
+}
 
 export function pickLayout(vw: number, vh: number): Layout {
   return vw / vh < 0.95 ? TALL : WIDE;
