@@ -443,6 +443,23 @@ describe("navigation index read helpers", () => {
     ]);
   });
 
+  it("orders child pages by sort_key, then path, then id", async () => {
+    // Siblings can share a sort_key (segments 1 and 01 with no ordinal),
+    // and the index has shipped two rows for one path, so path and then id
+    // break ties and each row lands on one page whatever the query plan.
+    const builder = enqueue({ data: [], count: 0 });
+
+    await getNavigationIndexChildren({
+      jurisdiction: "us",
+      docType: "statute",
+      parentPath: "us/statute/26",
+      encodedOnly: false,
+      page: 2,
+    });
+
+    expect(calls(builder, "order")).toEqual([["sort_key"], ["path"], ["id"]]);
+  });
+
   it("falls back to row length when child query count is absent", async () => {
     const rows = [navRow({ id: "nav-1" }), navRow({ id: "nav-2" })];
     enqueue({ data: rows, count: null });

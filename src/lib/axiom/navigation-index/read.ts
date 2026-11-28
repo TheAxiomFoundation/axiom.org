@@ -224,12 +224,16 @@ export async function getNavigationIndexChildren({
   const from = page * NAVIGATION_PAGE_SIZE;
   const to = from + NAVIGATION_PAGE_SIZE - 1;
 
+  // Siblings can share a sort_key, so path and then id break ties and give
+  // every row one page whatever plan the database picks.
   let query = supabaseCorpus
     .from(NAVIGATION_NODES_VIEW)
     .select("*", { count: "exact" })
     .eq("jurisdiction", jurisdiction)
     .eq("doc_type", docType)
     .order("sort_key")
+    .order("path")
+    .order("id")
     .range(from, to);
 
   query =
