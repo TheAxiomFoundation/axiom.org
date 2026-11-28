@@ -1,6 +1,7 @@
 import { availableGraphCitations } from "@/lib/axiom/ops-graph-availability";
 import { corpusLookupPathsForCitation } from "@/lib/axiom/ops-citations";
 import { ownLevelName } from "@/lib/axiom/jurisdiction-names";
+import { NAVIGATION_NODES_VIEW } from "@/lib/axiom/navigation-index/table";
 
 const STATUS_REVALIDATE_SECONDS = 300;
 
@@ -355,11 +356,11 @@ async function readCitationMetadata(
   const rows = await readSupabaseRows<{ path: string; label: string | null }>(
     config,
     "corpus",
-    "navigation_nodes",
+    NAVIGATION_NODES_VIEW,
     {
       select: "path,label",
-      // navigation_nodes.path is the indexed lookup column (citation_path
-      // is not indexed and times out on filtered reads).
+      // Filter on path, the indexed lookup key that matches this query as
+      // written: one IN list of paths that can span jurisdictions.
       path: `in.(${list.map((p) => `"${p}"`).join(",")})`,
       limit: String(CITATION_LABEL_LOOKUP_LIMIT),
     },

@@ -94,10 +94,10 @@ describe("getEncodingStatus", () => {
       .map((url) => url.pathname.replace("/rest/v1/", ""))
       .sort();
     expect(supabaseTables).toEqual([
+      "current_navigation_nodes",
       "current_provisions",
       "encoding_runs",
       "live_encoding_runs",
-      "navigation_nodes",
     ]);
     expect(status.value?.latest_runs.map((run) => run.id)).toEqual([
       "enc-1",
@@ -171,7 +171,7 @@ describe("getEncodingStatus", () => {
       "fetch",
       vi.fn((input: RequestInfo | URL) => {
         const url = new URL(input.toString());
-        if (/\/(live_encoding_runs|navigation_nodes|current_provisions)$/.test(url.pathname)) {
+        if (/\/(live_encoding_runs|current_navigation_nodes|current_provisions)$/.test(url.pathname)) {
           return Promise.resolve(jsonResponse({ message: "down" }, { status: 503 }));
         }
         if (
@@ -318,7 +318,7 @@ function mockSupabaseFetch(input: RequestInfo | URL) {
       );
     }
 
-    if (url.pathname.endsWith("/navigation_nodes")) {
+    if (url.pathname.endsWith("/current_navigation_nodes")) {
       return Promise.resolve(
         jsonResponse([
           { path: "us-ms/statute/27-7-5", label: "   " },

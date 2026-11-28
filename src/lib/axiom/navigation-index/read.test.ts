@@ -198,7 +198,8 @@ describe("navigation index read helpers", () => {
       docTypes: ["legislation", "statute"],
     });
 
-    expect(mockFrom).toHaveBeenCalledWith("navigation_nodes");
+    expect(mockFrom).toHaveBeenCalledWith("current_navigation_nodes");
+    expect(mockFrom).not.toHaveBeenCalledWith("navigation_nodes");
     expect(calls(probes.legislation, "eq")).toContainEqual([
       "jurisdiction",
       "uk",
@@ -429,6 +430,8 @@ describe("navigation index read helpers", () => {
     });
 
     expect(result).toEqual({ rows: [row], total: 201, hasMore: true });
+    expect(mockFrom).toHaveBeenCalledWith("current_navigation_nodes");
+    expect(mockFrom).not.toHaveBeenCalledWith("navigation_nodes");
     expect(calls(builder, "eq")).toContainEqual(["doc_type", "statute"]);
     expect(calls(builder, "eq")).toContainEqual([
       "parent_path",
@@ -438,6 +441,23 @@ describe("navigation index read helpers", () => {
     expect(calls(builder, "or")).toContainEqual([
       "has_rulespec.eq.true,encoded_descendant_count.gt.0",
     ]);
+  });
+
+  it("orders child pages by sort_key, then path, then id", async () => {
+    // Siblings can share a sort_key (segments 1 and 01 with no ordinal),
+    // and the index has shipped two rows for one path, so path and then id
+    // break ties and each row lands on one page whatever the query plan.
+    const builder = enqueue({ data: [], count: 0 });
+
+    await getNavigationIndexChildren({
+      jurisdiction: "us",
+      docType: "statute",
+      parentPath: "us/statute/26",
+      encodedOnly: false,
+      page: 2,
+    });
+
+    expect(calls(builder, "order")).toEqual([["sort_key"], ["path"], ["id"]]);
   });
 
   it("falls back to row length when child query count is absent", async () => {
@@ -470,6 +490,8 @@ describe("navigation index read helpers", () => {
     });
 
     expect(result).toEqual([row]);
+    expect(mockFrom).toHaveBeenCalledWith("current_navigation_nodes");
+    expect(mockFrom).not.toHaveBeenCalledWith("navigation_nodes");
     expect(calls(builder, "eq")).toContainEqual(["jurisdiction", "us"]);
     expect(calls(builder, "eq")).toContainEqual(["doc_type", "guidance"]);
     expect(calls(builder, "gte")).toContainEqual([
@@ -502,6 +524,8 @@ describe("navigation index read helpers", () => {
 
     await expect(getNavigationIndexNode("us/statute/26")).resolves.toEqual(row);
 
+    expect(mockFrom).toHaveBeenCalledWith("current_navigation_nodes");
+    expect(mockFrom).not.toHaveBeenCalledWith("navigation_nodes");
     expect(calls(builder, "eq")).toContainEqual(["path", "us/statute/26"]);
     // Ordered list query, not maybeSingle(): the index has shipped
     // duplicate rows for one path, which maybeSingle() escalates to

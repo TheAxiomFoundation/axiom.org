@@ -132,12 +132,12 @@ describe("getEncodingStatus properties", () => {
         const tables = fetchMock.mock.calls.map(([input]) =>
           new URL(String(input)).pathname.replace("/rest/v1/", "")
         );
-        const lookups = expectedLookups.size > 0 ? ["current_provisions", "navigation_nodes"] : [];
+        const lookups = expectedLookups.size > 0 ? ["current_navigation_nodes", "current_provisions"] : [];
         expect(tables.sort()).toEqual(
           ["encoding_runs", "live_encoding_runs", ...lookups].sort()
         );
         if (expectedLookups.size > 0) {
-          expect(requested.navigation_nodes).toEqual(expectedLookups);
+          expect(requested.current_navigation_nodes).toEqual(expectedLookups);
           expect(requested.current_provisions).toEqual(expectedLookups);
         }
 
@@ -258,7 +258,7 @@ function stubSupabase(s: Scenario, runsFailure?: 500 | 503 | "non-array") {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = new URL(String(input));
     const table = url.pathname.replace("/rest/v1/", "");
-    const filter = url.searchParams.get(table === "navigation_nodes" ? "path" : "citation_path");
+    const filter = url.searchParams.get(table === "current_navigation_nodes" ? "path" : "citation_path");
     const inList = new Set([...(filter ?? "").matchAll(/"([^"]*)"/g)].map((m) => m[1]));
     if (filter) requested[table] = inList;
 
@@ -270,7 +270,7 @@ function stubSupabase(s: Scenario, runsFailure?: 500 | 503 | "non-array") {
     if (table === "live_encoding_runs") {
       return s.base.liveFails ? json({ message: "down" }, 503) : json(liveRows(s));
     }
-    if (table === "navigation_nodes") {
+    if (table === "current_navigation_nodes") {
       return s.base.navFails
         ? json({ message: "down" }, 503)
         : json(s.nav.filter((row) => inList.has(row.path)));
