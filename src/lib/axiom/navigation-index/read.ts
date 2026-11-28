@@ -245,14 +245,16 @@ export async function getNavigationIndexChildren({
 
   // Siblings can share a sort_key, so path and then id break ties and give
   // every row one page whatever plan the database picks.
-  const result = await withTimeout(
-    children(false)
-      .order("sort_key")
-      .order("path")
-      .order("id")
-      .range(from, to),
-    NAVIGATION_QUERY_TIMEOUT_MS
-  );
+  const readPage = () =>
+    withTimeout(
+      children(false)
+        .order("sort_key")
+        .order("path")
+        .order("id")
+        .range(from, to),
+      NAVIGATION_QUERY_TIMEOUT_MS
+    );
+  let result = await readPage();
   if (!result) throw new NavigationIndexUnavailableError();
   if (result.error) {
     // With an exact count, PostgREST answers a range that starts past the
@@ -264,10 +266,16 @@ export async function getNavigationIndexChildren({
       children(true),
       NAVIGATION_QUERY_TIMEOUT_MS
     );
-    if (!counted || counted.error || counted.count === null) {
+    if (!counted || counted.error || !isRowCount(counted.count)) {
       throw new NavigationIndexUnavailableError();
     }
-    return { rows: [], total: counted.count, hasMore: false };
+    if (counted.count <= from) {
+      return { rows: [], total: counted.count, hasMore: false };
+    }
+    // Rows landed between the two reads, so the page exists now: read it
+    // once more, and take any failure this time as the index failing.
+    result = await readPage();
+    if (!result || result.error) throw new NavigationIndexUnavailableError();
   }
 
   const rows = (result.data ?? []) as NavigationNodeRow[];
@@ -278,6 +286,12 @@ export async function getNavigationIndexChildren({
     total,
     hasMore: (page + 1) * NAVIGATION_PAGE_SIZE < total,
   };
+}
+
+// A row count PostgREST actually sent. postgrest-js reads a Content-Range
+// of */* (no total) as NaN.
+function isRowCount(count: number | null): count is number {
+  return Number.isSafeInteger(count) && (count as number) >= 0;
 }
 
 /** The last page of a level with `total` children; 0 when it has none. */

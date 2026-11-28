@@ -589,62 +589,124 @@ describe("navigation index read helpers", () => {
     await settled;
   });
 
-  it("reports unavailable when the count after a 416 fails", async () => {
-    enqueue(PAST_THE_END);
-    enqueue({
-      data: null,
-      count: null,
-      status: 500,
-      error: { message: "statement timeout" },
+  const pageOne = () =>
+    getNavigationIndexChildren({
+      jurisdiction: "us",
+      docType: "statute",
+      parentPath: "us/statute/26",
+      encodedOnly: false,
+      page: 1,
     });
 
-    await expect(
-      getNavigationIndexChildren({
-        jurisdiction: "us",
-        docType: "statute",
-        parentPath: "us/statute/26",
-        encodedOnly: false,
-        page: 1,
-      })
-    ).rejects.toThrow(NavigationIndexUnavailableError);
-  });
+  /** The count after the 416 ran, as a count-only read. */
+  const expectCountRead = (count: QueryBuilder) => {
+    expect(mockFrom).toHaveBeenCalledTimes(2);
+    expect(calls(count, "select")).toEqual([
+      ["*", { count: "exact", head: true }],
+    ]);
+  };
+
+  it.each([
+    ["without a count", null],
+    ["with a count", 15],
+  ])(
+    "reports unavailable when the count after a 416 fails %s",
+    async (_, total) => {
+      enqueue(PAST_THE_END);
+      const count = enqueue({
+        data: null,
+        count: total,
+        status: 500,
+        error: { message: "statement timeout" },
+      });
+
+      await expect(pageOne()).rejects.toThrow(NavigationIndexUnavailableError);
+      expectCountRead(count);
+    }
+  );
 
   it("reports unavailable when the count after a 416 never answers", async () => {
     vi.useFakeTimers();
     enqueue(PAST_THE_END);
-    enqueue(
+    const count = enqueue(
       new Promise<QueryResult>(() => {
         /* never resolves */
       })
     );
 
-    const settled = expect(
-      getNavigationIndexChildren({
-        jurisdiction: "us",
-        docType: "statute",
-        parentPath: "us/statute/26",
-        encodedOnly: false,
-        page: 1,
-      })
-    ).rejects.toThrow(NavigationIndexUnavailableError);
+    const settled = expect(pageOne()).rejects.toThrow(
+      NavigationIndexUnavailableError
+    );
     await vi.advanceTimersByTimeAsync(5000);
     await settled;
+    expectCountRead(count);
   });
 
-  it("reports unavailable when the count after a 416 answers without a count", async () => {
+  it.each([
+    ["without a count", null],
+    // postgrest-js reads a Content-Range of */* as NaN.
+    ["with an unknown total (*/*)", Number.NaN],
+    ["with a negative count", -1],
+    ["with a fractional count", 1.5],
+  ])(
+    "reports unavailable when the count after a 416 answers %s",
+    async (_, total) => {
+      enqueue(PAST_THE_END);
+      const count = enqueue({ data: null, count: total, status: 200, error: null });
+
+      await expect(pageOne()).rejects.toThrow(NavigationIndexUnavailableError);
+      expectCountRead(count);
+    }
+  );
+
+  it("answers a page that starts exactly at the count as past the end", async () => {
     enqueue(PAST_THE_END);
-    enqueue({ data: null, count: null, status: 200, error: null });
+    enqueue({ data: null, count: 100, status: 200, error: null });
 
-    await expect(
-      getNavigationIndexChildren({
-        jurisdiction: "us",
-        docType: "statute",
-        parentPath: "us/statute/26",
-        encodedOnly: false,
-        page: 1,
-      })
-    ).rejects.toThrow(NavigationIndexUnavailableError);
+    await expect(pageOne()).resolves.toEqual({
+      rows: [],
+      total: 100,
+      hasMore: false,
+    });
+    expect(mockFrom).toHaveBeenCalledTimes(2);
   });
+
+  it("reads the page once more when the count shows rows landed after the 416", async () => {
+    const rows = [navRow({ id: "nav-101", path: "us/statute/26/101" })];
+    enqueue(PAST_THE_END);
+    enqueue({ data: null, count: 250, status: 200, error: null });
+    const again = enqueue({ data: rows, count: 250, status: 206, error: null });
+
+    await expect(pageOne()).resolves.toEqual({
+      rows,
+      total: 250,
+      hasMore: true,
+    });
+    expect(mockFrom).toHaveBeenCalledTimes(3);
+    expect(calls(again, "range")).toEqual([[100, 199]]);
+    expect(calls(again, "select")).toEqual([
+      ["*", { count: "exact", head: false }],
+    ]);
+  });
+
+  it.each([
+    ["fails", STATEMENT_TIMEOUT],
+    ["starts past the end again", PAST_THE_END],
+  ])(
+    "reports unavailable when that second read %s",
+    async (_, answer) => {
+      enqueue(PAST_THE_END);
+      enqueue({ data: null, count: 250, status: 200, error: null });
+      enqueue(answer);
+      // A third read would find no answer queued.
+      mockFrom.mockImplementation(() => {
+        throw new Error("read again");
+      });
+
+      await expect(pageOne()).rejects.toThrow(NavigationIndexUnavailableError);
+      expect(mockFrom).toHaveBeenCalledTimes(3);
+    }
+  );
 
   it("loads a single navigation node by path", async () => {
     const row = navRow();
