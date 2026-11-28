@@ -4,7 +4,10 @@ import {
   type BreadcrumbItem,
   type TreeNode,
 } from "@/lib/tree-data";
-import { loadTreeNodes } from "@/lib/axiom/tree-node-loader";
+import {
+  loadTreeNodes,
+  type TreeNodeLoadResult,
+} from "@/lib/axiom/tree-node-loader";
 import {
   supabaseCorpus,
   supabaseEncodings,
@@ -291,16 +294,76 @@ function numericFirst(segments: string[], nodes: TreeNode[]): TreeNode[] {
 /** Browse depth: jurisdiction (1), doc type (2), title (3). */
 export const MAX_BROWSE_SEGMENTS = 3;
 
+/** A page past the end looks back this many pages at most for one that
+ *  lists a child. */
+const PAST_END_CHECKS = 3;
+
+interface BrowseOptions {
+  /** Allow depths beyond MAX_BROWSE_SEGMENTS — used for navigation
+   *  containers below title level (a CFR part) that have children
+   *  in the index but no corpus row of their own. */
+  allowDeep?: boolean;
+}
+
+/** One page of a level as the browse page lists it, before the mirror
+ *  adds its coverage marks. */
+interface BrowseLevel {
+  jurisdictionLabel: string;
+  result: TreeNodeLoadResult;
+  nodes: TreeNode[];
+}
+
 export async function getBrowsePageData(
   segments: string[],
   page = 0,
-  options: {
-    /** Allow depths beyond MAX_BROWSE_SEGMENTS — used for navigation
-     *  containers below title level (a CFR part) that have children
-     *  in the index but no corpus row of their own. */
-    allowDeep?: boolean;
-  } = {}
+  options: BrowseOptions = {}
 ): Promise<BrowsePageData | BrowsePastEnd | "unavailable" | null> {
+  const level = await browseLevel(segments, page, options);
+  if (level === "unavailable" || level === null) return level;
+  if ("lastPage" in level) {
+    return pastEndTarget(segments, level.lastPage, options);
+  }
+  return browseData(segments, page, level);
+}
+
+/**
+ * Where a page past the level's last child sends the reader: the last page
+ * that lists a child. The index's last page can list none here, because
+ * the loader drops stale rows and browseLevel drops strays and ingestion
+ * plumbing, so this steps back a page at a time, a few pages at most. At
+ * browse depth page 0 always renders, so it needs no check. Below title
+ * level a page 0 with nothing to list falls through to the reader, so that
+ * page's own answer comes back and nothing redirects.
+ */
+async function pastEndTarget(
+  segments: string[],
+  lastPage: number,
+  options: BrowseOptions
+): Promise<BrowsePageData | BrowsePastEnd | "unavailable" | null> {
+  let candidate = lastPage;
+  for (let check = 0; check < PAST_END_CHECKS; check++) {
+    if (candidate === 0 && !options.allowDeep) break;
+    const level = await browseLevel(segments, candidate, options);
+    if (level !== null && level !== "unavailable" && "nodes" in level) {
+      if (level.nodes.length > 0) return { lastPage: candidate };
+      if (candidate === 0) return browseData(segments, 0, level);
+      candidate -= 1;
+    } else if (level !== null && level !== "unavailable") {
+      // The level shrank again since the count.
+      candidate = Math.max(0, Math.min(level.lastPage, candidate - 1));
+    } else {
+      // A page that cannot be checked answers for itself.
+      return candidate === 0 ? level : { lastPage: candidate };
+    }
+  }
+  return { lastPage: candidate };
+}
+
+async function browseLevel(
+  segments: string[],
+  page: number,
+  options: BrowseOptions
+): Promise<BrowseLevel | BrowsePastEnd | "unavailable" | null> {
   if (
     segments.length === 0 ||
     (!options.allowDeep && segments.length > MAX_BROWSE_SEGMENTS)
@@ -407,6 +470,14 @@ export async function getBrowsePageData(
     segments,
     dedupeBySegment(positioned.filter((n) => !isPlumbingNode(n))),
   );
+  return { jurisdictionLabel: resolved.jurisdiction.label, result, nodes };
+}
+
+async function browseData(
+  segments: string[],
+  page: number,
+  { jurisdictionLabel, result, nodes }: BrowseLevel
+): Promise<BrowsePageData> {
   const deadline = Date.now() + ENCODED_BUDGET_MS;
   const scan = await scanEncoded(segments, nodes, deadline).catch(
     () => EMPTY_SCAN
@@ -423,7 +494,7 @@ export async function getBrowsePageData(
 
   return {
     segments,
-    jurisdictionLabel: resolved.jurisdiction.label,
+    jurisdictionLabel,
     breadcrumbs: buildBreadcrumbs(segments),
     currentRule: result.currentRule ?? null,
     nodes,
@@ -434,13 +505,23 @@ export async function getBrowsePageData(
   };
 }
 
-/** One page of a browse level at its bare citation path: every query
- *  parameter but `page` kept as given, and `page` only past the first. */
+/**
+ * One page of a browse level at its bare citation path: every query
+ * parameter but `page` kept as given, and `page` only past the first.
+ * `segments` are the route's own parameters, which Next decoded once; each
+ * is encoded once here, so Next reads the same segments back. Null when no
+ * link can name the path: a browser resolves a "." or ".." segment however
+ * it is escaped, and an empty segment leaves a "//" that Next redirects or
+ * a trailing slash that names the level above.
+ */
 export function browsePageHref(
   segments: string[],
   page: number,
   query: Record<string, string | string[] | undefined> = {}
-): string {
+): string | null {
+  if (segments.some((segment) => segment === "" || /^\.\.?$/.test(segment))) {
+    return null;
+  }
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) {
     if (key === "page" || value === undefined) continue;

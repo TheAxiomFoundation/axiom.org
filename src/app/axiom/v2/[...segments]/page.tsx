@@ -151,6 +151,16 @@ export default async function SectionPage({
   const rawPage = Number(query?.page ?? "0");
   const page =
     Number.isInteger(rawPage) && rawPage > 0 ? Math.min(rawPage, 50) : 0;
+  // A page past the last child (a stale or hand-typed link) goes to the
+  // level's last page rather than an empty list. The link names the
+  // segments Next handed this page, not the ones it looked up: Next decodes
+  // a segment once and this page decodes it again, so only Next's own
+  // segments come back to the same lookup.
+  const toLastPage: (lastPage: number) => never = (lastPage) => {
+    const href = browsePageHref(segments, lastPage, query);
+    if (!href) notFound();
+    redirect(href);
+  };
 
   // Browse depth (jurisdiction / doc type / title) renders the list
   // view; section depth and deeper renders the reader.
@@ -162,11 +172,7 @@ export default async function SectionPage({
       return shell(<BrowseUnavailable path={decoded.join("/")} />);
     }
     if (!browse) notFound();
-    // A page past the last child (a stale or hand-typed link) goes to the
-    // level's last page rather than an empty list.
-    if ("lastPage" in browse) {
-      redirect(browsePageHref(decoded, browse.lastPage, query));
-    }
+    if ("lastPage" in browse) toLastPage(browse.lastPage);
     return shell(<BrowseView data={browse} />);
   }
 
@@ -181,9 +187,7 @@ export default async function SectionPage({
       allowDeep: true,
     }).catch(() => null);
     if (browse && browse !== "unavailable") {
-      if ("lastPage" in browse) {
-        redirect(browsePageHref(decoded, browse.lastPage, query));
-      }
+      if ("lastPage" in browse) toLastPage(browse.lastPage);
       if (browse.nodes.length > 0) return shell(<BrowseView data={browse} />);
     }
   }
