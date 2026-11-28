@@ -72,3 +72,15 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Source-conflict registers (known-source-conflicts.yaml on each
+      # rulespec-* repo's main) into encodings.source_conflicts, every pass:
+      # a few small files. Before the migration is applied the script warns
+      # and writes nothing; continue-on-error keeps a register read failure
+      # from failing the pipeline collection above.
+      - run: bun scripts/collect-source-conflicts.mjs
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

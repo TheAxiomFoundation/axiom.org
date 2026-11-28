@@ -338,3 +338,18 @@ it("shows the selected parameter's declared constant even without a run", () => 
   expect(replace).not.toHaveBeenCalled();
   replace.mockRestore();
  });
+
+describe("rule workspace header", () => {
+ it("puts the view tabs in the app header's slot and marks only the current view", () => {
+  vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+  const slot = document.createElement("div");
+  document.body.appendChild(slot);
+  render(<RuleWorkspace graph={graph} selectedId="result" onSelect={vi.fn()} view="read" onViewChange={vi.fn()} scopeLabel="Test" truncated={false} runReady={false} scenario={null} hasRun={false} stale={false} valueOf={() => undefined} headerSlot={slot} subjectExtras={<span>conflict badge</span>} />);
+  const tabs = within(slot).getByRole("navigation", { name: "Workspace views" });
+  expect(within(tabs).getByRole("button", { name: "Read" }).getAttribute("aria-current")).toBe("page");
+  // Graph is an ordinary tab: not marked while another view is open.
+  expect(within(tabs).getByRole("button", { name: "Graph" }).getAttribute("aria-current")).toBeNull();
+  expect(screen.getByText("conflict badge")).toBeTruthy();
+  slot.remove();
+ });
+});

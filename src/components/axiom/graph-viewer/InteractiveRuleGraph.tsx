@@ -1,6 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { GraphLoading } from "./graph-loading";
+import { Scale } from "lucide-react";
+import { useConflictsFor } from "./source-conflicts";
 import {
   Background,
   BackgroundVariant,
@@ -19,8 +21,8 @@ import {
 import { BaseEdge, SmoothStepEdge, useReactFlow, type EdgeProps } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import dagre from "dagre";
-import { graphFitViewport, MAX_GRAPH_ZOOM } from "./zoom-bounds";
-import { inputContextSubgraph, dependencySubgraph, scopeRootFor, upstreamIds, upstreamNodeIds } from "./focus-layout";
+import { graphFitViewport, MAX_GRAPH_ZOOM, readableFocusViewport } from "./zoom-bounds";
+import { inputContextSubgraph, scopeRootFor, upstreamIds, upstreamNodeIds, visibleSubgraph } from "./focus-layout";
 import type { DashboardSpec, ParameterRule, TraceNode } from "./types";
 import {
   evalAst,
@@ -206,6 +208,8 @@ export function InteractiveRuleGraph({
   const [openingOverview, setOpeningOverview] = useState(true);
   const [flowReady, setFlowReady] = useState(false);
   const [upstreamDepth, setUpstreamDepth] = useState<number>(1);
+  // The overview map is opt-in: closed, it never covers the cards.
+  const [showMiniMap, setShowMiniMap] = useState(false);
   const [layoutFocusId, setLayoutFocusId] = useState<string | null>(null);
   const [frameRequest, setFrameRequest] = useState<{ mode: "all" | "upstream"; nonce: number } | null>(null);
   const requestFrame = (mode: "all" | "upstream", id: string | null = pinnedLegalId) => {
@@ -327,18 +331,29 @@ export function InteractiveRuleGraph({
     if (!nodeScoped) return baseGraph;
     const root = baseGraph.nodes.some(node => node.data.legalId === scopeId) ? scopeId : spec.outputs[0]?.legalId ?? null;
     const inputRoot = baseGraph.nodes.some(node => node.data.legalId === root && node.data.kind === "input");
-    const scoped = inputRoot ? inputContextSubgraph(baseGraph.nodes, baseGraph.edges, root) : dependencySubgraph(baseGraph.nodes, baseGraph.edges, root, Infinity);
+    // Draw only the levels the reader asked for (plus the path to the
+    // selected card and its own inputs), so the tree lays out compactly
+    // and a selection opens at a readable zoom. "All" draws everything.
+    const visible = inputRoot ? { ...inputContextSubgraph(baseGraph.nodes, baseGraph.edges, root), hiddenInputs: new Map<string, number>() } : visibleSubgraph(baseGraph.nodes, baseGraph.edges, root, pinnedLegalId ?? null, upstreamDepth);
+    const scoped = {
+      nodes: visible.nodes.map((node) => visible.hiddenInputs.has(node.id) ? { ...node, data: { ...node.data, hiddenInputs: visible.hiddenInputs.get(node.id) } } : node),
+      edges: visible.edges,
+    };
     // Lay out only this dependency tree, without gaps left by other outputs.
     layout(scoped.nodes, scoped.edges, stageAspectOf(wrapRef.current), sizeHints);
     return scoped;
-  }, [baseGraph, nodeScoped, scopeId, sizeHints]);
+  }, [baseGraph, nodeScoped, scopeId, sizeHints, pinnedLegalId, upstreamDepth]);
 
   const lastCameraSelection = useRef<string | null>(null);
   const focusSelection = (id: string, duration = 950) => {
     const ids = nodes.some(node => node.data.legalId === id && node.data.kind === "input")
       ? new Set(inputContextSubgraph(nodes, edges, id).nodes.map(node => node.id))
       : upstreamIds(nodes, edges, id, upstreamDepth);
-    const viewport = graphFitViewport(nodes.filter(node => ids.has(node.id)), canvasSize.width, canvasSize.height);
+    const anchor = nodes.find(node => node.data.legalId === id);
+    // Frame what uses the card too: one step downstream keeps the
+    // card's place in the tree on screen.
+    if (anchor) for (const edge of edges) if (edge.source === anchor.id) ids.add(edge.target);
+    const viewport = readableFocusViewport(nodes.filter(node => ids.has(node.id)), anchor, canvasSize.width, canvasSize.height);
     if (!viewport || !flowRef.current) return;
     lastCameraSelection.current = id;
     void flowRef.current.setViewport(viewport, {
@@ -408,8 +423,10 @@ export function InteractiveRuleGraph({
 
   useEffect(() => {
     if (openingOverview || !frameRequest || (frameRequest.mode === "upstream" && !focusedIds.size)) return;
-    const visible = frameRequest.mode === "upstream" && focusedIds.size ? nodes.filter((node) => focusedIds.has(node.id)) : nodes;
-    const viewport = graphFitViewport(visible, canvasSize.width, canvasSize.height);
+    const upstream = frameRequest.mode === "upstream" && focusedIds.size > 0;
+    const visible = upstream ? nodes.filter((node) => focusedIds.has(node.id)) : nodes;
+    const anchor = upstream ? nodes.find((node) => node.data.legalId === layoutFocusId) : undefined;
+    const viewport = upstream ? readableFocusViewport(visible, anchor, canvasSize.width, canvasSize.height) : graphFitViewport(visible, canvasSize.width, canvasSize.height);
     if (viewport) void flowRef.current?.setViewport(viewport, { duration: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 950, interpolate: "linear", ease: (t: number) => t * t * (3 - 2 * t) });
   }, [frameRequest, nodes, focusedIds, canvasSize]);
   useEffect(() => {
@@ -682,24 +699,26 @@ export function InteractiveRuleGraph({
           const controlsBar = (
         <div className={`irg-controls-bar ${slot ? "irg-controls-inline" : ""}`}>
           <div className="irg-toolbar">
+              <div className="irg-depth-control" role="group" aria-label="Dependency depth">
+                <span>Inputs shown</span>
+                <button type="button" className="irg-toolbar-btn" aria-label="Decrease dependency depth" disabled={upstreamDepth === 1} onClick={() => changeDepth(Number.isFinite(upstreamDepth) ? upstreamDepth - 1 : 5)}>−</button>
+                <select aria-label="Dependency depth" value={String(upstreamDepth)} onChange={(event) => changeDepth(Number(event.target.value))}>
+                  <option value="1">Direct</option>
+                  <option value="2">2 levels</option>
+                  <option value="3">3 levels</option>
+                  <option value="4">4 levels</option>
+                  <option value="5">5 levels</option>
+                  <option value="Infinity">All</option>
+                </select>
+                <button type="button" className="irg-toolbar-btn" aria-label="Increase dependency depth" disabled={!Number.isFinite(upstreamDepth)} onClick={() => changeDepth(upstreamDepth >= 5 ? Infinity : upstreamDepth + 1)}>+</button>
+              </div>
             <div className="irg-zoom-controls" aria-label="Graph zoom">
               <button type="button" className="irg-toolbar-btn" onClick={() => stepZoom(1 / 1.25)} disabled={zoomPercent <= Math.round(minGraphZoom * 100)} aria-label="Zoom out">−</button>
               <span aria-label="Zoom level">{zoomPercent}%</span>
               <button type="button" className="irg-toolbar-btn" onClick={() => stepZoom(1.25)} disabled={zoomPercent >= MAX_GRAPH_ZOOM * 100} aria-label="Zoom in">+</button>
             </div>
-              <div className="irg-depth-control" role="group" aria-label="Dependency depth">
-                <span>Depth</span>
-                <button type="button" className="irg-toolbar-btn" aria-label="Decrease dependency depth" disabled={upstreamDepth === 1} onClick={() => changeDepth(Number.isFinite(upstreamDepth) ? upstreamDepth - 1 : 5)}>−</button>
-                <select aria-label="Dependency depth" value={String(upstreamDepth)} onChange={(event) => changeDepth(Number(event.target.value))}>
-                  <option value="1">1 level</option>
-                  <option value="2">2 levels</option>
-                  <option value="3">3 levels</option>
-                  <option value="4">4 levels</option>
-                  <option value="5">5 levels</option>
-                  <option value="Infinity">Full depth</option>
-                </select>
-                <button type="button" className="irg-toolbar-btn" aria-label="Increase dependency depth" disabled={!Number.isFinite(upstreamDepth)} onClick={() => changeDepth(upstreamDepth >= 5 ? Infinity : upstreamDepth + 1)}>+</button>
-              </div>
+            <button type="button" className="irg-toolbar-btn" onClick={() => requestFrame("all")} title="Fit the whole graph on screen">Fit all</button>
+            <button type="button" className="irg-toolbar-btn" aria-pressed={showMiniMap} onClick={() => setShowMiniMap((open) => !open)} title="Show or hide the overview map">Overview map</button>
           </div>
         </div>
           );
@@ -813,7 +832,7 @@ export function InteractiveRuleGraph({
             frame={pinnedFrame}
           />}
 
-          <GraphMiniMap />
+          {showMiniMap && <GraphMiniMap />}
         </ReactFlow>
         </div>
       </ReactFlowProvider>
@@ -1545,6 +1564,21 @@ function softBreak(s: string): string {
  * can drag/click without accidental popovers cluttering every motion.
  */
 
+/** Inputs this card has that the depth setting leaves undrawn. A chip on
+ *  the card's input side (left), outside the measured card box so the
+ *  layout never shifts; selecting the card draws them. */
+function ConflictMark({ legalId }: { legalId?: string }) {
+  const conflicts = useConflictsFor(legalId);
+  if (!conflicts.length) return null;
+  const label = `${conflicts.length} known source ${conflicts.length === 1 ? "conflict" : "conflicts"}`;
+  return <span className="irg-conflict-mark" title={label} aria-label={label}><Scale size={11} aria-hidden="true" /></span>;
+}
+
+function HiddenInputs({ count }: { count?: number }) {
+  if (!count) return null;
+  return <div className="irg-hidden-inputs" title="Select this card to show its inputs">+{count} {count === 1 ? "input" : "inputs"}</div>;
+}
+
 const OutputNode = ({ data }: NodeProps) => {
   const d = data as Extract<IrgNodeData, { kind: "output" }>;
   const pop = useHoverPopover();
@@ -1556,7 +1590,8 @@ const OutputNode = ({ data }: NodeProps) => {
       className={`irg-node irg-output ${d.showValues ? d.verdictCls : "irg-neutral"}`}
     >
       <HandleBoth />
-      <div className="irg-eyebrow">Result</div>
+      <div className="irg-eyebrow">Result<ConflictMark legalId={d.legalId} /></div>
+      <HiddenInputs count={(data as { hiddenInputs?: number }).hiddenInputs} />
       <div className="irg-label">{softBreak(humanizeLabel(d.label))}</div>
       <InlineAnswer legalId={d.legalId} />
       {!answerPopulated && d.showValues && d.value && (
@@ -1776,7 +1811,9 @@ const RuleRefNode = ({ data }: NodeProps) => {
       <HandleBoth />
       <div className="irg-eyebrow">
         {d.isParameter ? "Parameter" : d.isOutput ? "Step · result" : "Step"}
+        <ConflictMark legalId={d.legalId} />
       </div>
+      <HiddenInputs count={(data as { hiddenInputs?: number }).hiddenInputs} />
       <div className="irg-label">{softBreak(humanizeLabel(d.label))}</div>
       <InlineAnswer legalId={d.legalId} />
       {d.showValues && d.value && <div className="irg-value">{d.value}</div>}
