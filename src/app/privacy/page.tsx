@@ -7,7 +7,7 @@ export default function PrivacyPage() {
             Privacy policy
           </h1>
           <p className="font-mono text-sm text-[var(--color-ink-muted)]">
-            Last updated: July 2026
+            Last updated: November 2026
           </p>
         </header>
 
@@ -61,7 +61,7 @@ export default function PrivacyPage() {
               Open source
             </h2>
             <p className="font-body text-[1rem] text-[var(--color-ink-secondary)] leading-relaxed">
-              All our code is open source at{" "}
+              Our open-source code is at{" "}
               <a
                 href="https://github.com/TheAxiomFoundation"
                 target="_blank"
@@ -69,12 +69,18 @@ export default function PrivacyPage() {
               >
                 github.com/TheAxiomFoundation
               </a>
-              . Our code &mdash; the engines,
-              tooling, and this site &mdash; is released under the MIT
-              License, and the published RuleSpec encodings are licensed
-              under Creative Commons Attribution 4.0 (CC BY 4.0). Both permit
-              commercial use, modification, and redistribution with
-              attribution.
+              . We release the rules engine, the encoder, the oracle harness,
+              and this site under the MIT License, which permits commercial
+              use, modification, and redistribution as long as copies and
+              substantial portions keep its copyright and permission notices.
+              We dedicate the published RuleSpec encodings, with their tests,
+              parameter values, and provenance metadata, to the public domain
+              under CC0 1.0, so anyone may use them for any purpose; where that
+              dedication can&rsquo;t take effect, CC0 grants an unconditional
+              licence instead. We ask for a citation but don&rsquo;t require
+              one. The incidental tooling inside each RuleSpec repository (CI
+              harnesses, runners, and conversion utilities) stays under the
+              Apache License 2.0.
             </p>
           </section>
 

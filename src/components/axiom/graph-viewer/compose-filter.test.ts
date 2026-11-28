@@ -115,6 +115,34 @@ describe("filterStandaloneRules", () => {
     expect(filtered).toBe(glossary);
   });
 
+  it("keeps the rule a #rule focus names, however standalone", () => {
+    // A literal credit nothing feeds or consumes, beside a helper that
+    // reads an input: the focus is the view's subject, not wallpaper.
+    const credit = rule({ legalId: "f#credit", name: "credit", formula: "4321" });
+    const { graph: filtered, hiddenCount } = filterStandaloneRules(
+      graph([credit, grossIncome], ["f#credit"]),
+      "f#credit",
+    );
+    expect(hiddenCount).toBe(0);
+    expect(filtered.rules.map((r) => r.legalId)).toEqual(["f#credit", "f#gross_income"]);
+    expect(filtered.ownOutputs).toEqual(["f#credit"]);
+    // Without the focus, the same rule is hidden with its outputs entry.
+    const unfocused = filterStandaloneRules(graph([credit, grossIncome], ["f#credit"]));
+    expect(unfocused.hiddenCount).toBe(1);
+    expect(unfocused.graph.ownOutputs).toEqual([]);
+  });
+
+  it("filters nothing in a glossary whose focus is one of its definitions", () => {
+    const glossary = graph([
+      fosterCare,
+      rule({ legalId: "f#household", name: "household" }),
+      rule({ legalId: "f#dependent", name: "dependent" }),
+    ]);
+    const { graph: filtered, hiddenCount } = filterStandaloneRules(glossary, "f#household");
+    expect(hiddenCount).toBe(0);
+    expect(filtered).toBe(glossary);
+  });
+
   it("is a no-op on graphs with no standalone rules", () => {
     const clean = graph([netIncome, grossIncome]);
     const { graph: filtered, hiddenCount } = filterStandaloneRules(clean);

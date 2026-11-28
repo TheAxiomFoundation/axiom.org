@@ -18,6 +18,7 @@ import {
   runtimeProxyGet,
   isRuntimeApiConfigured,
 } from "@/lib/axiom/runtime/api";
+import { parseRunPeriod } from "@/lib/axiom/runtime/run-period";
 import { clientKey, isRateLimited } from "../run/limiter";
 
 export const dynamic = "force-dynamic";
@@ -92,6 +93,7 @@ export async function POST(request: Request) {
     relations?: unknown;
     instances?: unknown;
     variables?: unknown;
+    period?: unknown;
   };
   try {
     body = await request.json();
@@ -117,6 +119,20 @@ export async function POST(request: Request) {
     const root = body.root;
     if (typeof root !== "string" || !ROOT_RE.test(root)) {
       return NextResponse.json({ error: "invalid_root" }, { status: 400 });
+    }
+    // The month to compute. A malformed one is refused, never dropped:
+    // a run at the runtime's default month would answer a different
+    // question than the one asked.
+    let period: string | undefined;
+    if (body.period !== undefined && body.period !== null) {
+      const parsed = typeof body.period === "string" ? parseRunPeriod(body.period) : null;
+      if (!parsed) {
+        return NextResponse.json(
+          { error: "invalid_period", message: "period must be a month, YYYY-MM." },
+          { status: 400 }
+        );
+      }
+      period = parsed;
     }
     const scope = await compositionScope(root);
     const readiness = scope.readiness;
@@ -233,6 +249,7 @@ export async function POST(request: Request) {
       variables,
       ...(relations ? { relations } : {}),
       ...(instances ? { instances } : {}),
+      ...(period ? { period } : {}),
     });
     if (outcome.kind === "unsupported") {
       return NextResponse.json(
@@ -278,7 +295,9 @@ export async function POST(request: Request) {
       {
         outputs: outcome.result.outputs,
         trace: outcome.result.trace ?? [],
-        period: null,
+        // The month this run computed, when the request named one; null
+        // means the runtime's own default month.
+        period: period ?? null,
         provenance: outcome.result.provenance ?? null,
         applied: Object.keys(facts),
         dropped: droppedFacts,

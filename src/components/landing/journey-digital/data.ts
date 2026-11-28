@@ -192,12 +192,12 @@ export const GRAPH_EDGES: Array<[GraphNodeId, GraphNodeId]> = [
 // Where each piece of the story leads once the scroll is done: the real
 // page behind each step. Shown as clickable cards in the end state.
 export const EXPLORE: Array<{ n: number; name: string; go: string; href: string; about: string }> = [
-  { n: 1, name: "Off the shelf", go: "See what is covered", href: "/coverage", about: "The official sources in the corpus, by jurisdiction and kind." },
-  { n: 2, name: "The law, as published", go: "Explore § 2017(a)", href: "/app?compose=us:statutes/7/2017/a", about: "Section 2017(a)'s rules in the app, from the statute to the allotment." },
-  { n: 3, name: "The corpus", go: "Browse Title 7", href: "/app?q=us:statutes/7/", about: "Title 7's encoded sections in the app: pick one and follow its rules." },
-  { n: 4, name: "Encode", go: "How the encoder works", href: "/encoder", about: "How a draft is written, and the checks it must pass." },
-  { n: 5, name: "Cited code", go: "Open a.yaml", href: "https://github.com/TheAxiomFoundation/rulespec-us/blob/main/us/statutes/7/2017/a.yaml", about: "Every value in the encoding cites the words it came from. Read the file, line by line." },
-  { n: 6, name: "The graph", go: "Run the rules", href: "/demos", about: "Put a household through the rules and get a cited answer." },
-  { n: 7, name: "All the law", go: "Watch the pipeline", href: "/ops", about: "Encoding runs, their checks and their status, as they happen." },
-  { n: 8, name: "Every system", go: "Build on it", href: "/docs", about: "The app, the API and MCP, and the libraries." },
+  { n: 1, name: "Off the shelf", go: "See what is covered", href: "/coverage", about: "Primary sources: the statutes, regulations and agency manuals that legislatures and agencies publish." },
+  { n: 2, name: "The law, as published", go: "Read § 2017(a)", href: "/us/statute/7/2017/a", about: "The official text is captured word for word and stored in the corpus: a database of the law, exactly as published." },
+  { n: 3, name: "The corpus", go: "Browse Title 7", href: "/us/statute/7", about: "The corpus splits each document into its provisions. Each one has its own address, which follows its legal citation." },
+  { n: 4, name: "Encode", go: "How the encoder works", href: "/encoder", about: "The encoder writes a draft of a rule. The draft then goes through a series of checks, from deterministic tests to reviews by AI judges." },
+  { n: 5, name: "Cited code", go: "Explore this encoding", href: "https://github.com/TheAxiomFoundation/rulespec-us/blob/main/us/statutes/7/2017/a.yaml#L105-L128", about: "The formula and the metadata of a rule are both derived from the text of the provision." },
+  { n: 6, name: "The graph", go: "Explore the rule graph", href: "/app?compose=us:statutes/7/2017/a", about: "The rules of a program form a single executable graph. It represents each provision and each dependency between provisions." },
+  { n: 7, name: "All the law", go: "Watch the pipeline", href: "/ops", about: "The process that encoded one provision applies to each program and each state. The record of each run is public." },
+  { n: 8, name: "Every system", go: "Build on it", href: "/docs", about: "The rules are open and versioned. Every system that uses them works from the same set." },
 ];
