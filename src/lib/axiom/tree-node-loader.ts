@@ -18,6 +18,7 @@ import {
   getProvisionCoveredDocTypes,
   getProvisionForNavigationNode,
   getResolvableNavigationNodeIds,
+  lastNavigationPage,
   navigationDocTypeToTreeNode,
   navigationRowToTreeNode,
   NavigationIndexMissingError,
@@ -39,6 +40,9 @@ export interface TreeNodeLoadResult {
   currentRule?: Rule | null;
   leafRule?: Rule | null;
   encodedPaths?: Set<string>;
+  /** Only when the requested page starts past the level's last child:
+   *  that level's last page (0 when it has no children). */
+  lastPage?: number;
 }
 
 /**
@@ -106,6 +110,19 @@ export async function loadTreeNodes({
     encodedOnly,
     page,
   });
+  // A stale or hand-typed page past the last child lists nothing; it names
+  // the level's last page instead and reads nothing more.
+  if (page > 0 && childResult.rows.length === 0) {
+    const lastPage = lastNavigationPage(childResult.total);
+    if (lastPage < page) {
+      return {
+        nodes: [],
+        hasMore: false,
+        lastPage,
+        encodedPaths: existingEncodedPaths,
+      };
+    }
+  }
   let encodedFilesPromise: Promise<EncodedFile[]> | null =
     childResult.rows.length > 0 ? listEncodedFiles(dbJurisdictionId) : null;
   const getEncodedFiles = async () => {

@@ -25,11 +25,13 @@ import {
   NavigationIndexUnavailableError,
 } from "./read";
 import type { NavigationNodeRow } from "./types";
+import { PAST_THE_END, STATEMENT_TIMEOUT } from "@/test/navigation-index-fake";
 
 type QueryResult = {
   data?: unknown;
   count?: number | null;
   error?: unknown;
+  status?: number;
 };
 
 class QueryBuilder implements PromiseLike<QueryResult> {
@@ -516,6 +518,95 @@ describe("navigation index read helpers", () => {
     });
 
     expect(calls(builder, "is")).toContainEqual(["parent_path", null]);
+  });
+
+  it.each([["us/statute/26"], [null]])(
+    "answers a page past the last child of %s with no rows and the count",
+    async (parentPath) => {
+      const page = enqueue(PAST_THE_END);
+      const count = enqueue({ data: null, count: 15, status: 200, error: null });
+
+      await expect(
+        getNavigationIndexChildren({
+          jurisdiction: "us",
+          docType: "statute",
+          parentPath,
+          encodedOnly: true,
+          page: 1,
+        })
+      ).resolves.toEqual({ rows: [], total: 15, hasMore: false });
+
+      expect(calls(page, "range")).toEqual([[100, 199]]);
+      // The count asks about the same children, with no range.
+      expect(mockFrom).toHaveBeenNthCalledWith(2, "current_navigation_nodes");
+      expect(calls(count, "select")).toEqual([
+        ["*", { count: "exact", head: true }],
+      ]);
+      for (const method of ["eq", "is", "or"]) {
+        expect(calls(count, method)).toEqual(calls(page, method));
+      }
+      expect(calls(count, "range")).toEqual([]);
+    }
+  );
+
+  it.each([
+    ["a statement timeout", STATEMENT_TIMEOUT],
+    // The past-end case is the status, never the message.
+    ["a 500 that quotes the range message", { ...PAST_THE_END, status: 500 }],
+  ])("still reports %s on a child page as unavailable", async (_, answer) => {
+    enqueue(answer);
+
+    await expect(
+      getNavigationIndexChildren({
+        jurisdiction: "us",
+        docType: "statute",
+        parentPath: "us/statute/26",
+        encodedOnly: false,
+        page: 1,
+      })
+    ).rejects.toThrow(NavigationIndexUnavailableError);
+    expect(mockFrom).toHaveBeenCalledTimes(1);
+  });
+
+  it("still reports a child page that never answers as unavailable", async () => {
+    vi.useFakeTimers();
+    enqueue(
+      new Promise<QueryResult>(() => {
+        /* never resolves */
+      })
+    );
+
+    const settled = expect(
+      getNavigationIndexChildren({
+        jurisdiction: "us",
+        docType: "statute",
+        parentPath: "us/statute/26",
+        encodedOnly: false,
+        page: 1,
+      })
+    ).rejects.toThrow(NavigationIndexUnavailableError);
+    await vi.advanceTimersByTimeAsync(5000);
+    await settled;
+  });
+
+  it("reports unavailable when the count after a 416 fails", async () => {
+    enqueue(PAST_THE_END);
+    enqueue({
+      data: null,
+      count: null,
+      status: 500,
+      error: { message: "statement timeout" },
+    });
+
+    await expect(
+      getNavigationIndexChildren({
+        jurisdiction: "us",
+        docType: "statute",
+        parentPath: "us/statute/26",
+        encodedOnly: false,
+        page: 1,
+      })
+    ).rejects.toThrow(NavigationIndexUnavailableError);
   });
 
   it("loads a single navigation node by path", async () => {

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { cache, Suspense } from "react";
 import {
   buildLegislationJsonLd,
@@ -17,6 +17,7 @@ import {
 import { SectionReader } from "@/components/axiom/section/section-reader";
 import { SectionSkeleton } from "@/components/axiom/section/section-skeleton";
 import {
+  browsePageHref,
   browseTitle,
   getBrowsePageData,
   MAX_BROWSE_SEGMENTS,
@@ -161,6 +162,11 @@ export default async function SectionPage({
       return shell(<BrowseUnavailable path={decoded.join("/")} />);
     }
     if (!browse) notFound();
+    // A page past the last child (a stale or hand-typed link) goes to the
+    // level's last page rather than an empty list.
+    if ("lastPage" in browse) {
+      redirect(browsePageHref(decoded, browse.lastPage, query));
+    }
     return shell(<BrowseView data={browse} />);
   }
 
@@ -174,8 +180,11 @@ export default async function SectionPage({
     const browse = await getBrowsePageData(decoded, page, {
       allowDeep: true,
     }).catch(() => null);
-    if (browse && browse !== "unavailable" && browse.nodes.length > 0) {
-      return shell(<BrowseView data={browse} />);
+    if (browse && browse !== "unavailable") {
+      if ("lastPage" in browse) {
+        redirect(browsePageHref(decoded, browse.lastPage, query));
+      }
+      if (browse.nodes.length > 0) return shell(<BrowseView data={browse} />);
     }
   }
   if (!resolution) notFound();

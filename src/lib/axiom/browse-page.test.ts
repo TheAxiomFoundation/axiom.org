@@ -136,6 +136,19 @@ describe("getBrowsePageData", () => {
     expect(await getBrowsePageData(["us"])).toBe("unavailable");
   });
 
+  it("hands a page past the end its last page, not an empty level", async () => {
+    loadTreeNodesMock.mockResolvedValue({
+      nodes: [],
+      hasMore: false,
+      lastPage: 2,
+    });
+    expect(await getBrowsePageData(["us", "statute", "26"], 7)).toEqual({
+      lastPage: 2,
+    });
+    // Nothing else is read for a page the route sends elsewhere.
+    expect(encodingsFromMock).not.toHaveBeenCalled();
+  });
+
   // #132: the served US regulation scopes are targeted slices (7 CFR 273,
   // 42 CFR 435, ...) without Title rows, so the navigation index lists
   // their orphans at the doc-type root.

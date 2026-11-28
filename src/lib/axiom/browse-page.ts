@@ -51,6 +51,12 @@ export interface BrowsePageData {
   page: number;
 }
 
+/** A page that starts past the level's last child: the route sends the
+ *  reader to the level's last page instead of listing nothing. */
+export interface BrowsePastEnd {
+  lastPage: number;
+}
+
 /** One encoded provision on a jurisdiction root's list. */
 export interface EncodedEntry {
   citationPath: string;
@@ -294,7 +300,7 @@ export async function getBrowsePageData(
      *  in the index but no corpus row of their own. */
     allowDeep?: boolean;
   } = {}
-): Promise<BrowsePageData | "unavailable" | null> {
+): Promise<BrowsePageData | BrowsePastEnd | "unavailable" | null> {
   if (
     segments.length === 0 ||
     (!options.allowDeep && segments.length > MAX_BROWSE_SEGMENTS)
@@ -316,6 +322,7 @@ export async function getBrowsePageData(
   }).catch(() => "unavailable" as const);
   if (result === "unavailable") return "unavailable";
   if (!result) return null;
+  if (result.lastPage !== undefined) return { lastPage: result.lastPage };
 
   // Mis-parented index rows (a section row claiming the doc type as
   // its parent — another #400-class duplication artifact) betray
@@ -425,6 +432,26 @@ export async function getBrowsePageData(
     hasMore: result.hasMore,
     page,
   };
+}
+
+/** One page of a browse level at its bare citation path: every query
+ *  parameter but `page` kept as given, and `page` only past the first. */
+export function browsePageHref(
+  segments: string[],
+  page: number,
+  query: Record<string, string | string[] | undefined> = {}
+): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (key === "page" || value === undefined) continue;
+    for (const item of Array.isArray(value) ? value : [value]) {
+      params.append(key, item);
+    }
+  }
+  if (page > 0) params.set("page", String(page));
+  const search = params.toString();
+  const path = segments.map(encodeURIComponent).join("/");
+  return `/${path}${search ? `?${search}` : ""}`;
 }
 
 /** Human title for a browse level: "Title 26 · Statutes · US Federal". */

@@ -224,30 +224,51 @@ export async function getNavigationIndexChildren({
   const from = page * NAVIGATION_PAGE_SIZE;
   const to = from + NAVIGATION_PAGE_SIZE - 1;
 
+  // The page and, past the end, its count read the same children.
+  const children = (head: boolean) => {
+    let query = supabaseCorpus
+      .from(NAVIGATION_NODES_VIEW)
+      .select("*", { count: "exact", head })
+      .eq("jurisdiction", jurisdiction)
+      .eq("doc_type", docType);
+
+    query =
+      parentPath === null
+        ? query.is("parent_path", null)
+        : query.eq("parent_path", parentPath);
+
+    if (encodedOnly) {
+      query = query.or("has_rulespec.eq.true,encoded_descendant_count.gt.0");
+    }
+    return query;
+  };
+
   // Siblings can share a sort_key, so path and then id break ties and give
   // every row one page whatever plan the database picks.
-  let query = supabaseCorpus
-    .from(NAVIGATION_NODES_VIEW)
-    .select("*", { count: "exact" })
-    .eq("jurisdiction", jurisdiction)
-    .eq("doc_type", docType)
-    .order("sort_key")
-    .order("path")
-    .order("id")
-    .range(from, to);
-
-  query =
-    parentPath === null
-      ? query.is("parent_path", null)
-      : query.eq("parent_path", parentPath);
-
-  if (encodedOnly) {
-    query = query.or("has_rulespec.eq.true,encoded_descendant_count.gt.0");
-  }
-
-  const result = await withTimeout(query, NAVIGATION_QUERY_TIMEOUT_MS);
+  const result = await withTimeout(
+    children(false)
+      .order("sort_key")
+      .order("path")
+      .order("id")
+      .range(from, to),
+    NAVIGATION_QUERY_TIMEOUT_MS
+  );
   if (!result) throw new NavigationIndexUnavailableError();
-  if (result.error) throw new NavigationIndexUnavailableError();
+  if (result.error) {
+    // With an exact count, PostgREST answers a range that starts past the
+    // last row with 416 (a stale or hand-typed ?page=). postgrest-js reads
+    // the count only from a successful answer, so ask for it on its own.
+    // Every other error is still the index failing.
+    if (result.status !== 416) throw new NavigationIndexUnavailableError();
+    const counted = await withTimeout(
+      children(true),
+      NAVIGATION_QUERY_TIMEOUT_MS
+    );
+    if (!counted || counted.error || counted.count === null) {
+      throw new NavigationIndexUnavailableError();
+    }
+    return { rows: [], total: counted.count, hasMore: false };
+  }
 
   const rows = (result.data ?? []) as NavigationNodeRow[];
   const total = result.count ?? rows.length;
@@ -257,6 +278,11 @@ export async function getNavigationIndexChildren({
     total,
     hasMore: (page + 1) * NAVIGATION_PAGE_SIZE < total,
   };
+}
+
+/** The last page of a level with `total` children; 0 when it has none. */
+export function lastNavigationPage(total: number): number {
+  return Math.max(0, Math.ceil(total / NAVIGATION_PAGE_SIZE) - 1);
 }
 
 export async function getNavigationIndexNode(

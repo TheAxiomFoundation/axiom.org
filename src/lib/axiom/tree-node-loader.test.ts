@@ -847,6 +847,69 @@ describe("loadTreeNodes", () => {
     expect(mockListEncodedFiles).not.toHaveBeenCalled();
   });
 
+  it.each([
+    // children, requested page, the level's last page
+    [["statute", "26"], 15, 1, 0],
+    [["statute", "26"], 0, 3, 0],
+    [["statute", "26"], 100, 1, 0],
+    [["statute", "26"], 101, 2, 1],
+    [["statute", "26"], 250, 5, 2],
+    [["statute"], 54, 2, 0],
+  ])(
+    "names the last page when %j has %i children and page %i starts past them",
+    async (ruleSegments, total, page, lastPage) => {
+      mockGetNavigationIndexNode.mockResolvedValue(
+        navRow({
+          jurisdiction: "us",
+          doc_type: "statute",
+          path: "us/statute",
+          segment: "statute",
+          has_children: true,
+        })
+      );
+      mockGetNavigationIndexChildren.mockResolvedValue({
+        rows: [],
+        hasMore: false,
+        total,
+      });
+
+      const result = await loadTreeNodes({
+        dbJurisdictionId: "us",
+        ruleSegments,
+        hasCitationPaths: true,
+        encodedOnly: false,
+        page,
+      });
+
+      expect(result).toEqual({ nodes: [], hasMore: false, lastPage });
+      // Only the scope root: a page past the end reads nothing more.
+      expect(mockGetNavigationIndexNode).toHaveBeenCalledTimes(1);
+      expect(mockListEncodedFiles).not.toHaveBeenCalled();
+    }
+  );
+
+  it("keeps an empty page that the count still reaches as an ordinary page", async () => {
+    // Rows can land between the page read and the count; such a page is
+    // not past the end, so it names no last page to send a reader to.
+    mockGetNavigationIndexNode.mockResolvedValue(null);
+    mockGetNavigationIndexChildren.mockResolvedValue({
+      rows: [],
+      hasMore: false,
+      total: 101,
+    });
+
+    const result = await loadTreeNodes({
+      dbJurisdictionId: "us",
+      ruleSegments: ["policy"],
+      hasCitationPaths: true,
+      encodedOnly: false,
+      page: 1,
+    });
+
+    expect(result.nodes).toEqual([]);
+    expect(result).not.toHaveProperty("lastPage");
+  });
+
   it("loads top-level doc_type children from an explicit scope root when present", async () => {
     const scopeRoot = navRow({
       path: "us-co/regulation",
