@@ -153,8 +153,9 @@ export default async function SectionPage({
   const rawPage = Number(query?.page ?? "0");
   const page =
     Number.isInteger(rawPage) && rawPage > 0 ? Math.min(rawPage, 50) : 0;
-  // A page past the last child (a stale or hand-typed link) goes to the
-  // level's last page rather than an empty list. The link names the path
+  // A page past the last child (a stale or hand-typed link) goes to an
+  // earlier page that lists a child, or to page 0 (getBrowsePageData),
+  // rather than an empty list. The link names the path
   // the browser asked for, which the proxy hands over: Next decodes each
   // segment and drops a leading "_NEXTSEP_" from it, so a link rebuilt from
   // segments can name another path. With no usable path the page answers

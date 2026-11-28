@@ -332,10 +332,11 @@ export async function getBrowsePageData(
  * that lists a child. The index's last page can list none here, because
  * the loader drops stale rows and browseLevel drops strays and ingestion
  * plumbing, so this steps back a page at a time, a few pages at most, and
- * then to page 0, never to a page it did not read. At browse depth page 0
- * always renders, so it needs no check. Below title level one more check
- * reads page 0, and a page 0 with nothing to list falls through to the
- * reader, so that page's own answer comes back and nothing redirects.
+ * then turns to page 0. At browse depth page 0 answers for itself, so the
+ * reader goes there unread. Below title level one more check reads page 0,
+ * and a page 0 with nothing to list falls through to the reader, so that
+ * page's own answer comes back and nothing redirects. When a read fails,
+ * the reader goes to that page, which shows its own answer.
  */
 async function pastEndTarget(
   segments: string[],
