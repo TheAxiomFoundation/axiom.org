@@ -359,9 +359,8 @@ async function readCitationMetadata(
     NAVIGATION_NODES_VIEW,
     {
       select: "path,label",
-      // path is the indexed lookup column of the navigation_nodes table
-      // under the view (citation_path is not indexed and times out on
-      // filtered reads).
+      // Filter on path, the indexed lookup key that matches this query as
+      // written: one IN list of paths that can span jurisdictions.
       path: `in.(${list.map((p) => `"${p}"`).join(",")})`,
       limit: String(CITATION_LABEL_LOOKUP_LIMIT),
     },
