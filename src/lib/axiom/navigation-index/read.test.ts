@@ -609,6 +609,43 @@ describe("navigation index read helpers", () => {
     ).rejects.toThrow(NavigationIndexUnavailableError);
   });
 
+  it("reports unavailable when the count after a 416 never answers", async () => {
+    vi.useFakeTimers();
+    enqueue(PAST_THE_END);
+    enqueue(
+      new Promise<QueryResult>(() => {
+        /* never resolves */
+      })
+    );
+
+    const settled = expect(
+      getNavigationIndexChildren({
+        jurisdiction: "us",
+        docType: "statute",
+        parentPath: "us/statute/26",
+        encodedOnly: false,
+        page: 1,
+      })
+    ).rejects.toThrow(NavigationIndexUnavailableError);
+    await vi.advanceTimersByTimeAsync(5000);
+    await settled;
+  });
+
+  it("reports unavailable when the count after a 416 answers without a count", async () => {
+    enqueue(PAST_THE_END);
+    enqueue({ data: null, count: null, status: 200, error: null });
+
+    await expect(
+      getNavigationIndexChildren({
+        jurisdiction: "us",
+        docType: "statute",
+        parentPath: "us/statute/26",
+        encodedOnly: false,
+        page: 1,
+      })
+    ).rejects.toThrow(NavigationIndexUnavailableError);
+  });
+
   it("loads a single navigation node by path", async () => {
     const row = navRow();
     const builder = enqueue({ data: [row] });
