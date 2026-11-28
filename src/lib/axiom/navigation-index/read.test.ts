@@ -1240,12 +1240,17 @@ describe("child pages at the HTTP boundary", () => {
     expect(methods()).toEqual(["GET", "HEAD"]);
   });
 
-  it("reports unavailable when a later page is an empty 404", async () => {
-    replies.push(emptyNotFound());
+  it.each([[1], [2]])(
+    "reports unavailable when page %i is an empty 404",
+    async (page) => {
+      replies.push(emptyNotFound());
 
-    await expect(childPage(1)).rejects.toThrow(NavigationIndexUnavailableError);
-    expect(methods()).toEqual(["GET"]);
-  });
+      await expect(childPage(page)).rejects.toThrow(
+        NavigationIndexUnavailableError
+      );
+      expect(methods()).toEqual(["GET"]);
+    }
+  );
 
   it("still answers page 0 from an empty 404 as an empty level", async () => {
     replies.push(emptyNotFound());
