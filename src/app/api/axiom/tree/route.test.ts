@@ -3,9 +3,7 @@ import { NextRequest } from "next/server";
 import type { FakeNavigationIndex } from "@/test/navigation-index-fake";
 
 // The loader and the index read run for real against a stand-in corpus.
-const navigation = vi.hoisted(
-  () => ({ childPage: null, total: 0 }) as unknown as FakeNavigationIndex
-);
+const navigation = vi.hoisted(() => ({ total: 0 }) as FakeNavigationIndex);
 
 vi.mock("@/lib/supabase", async (importOriginal) => {
   const { fakeNavigationCorpus } = await import("@/test/navigation-index-fake");
@@ -15,21 +13,36 @@ vi.mock("@/lib/supabase", async (importOriginal) => {
   };
 });
 
-import { PAST_THE_END, STATEMENT_TIMEOUT } from "@/test/navigation-index-fake";
+// No encodings anywhere, so the loader's encoding paths find nothing.
+vi.mock("@/lib/axiom/rulespec/repo-listing", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/lib/axiom/rulespec/repo-listing")
+  >()),
+  listEncodedFiles: vi.fn(async () => []),
+}));
+
+import { STATEMENT_TIMEOUT } from "@/test/navigation-index-fake";
 import { GET } from "./route";
 
-const titlePage = (page: number) =>
+const levelPage = (segments: string, page: number) =>
   GET(
     new NextRequest(
-      `http://localhost/api/axiom/tree?jurisdiction=us&segments=statute%2F26&hasCitationPaths=1&encodedOnly=0&page=${page}`
+      `http://localhost/api/axiom/tree?jurisdiction=us&segments=${encodeURIComponent(segments)}&hasCitationPaths=1&encodedOnly=0&page=${page}`
     )
   );
+
+const answer = async (response: Response) => ({
+  status: response.status,
+  body: await response.json(),
+});
 
 describe("GET /api/axiom/tree", () => {
   beforeEach(() => {
     vi.spyOn(console, "error").mockImplementation(() => {});
-    navigation.childPage = PAST_THE_END;
+    navigation.childPage = null;
     navigation.total = 15;
+    navigation.missing = [];
+    navigation.stale = [];
   });
 
   afterEach(() => {
@@ -37,7 +50,7 @@ describe("GET /api/axiom/tree", () => {
   });
 
   it("answers a page past the last child with no nodes and no more", async () => {
-    const response = await titlePage(1);
+    const response = await levelPage("statute/26", 1);
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
@@ -48,10 +61,32 @@ describe("GET /api/axiom/tree", () => {
     });
   });
 
+  it("answers a missing level past page 0 as it answers page 0", async () => {
+    navigation.total = 0;
+    navigation.missing = ["us/statute/nonexistent"];
+
+    const first = await answer(await levelPage("statute/nonexistent", 0));
+    expect(first.status).toBe(404);
+    expect(await answer(await levelPage("statute/nonexistent", 1))).toEqual(
+      first
+    );
+  });
+
+  it("answers an existing level with no children past page 0 as it answers page 0", async () => {
+    navigation.total = 0;
+
+    const first = await answer(await levelPage("statute/27", 0));
+    expect(first).toEqual({
+      status: 200,
+      body: { nodes: [], hasMore: false, currentRule: null, leafRule: null },
+    });
+    expect(await answer(await levelPage("statute/27", 1))).toEqual(first);
+  });
+
   it("still answers 503 when the index fails", async () => {
     navigation.childPage = STATEMENT_TIMEOUT;
 
-    const response = await titlePage(1);
+    const response = await levelPage("statute/26", 1);
 
     expect(response.status).toBe(503);
     expect(await response.json()).toEqual({

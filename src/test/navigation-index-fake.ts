@@ -9,10 +9,18 @@ export interface FakeAnswer {
 }
 
 export interface FakeNavigationIndex {
-  /** The answer to the child-page read (the one query with a range). */
-  childPage: FakeAnswer;
-  /** What a count-only (HEAD) read of the children finds. */
+  /** How many children a level has (a missing level has none). */
   total: number;
+  /** When set, the answer to every child-page read (the one query with a
+   *  range). Without it a page read answers with the children in range,
+   *  and with PAST_THE_END when the range starts past the last child. */
+  childPage?: FakeAnswer | null;
+  /** Paths with no node of their own; every other path has a node with
+   *  children. */
+  missing?: string[];
+  /** Children, numbered from 1, whose provision is gone, so the loader
+   *  drops them as stale. */
+  stale?: number[];
 }
 
 /** PostgREST's answer, under an exact count, to a range that starts past
@@ -45,7 +53,10 @@ export const STATEMENT_TIMEOUT: FakeAnswer = {
   },
 };
 
-function navigationNode(path: string): NavigationNodeRow {
+function navigationNode(
+  path: string,
+  overrides: Partial<NavigationNodeRow> = {}
+): NavigationNodeRow {
   const parts = path.split("/");
   return {
     id: `nav:${path}`,
@@ -64,58 +75,127 @@ function navigationNode(path: string): NavigationNodeRow {
     has_rulespec: false,
     encoded_descendant_count: 0,
     status: null,
+    ...overrides,
   };
 }
 
-/**
- * A stand-in for supabaseCorpus covering the navigation reads a browse
- * level makes: any node looked up by path exists and has children, the
- * child page answers `childPage`, a count-only read finds `total`, and
- * everything else finds nothing.
- */
-export function fakeNavigationCorpus(index: FakeNavigationIndex) {
+type Call = [method: string, args: unknown[]];
+
+const ok = (data: unknown, count: number | null = null): FakeAnswer => ({
+  data,
+  count,
+  error: null,
+  status: 200,
+});
+
+/** A query builder that takes any chain of methods and answers, when
+ *  awaited, with `answer(table, calls)`. */
+function fakeClient(answer: (table: string, calls: Call[]) => FakeAnswer) {
   return {
     from(table: string) {
-      const calls: Array<[string, unknown[]]> = [];
-      const answer = (): FakeAnswer => {
-        const select = calls.find(([method]) => method === "select")?.[1];
-        if ((select?.[1] as { head?: boolean } | undefined)?.head) {
-          return { data: null, count: index.total, error: null, status: 200 };
+      const calls: Call[] = [];
+      const query: object = new Proxy(
+        {},
+        {
+          get(_, method) {
+            if (method === "then") {
+              return (
+                resolve: (value: FakeAnswer) => unknown,
+                reject?: (reason: unknown) => unknown
+              ) =>
+                Promise.resolve()
+                  .then(() => answer(table, calls))
+                  .then(resolve, reject);
+            }
+            return (...args: unknown[]) => {
+              calls.push([String(method), args]);
+              return query;
+            };
+          },
         }
-        if (calls.some(([method]) => method === "range")) return index.childPage;
-        const path = calls.find(
-          ([method, args]) => method === "eq" && args[0] === "path"
-        )?.[1][1];
-        if (table === "current_navigation_nodes" && typeof path === "string") {
-          return { data: [navigationNode(path)], count: null, error: null, status: 200 };
-        }
-        return { data: [], count: null, error: null, status: 200 };
-      };
-      const query: Record<string, unknown> = {
-        then: (
-          resolve: (value: FakeAnswer) => unknown,
-          reject?: (reason: unknown) => unknown
-        ) => Promise.resolve().then(answer).then(resolve, reject),
-      };
-      for (const method of [
-        "select",
-        "eq",
-        "is",
-        "or",
-        "in",
-        "gte",
-        "lt",
-        "order",
-        "range",
-        "limit",
-        "maybeSingle",
-      ]) {
-        query[method] = (...args: unknown[]) => {
-          calls.push([method, args]);
-          return query;
-        };
-      }
+      );
       return query;
     },
   };
+}
+
+const argsOf = (calls: Call[], method: string) =>
+  calls.find(([name]) => name === method)?.[1];
+
+const eqValue = (calls: Call[], column: string) =>
+  calls.find(([name, args]) => name === "eq" && args[0] === column)?.[1][1];
+
+/**
+ * A stand-in for supabaseCorpus covering the reads a browse level makes.
+ * A node looked up by path exists, with children, unless `missing` names
+ * it. A level has `total` children, numbered from 1, each a leaf whose
+ * provision resolves unless `stale` names it. A count-only (HEAD) read
+ * finds the total, a page read answers as PostgREST does, a provision read
+ * finds no provision, and everything else finds nothing.
+ */
+export function fakeNavigationCorpus(index: FakeNavigationIndex) {
+  const isMissing = (path: unknown) =>
+    typeof path === "string" && (index.missing ?? []).includes(path);
+  return fakeClient((table, calls) => {
+    if (table === "current_provisions") {
+      if (calls.some(([method]) => method === "maybeSingle")) return ok(null);
+      // The loader's resolvability check: one citation_path.eq.<path> per
+      // child it asks about.
+      const filters = String(argsOf(calls, "or")?.[0] ?? "");
+      const paths = Array.from(
+        filters.matchAll(/citation_path\.eq\.([^,()]+)/g),
+        (match) => match[1]
+      ).filter((path) => {
+        const child = Number(path.split("/").pop());
+        return !isMissing(path) && !(index.stale ?? []).includes(child);
+      });
+      return ok(paths.map((path) => ({ citation_path: path })));
+    }
+    if (table !== "current_navigation_nodes") return ok([]);
+
+    const path = eqValue(calls, "path");
+    if (typeof path === "string") {
+      return ok(isMissing(path) ? [] : [navigationNode(path)]);
+    }
+    // A children read names its parent, or asks for the roots.
+    const parent = calls.some(
+      ([name, args]) => name === "eq" && args[0] === "parent_path"
+    )
+      ? eqValue(calls, "parent_path")
+      : calls.some(([name, args]) => name === "is" && args[0] === "parent_path")
+        ? null
+        : undefined;
+    if (parent === undefined) return ok([]);
+    const total = isMissing(parent) ? 0 : index.total;
+
+    const head = (argsOf(calls, "select")?.[1] as { head?: boolean } | undefined)
+      ?.head;
+    if (head) return { data: null, count: total, error: null, status: 200 };
+
+    const range = argsOf(calls, "range") as [number, number] | undefined;
+    if (!range) return ok([]);
+    if (index.childPage) return index.childPage;
+    const [from, to] = range;
+    if (from > 0 && from >= total) return PAST_THE_END;
+    const base =
+      typeof parent === "string"
+        ? parent
+        : `${eqValue(calls, "jurisdiction")}/${eqValue(calls, "doc_type")}`;
+    const rows: NavigationNodeRow[] = [];
+    for (let child = from + 1; child <= Math.min(to + 1, total); child++) {
+      rows.push(
+        navigationNode(`${base}/${child}`, {
+          has_children: false,
+          sort_key: String(child).padStart(6, "0"),
+        })
+      );
+    }
+    return { data: rows, count: total, error: null, status: 206 };
+  });
+}
+
+/** A stand-in for a client that finds nothing anywhere (the encodings
+ *  mirror, for a browse page's coverage marks). */
+export function fakeEmptyClient() {
+  return fakeClient(() => ok([]));
 }
