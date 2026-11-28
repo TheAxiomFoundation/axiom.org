@@ -96,6 +96,19 @@ export function normalizeCitation(citation: string): string {
   return `${scope}/${singular}/${path}`;
 }
 
+/** Document classes the corpus files interchangeably for policy-adjacent
+ *  material. An encoding under policies/ may live in the corpus as
+ *  manual/ or guidance/ — same document, different classification. */
+const DOC_TYPE_SIBLINGS: Record<string, string[]> = {
+  policy: ["manual", "guidance"],
+  manual: ["policy", "guidance"],
+  guidance: ["policy", "manual"],
+};
+
+export function docTypeCrosswalk(docType: string | undefined): string[] {
+  return docType ? (DOC_TYPE_SIBLINGS[docType] ?? []) : [];
+}
+
 export function documentKeyFromCitation(citation: string): string {
   const { scope, segments, documentDepth } = parseCitation(citation);
   if (!scope && segments.length <= 1) return citation;

@@ -1,0 +1,471 @@
+{
+  "_recorded": "GitHub GraphQL, read-only, 2026-11-15. open: OPEN_PRS_QUERY (program-bundles-in-flight.ts) for TheAxiomFoundation/rulespec-us, both pages as returned, except that page 1 is cut to the PRs the tests use and a PR with over 100 changed files keeps 3 of its file nodes (its pageInfo is as returned). historical: the same PR fields, read by number, for the closed and merged PRs of the 2026-11-13 Arizona medical merge train (#2205), two of its signed manifest PRs (#2202, #2204), their candidates (#2046, #2047), and a candidate that carries its own manifest (#2045). GitHub gives no review decision on a closed or merged PR.",
+  "open": [
+    {
+      "data": {
+        "repository": {
+          "defaultBranchRef": {
+            "name": "main"
+          },
+          "pullRequests": {
+            "totalCount": 51,
+            "pageInfo": {
+              "hasNextPage": true,
+              "endCursor": "Y3Vyc29yOnYyOpK0MjAyNi0xMS0xNVQyMTozMjowNFrPAAAAAT2J1nA="
+            },
+            "nodes": [
+              {
+                "number": 911,
+                "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/911",
+                "isDraft": false,
+                "baseRefName": "main",
+                "headRefName": "hard-cut/canonical-layout-us",
+                "reviewDecision": null,
+                "changedFiles": 4702,
+                "files": {
+                  "pageInfo": {
+                    "hasNextPage": true
+                  },
+                  "nodes": [
+                    {
+                      "path": ".axiom/encoding-manifests/policies/irs/rev-proc-2025-25/aca-ptc.json",
+                      "changeType": "DELETED"
+                    },
+                    {
+                      "path": ".axiom/encoding-manifests/policies/ssa/retirement-earnings-test/2026.json",
+                      "changeType": "DELETED"
+                    },
+                    {
+                      "path": ".axiom/encoding-manifests/programs/us-ar/tanf/fy-2026.json",
+                      "changeType": "DELETED"
+                    }
+                  ]
+                }
+              },
+              {
+                "number": 1790,
+                "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/1790",
+                "isDraft": false,
+                "baseRefName": "axiom/signed-backfill-us-38756101655-1",
+                "headRefName": "axiom/signed-backfill-us-38802732779-1",
+                "reviewDecision": null,
+                "changedFiles": 5,
+                "files": {
+                  "pageInfo": {
+                    "hasNextPage": false
+                  },
+                  "nodes": [
+                    {
+                      "path": ".axiom/encoding-manifests/us/policies/usda/snap/fy-2026-cola/income-eligibility-standards.json",
+                      "changeType": "ADDED"
+                    },
+                    {
+                      "path": ".axiom/index/provisions_to_rules.json",
+                      "changeType": "MODIFIED"
+                    },
+                    {
+                      "path": "tools/known-engine-load-failures.txt",
+                      "changeType": "MODIFIED"
+                    },
+                    {
+                      "path": "us/policies/usda/snap/fy-2026-cola/income-eligibility-standards.test.yaml",
+                      "changeType": "MODIFIED"
+                    },
+                    {
+                      "path": "us/policies/usda/snap/fy-2026-cola/income-eligibility-standards.yaml",
+                      "changeType": "MODIFIED"
+                    }
+                  ]
+                }
+              },
+              {
+                "number": 2044,
+                "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2044",
+                "isDraft": true,
+                "baseRefName": "main",
+                "headRefName": "codex/az-child-support-verification-reviewed",
+                "reviewDecision": null,
+                "changedFiles": 3,
+                "files": {
+                  "pageInfo": {
+                    "hasNextPage": false
+                  },
+                  "nodes": [
+                    {
+                      "path": ".axiom/index/provisions_to_rules.json",
+                      "changeType": "MODIFIED"
+                    },
+                    {
+                      "path": "us-az/policies/des/faa5/na-child-support-expense/block-4.test.yaml",
+                      "changeType": "ADDED"
+                    },
+                    {
+                      "path": "us-az/policies/des/faa5/na-child-support-expense/block-4.yaml",
+                      "changeType": "ADDED"
+                    }
+                  ]
+                }
+              },
+              {
+                "number": 2153,
+                "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2153",
+                "isDraft": true,
+                "baseRefName": "main",
+                "headRefName": "codex/utah-military-retirement-credit",
+                "reviewDecision": null,
+                "changedFiles": 2,
+                "files": {
+                  "pageInfo": {
+                    "hasNextPage": false
+                  },
+                  "nodes": [
+                    {
+                      "path": "us-ut/statutes/59-10-1043.test.yaml",
+                      "changeType": "ADDED"
+                    },
+                    {
+                      "path": "us-ut/statutes/59-10-1043.yaml",
+                      "changeType": "ADDED"
+                    }
+                  ]
+                }
+              },
+              {
+                "number": 2161,
+                "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2161",
+                "isDraft": true,
+                "baseRefName": "main",
+                "headRefName": "notice-source-rights",
+                "reviewDecision": null,
+                "changedFiles": 1,
+                "files": {
+                  "pageInfo": {
+                    "hasNextPage": false
+                  },
+                  "nodes": [
+                    {
+                      "path": "NOTICE",
+                      "changeType": "MODIFIED"
+                    }
+                  ]
+                }
+              },
+              {
+                "number": 2197,
+                "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2197",
+                "isDraft": false,
+                "baseRefName": "main",
+                "headRefName": "codex/az-utility-batch-block-10",
+                "reviewDecision": "CHANGES_REQUESTED",
+                "changedFiles": 2,
+                "files": {
+                  "pageInfo": {
+                    "hasNextPage": false
+                  },
+                  "nodes": [
+                    {
+                      "path": "us-az/policies/des/faa5/na-utility-expenses-and-allowances/block-10.test.yaml",
+                      "changeType": "ADDED"
+                    },
+                    {
+                      "path": "us-az/policies/des/faa5/na-utility-expenses-and-allowances/block-10.yaml",
+                      "changeType": "ADDED"
+                    }
+                  ]
+                }
+              },
+              {
+                "number": 2266,
+                "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2266",
+                "isDraft": true,
+                "baseRefName": "main",
+                "headRefName": "codex/az-batch3-medical-4",
+                "reviewDecision": null,
+                "changedFiles": 2,
+                "files": {
+                  "pageInfo": {
+                    "hasNextPage": false
+                  },
+                  "nodes": [
+                    {
+                      "path": "us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-4.test.yaml",
+                      "changeType": "ADDED"
+                    },
+                    {
+                      "path": "us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-4.yaml",
+                      "changeType": "ADDED"
+                    }
+                  ]
+                }
+              },
+              {
+                "number": 2268,
+                "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2268",
+                "isDraft": true,
+                "baseRefName": "main",
+                "headRefName": "codex/az-batch3-medical-13",
+                "reviewDecision": null,
+                "changedFiles": 2,
+                "files": {
+                  "pageInfo": {
+                    "hasNextPage": false
+                  },
+                  "nodes": [
+                    {
+                      "path": "us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-13.test.yaml",
+                      "changeType": "ADDED"
+                    },
+                    {
+                      "path": "us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-13.yaml",
+                      "changeType": "ADDED"
+                    }
+                  ]
+                }
+              },
+              {
+                "number": 2273,
+                "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2273",
+                "isDraft": false,
+                "baseRefName": "main",
+                "headRefName": "codex/az-batch3-utility-6",
+                "reviewDecision": null,
+                "changedFiles": 2,
+                "files": {
+                  "pageInfo": {
+                    "hasNextPage": false
+                  },
+                  "nodes": [
+                    {
+                      "path": "us-az/policies/des/faa5/na-utility-expenses-and-allowances/block-6.test.yaml",
+                      "changeType": "ADDED"
+                    },
+                    {
+                      "path": "us-az/policies/des/faa5/na-utility-expenses-and-allowances/block-6.yaml",
+                      "changeType": "ADDED"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "data": {
+        "repository": {
+          "defaultBranchRef": {
+            "name": "main"
+          },
+          "pullRequests": {
+            "totalCount": 51,
+            "pageInfo": {
+              "hasNextPage": false,
+              "endCursor": "Y3Vyc29yOnYyOpK0MjAyNi0xMS0xNVQyMTozOTo1M1rPAAAAAT2K3hQ="
+            },
+            "nodes": [
+              {
+                "number": 2275,
+                "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2275",
+                "isDraft": true,
+                "baseRefName": "main",
+                "headRefName": "codex/az-batch3-utility-12",
+                "reviewDecision": null,
+                "changedFiles": 2,
+                "files": {
+                  "pageInfo": {
+                    "hasNextPage": false
+                  },
+                  "nodes": [
+                    {
+                      "path": "us-az/policies/des/faa5/na-utility-expenses-and-allowances/block-12.test.yaml",
+                      "changeType": "ADDED"
+                    },
+                    {
+                      "path": "us-az/policies/des/faa5/na-utility-expenses-and-allowances/block-12.yaml",
+                      "changeType": "ADDED"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "historical": {
+    "data": {
+      "repository": {
+        "pr2045": {
+          "number": 2045,
+          "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2045",
+          "isDraft": false,
+          "baseRefName": "main",
+          "headRefName": "codex/az-utility-installation-reviewed",
+          "reviewDecision": null,
+          "changedFiles": 3,
+          "files": {
+            "pageInfo": {
+              "hasNextPage": false
+            },
+            "nodes": [
+              {
+                "path": ".axiom/encoding-manifests/us-az/policies/des/faa5/na-utility-expenses-and-allowances/block-13.json",
+                "changeType": "ADDED"
+              },
+              {
+                "path": "us-az/policies/des/faa5/na-utility-expenses-and-allowances/block-13.test.yaml",
+                "changeType": "ADDED"
+              },
+              {
+                "path": "us-az/policies/des/faa5/na-utility-expenses-and-allowances/block-13.yaml",
+                "changeType": "ADDED"
+              }
+            ]
+          }
+        },
+        "pr2046": {
+          "number": 2046,
+          "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2046",
+          "isDraft": false,
+          "baseRefName": "main",
+          "headRefName": "codex/az-medical-premiums-reviewed",
+          "reviewDecision": null,
+          "changedFiles": 2,
+          "files": {
+            "pageInfo": {
+              "hasNextPage": false
+            },
+            "nodes": [
+              {
+                "path": "us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-7.test.yaml",
+                "changeType": "ADDED"
+              },
+              {
+                "path": "us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-7.yaml",
+                "changeType": "ADDED"
+              }
+            ]
+          }
+        },
+        "pr2047": {
+          "number": 2047,
+          "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2047",
+          "isDraft": false,
+          "baseRefName": "main",
+          "headRefName": "codex/az-medicare-premiums-reviewed",
+          "reviewDecision": null,
+          "changedFiles": 2,
+          "files": {
+            "pageInfo": {
+              "hasNextPage": false
+            },
+            "nodes": [
+              {
+                "path": "us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-11.test.yaml",
+                "changeType": "ADDED"
+              },
+              {
+                "path": "us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-11.yaml",
+                "changeType": "ADDED"
+              }
+            ]
+          }
+        },
+        "pr2202": {
+          "number": 2202,
+          "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2202",
+          "isDraft": true,
+          "baseRefName": "codex/az-medicare-premiums-reviewed",
+          "headRefName": "axiom/signed-backfill-us-43376624427-1",
+          "reviewDecision": null,
+          "changedFiles": 1,
+          "files": {
+            "pageInfo": {
+              "hasNextPage": false
+            },
+            "nodes": [
+              {
+                "path": ".axiom/encoding-manifests/us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-11.json",
+                "changeType": "ADDED"
+              }
+            ]
+          }
+        },
+        "pr2204": {
+          "number": 2204,
+          "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2204",
+          "isDraft": true,
+          "baseRefName": "codex/az-medical-premiums-reviewed",
+          "headRefName": "axiom/signed-backfill-us-43376596010-1",
+          "reviewDecision": null,
+          "changedFiles": 1,
+          "files": {
+            "pageInfo": {
+              "hasNextPage": false
+            },
+            "nodes": [
+              {
+                "path": ".axiom/encoding-manifests/us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-7.json",
+                "changeType": "ADDED"
+              }
+            ]
+          }
+        },
+        "pr2205": {
+          "number": 2205,
+          "url": "https://github.com/TheAxiomFoundation/rulespec-us/pull/2205",
+          "isDraft": false,
+          "baseRefName": "main",
+          "headRefName": "train/az-medical-2026-11-13",
+          "reviewDecision": null,
+          "changedFiles": 9,
+          "files": {
+            "pageInfo": {
+              "hasNextPage": false
+            },
+            "nodes": [
+              {
+                "path": ".axiom/encoding-manifests/us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-11.json",
+                "changeType": "ADDED"
+              },
+              {
+                "path": ".axiom/encoding-manifests/us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-12.json",
+                "changeType": "ADDED"
+              },
+              {
+                "path": ".axiom/encoding-manifests/us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-7.json",
+                "changeType": "ADDED"
+              },
+              {
+                "path": "us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-11.test.yaml",
+                "changeType": "ADDED"
+              },
+              {
+                "path": "us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-11.yaml",
+                "changeType": "ADDED"
+              },
+              {
+                "path": "us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-12.test.yaml",
+                "changeType": "ADDED"
+              },
+              {
+                "path": "us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-12.yaml",
+                "changeType": "ADDED"
+              },
+              {
+                "path": "us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-7.test.yaml",
+                "changeType": "ADDED"
+              },
+              {
+                "path": "us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-7.yaml",
+                "changeType": "ADDED"
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

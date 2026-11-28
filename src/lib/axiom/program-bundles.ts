@@ -19,6 +19,9 @@
  *   credit);
  * - not started: the rest.
  * A screener unit (a provision PolicyEngine cites) is graded the same way.
+ * Open RuleSpec PRs that add a module for a provision (candidates, signed
+ * PRs, merge trains) are listed with the document but give no credit: a
+ * provision counts as encoded only once its module merges.
  * The screener tier holds the plan's documents for screener-level parity and
  * the provisions PolicyEngine cites, and counts its units: a document only the
  * plan names is one unit, its whole self (all its provisions count); in a
@@ -167,6 +170,47 @@ export interface OpenProvision extends RunMark {
   state: "in_progress" | "failed";
 }
 
+/**
+ * Where an open RuleSpec PR that adds a module stands: a candidate (the
+ * module and its tests, no signed manifest), approved or sent back by review,
+ * signed (a signed manifest for it, in an open manifest PR into the
+ * candidate's branch or in the PR itself), or in a merge train (one PR into
+ * main with several signed modules).
+ */
+export type InFlightState = "candidate" | "candidate-reviewed" | "changes-requested" | "signed" | "in-train";
+
+export const IN_FLIGHT_LABELS: Record<InFlightState, string> = {
+  candidate: "Candidate",
+  "candidate-reviewed": "Candidate, approved",
+  "changes-requested": "Changes requested",
+  signed: "Signed",
+  "in-train": "In a merge train",
+};
+
+/** One module an open RuleSpec PR adds, as the collector reads it (program-bundles-in-flight.ts). */
+export interface InFlightModule {
+  /** The module file, repo-relative: us-az/policies/des/faa5/<section>/block-4.yaml. */
+  module: string;
+  /** The provision it encodes, in each document class the corpus may file it under, the index's spelling first. */
+  citations: string[];
+  pr: number;
+  url: string;
+  state: InFlightState;
+  /** GitHub's review decision on the PR: APPROVED, CHANGES_REQUESTED, REVIEW_REQUIRED, or null. */
+  review_decision: string | null;
+  draft: boolean;
+  /** The open signed-manifest PR into the candidate's branch, when one signs it. */
+  manifest_pr: { number: number; url: string } | null;
+}
+
+/** An open RuleSpec PR for one of a document's provisions: one entry of a row's in_flight. */
+export interface InFlightEncoding extends Omit<InFlightModule, "citations"> {
+  /** The provision, as the corpus spells it. */
+  citation: string;
+  /** Every provision it touches already counts as encoded (a re-encode): it adds nothing to "in review". */
+  encoded: boolean;
+}
+
 /** One screener unit: a provision PolicyEngine cites, or a cited document as a whole. */
 export interface ParityUnit {
   key: string;
@@ -220,6 +264,12 @@ export interface BundleDocumentRow {
   units: ParityUnit[];
   /** Other programs whose bundles hold this document in the same jurisdiction, by title. */
   also_in?: string[];
+  /**
+   * Open RuleSpec PRs that add a module for one of the document's provisions,
+   * by provision; they give no credit. Null when the collector could not read
+   * the PRs (unknown, not none); absent before the column's migration.
+   */
+  in_flight?: InFlightEncoding[] | null;
   /** Targeted encode runs for citations in the document, and the newest. */
   runs: number;
   latest_citation: string | null;
@@ -292,6 +342,8 @@ export interface DocumentTelemetry {
   modules: ModuleFacts[];
   /** Targeted encode runs whose citation is in the document. */
   attempts: PipelineAttempt[];
+  /** Modules open RuleSpec PRs add in or above the document; null when the PRs could not be read. */
+  inFlight?: InFlightModule[] | null;
 }
 
 const under = (path: string, root: string) => path === root || path.startsWith(`${root}/`);
@@ -318,6 +370,41 @@ function runState(run: PipelineAttempt | null): "in_progress" | "failed" | null 
   if (!run) return null;
   const stage = attemptStage(run);
   return UNDER_WAY.includes(stage) ? "in_progress" : FAILED.includes(stage) ? "failed" : null;
+}
+
+/**
+ * The open PRs whose module encodes one of the document's provisions: a leaf
+ * at or under the module's citation, or the leaf its citation sits in. A
+ * module's citation is tried in each spelling until one reaches a leaf, and
+ * kept in that one.
+ */
+function inFlightIn(
+  modules: InFlightModule[],
+  leaves: string[],
+  states: Map<string, ProvisionState>
+): InFlightEncoding[] {
+  const out: InFlightEncoding[] = [];
+  for (const { citations, ...pr } of modules) {
+    for (const citation of citations) {
+      const touched = leaves.filter((leaf) => under(leaf, citation) || strictlyUnder(citation, leaf));
+      if (!touched.length) continue;
+      const encoded = touched.every((leaf) => ["encoded", "unvalidated"].includes(states.get(leaf) ?? ""));
+      out.push({ ...pr, citation, encoded });
+      break;
+    }
+  }
+  return out.sort((a, b) => a.citation.localeCompare(b.citation, "en", { numeric: true }) || a.pr - b.pr);
+}
+
+/**
+ * The provisions open PRs cite that do not count as encoded yet: a
+ * document's "K in review", each citation once (a candidate and the train
+ * that carries it are one). Null when the PRs were not read (or the rows
+ * predate the column), so the page never says none.
+ */
+export function inReview(row: Pick<BundleDocumentRow, "in_flight">): number | null {
+  if (!Array.isArray(row.in_flight)) return null;
+  return new Set(row.in_flight.filter((e) => !e.encoded).map((e) => e.citation)).size;
 }
 
 interface Grade {
@@ -461,6 +548,8 @@ export function measureDocument(
         .map((m) => m.module)
     ).size,
     units,
+    in_flight:
+      doc.scope !== "in" ? [] : telemetry?.inFlight === null ? null : inFlightIn(telemetry?.inFlight ?? [], leaves, states),
     // Encode runs are dispatches; a merge outside the pipeline or another citation's run is not one.
     runs: attempts.filter(isDispatch).length,
     latest_citation: latest?.citation ?? null,

@@ -11,6 +11,7 @@ import {
   bundleMemberships,
   countedUnits,
   distinctByDocument,
+  inReview,
   measureDocument,
   provisionCounts,
   tierCounts,
@@ -18,6 +19,8 @@ import {
   bundleProgram,
   membershipDetail,
   type BundleFileDocument,
+  type InFlightModule,
+  type InFlightState,
   type ModuleFacts,
 } from "./program-bundles";
 
@@ -373,6 +376,136 @@ describe("cited provisions inside other cited provisions", () => {
     // (c) and (d) count; (c)(1), (c)(3) and (c)(3)(i) count with (c).
     expect(measured(row)).toMatchObject({ total: 2, byState: { partly: 1, not_started: 1 } });
     expect([...measuredByPart(row).values()].reduce((t, m) => t + m.total, 0)).toBe(2);
+  });
+});
+
+describe("encodings in flight", () => {
+  // Arizona FAA5's medical section, held as blocks; a rule cites block 7.
+  const root = "us-az/manual/des/faa5/na-medical-expenses-and-deduction";
+  const faa5 = [
+    { path: root, child_count: 4 },
+    ...[1, 4, 7, 13].map((n) => ({ path: `${root}/block-${n}`, child_count: 0 })),
+  ];
+  const manualDoc = doc({ key: root, name: "FAA5 medical", layer: "state", citation_path: root });
+  /** A module an open PR adds, in the spellings the collector gives it (program-bundles-in-flight.ts). */
+  const open = (pr: number, tail: string, state: InFlightState = "candidate", extra: Partial<InFlightModule> = {}) => {
+    const path = `des/faa5/na-medical-expenses-and-deduction/${tail}`;
+    return {
+      module: `us-az/policies/${path}.yaml`,
+      citations: [`us-az/policy/${path}`, `us-az/manual/${path}`, `us-az/guidance/${path}`],
+      pr,
+      url: `https://github.com/TheAxiomFoundation/rulespec-us/pull/${pr}`,
+      state,
+      review_decision: null,
+      draft: true,
+      manifest_pr: null,
+      ...extra,
+    } satisfies InFlightModule;
+  };
+
+  it("lists each open PR under the provision it encodes, in the corpus's spelling, and gives it no credit", () => {
+    const row = measureDocument(
+      "us-az/snap",
+      "full",
+      manualDoc,
+      {
+        nodes: faa5,
+        modules: [module(`${root}/block-7`)],
+        attempts: [],
+        inFlight: [
+          open(2266, "block-4"),
+          open(2268, "block-13"),
+          open(2205, "block-7", "in-train", { draft: false }),
+          open(2046, "block-7", "signed", { manifest_pr: { number: 2204, url: "https://github.com/x/2204" } }),
+        ],
+      },
+      AT
+    );
+    // In-flight provisions are not encoded, in progress or anything else: only the merged rule counts.
+    expect(provisionCounts(row)).toEqual({
+      encoded: 1,
+      unvalidated: 0,
+      partly: 0,
+      deferred: 0,
+      in_progress: 0,
+      failed: 0,
+      not_started: 3,
+    });
+    expect(row.in_flight?.map((e) => [e.citation.slice(root.length), e.pr, e.state, e.encoded])).toEqual([
+      ["/block-4", 2266, "candidate", false],
+      ["/block-7", 2046, "signed", true],
+      ["/block-7", 2205, "in-train", true],
+      ["/block-13", 2268, "candidate", false],
+    ]);
+    expect(row.in_flight?.[0]).toEqual({
+      module: "us-az/policies/des/faa5/na-medical-expenses-and-deduction/block-4.yaml",
+      citation: `${root}/block-4`,
+      pr: 2266,
+      url: "https://github.com/TheAxiomFoundation/rulespec-us/pull/2266",
+      state: "candidate",
+      review_decision: null,
+      draft: true,
+      manifest_pr: null,
+      encoded: false,
+    });
+    // Block 7 is encoded already: its PRs add nothing to what is in review.
+    expect(inReview(row)).toBe(2);
+  });
+
+  it("places a PR for a whole section, or for part of a provision, on the provisions it touches", () => {
+    const row = measureDocument(
+      "us-az/snap",
+      "full",
+      manualDoc,
+      {
+        nodes: faa5,
+        modules: [],
+        attempts: [],
+        inFlight: [
+          open(1, "block-4/a"),
+          { ...open(2, "section"), citations: ["us-az/policy/des/faa5/na-medical-expenses-and-deduction", root] },
+        ],
+      },
+      AT
+    );
+    expect(row.in_flight?.map((e) => [e.pr, e.citation])).toEqual([
+      [2, root],
+      [1, `${root}/block-4/a`],
+    ]);
+    // "In review" counts what the PRs cite, each citation once: the section, and block 4 under it.
+    expect(inReview(row)).toBe(2);
+    // A PR in another document, or one whose citation reaches no provision here, is not listed.
+    const other = measureDocument(
+      "us-az/snap",
+      "full",
+      manualDoc,
+      {
+        nodes: faa5,
+        modules: [],
+        attempts: [],
+        inFlight: [{ ...open(3, "block-4"), citations: ["us-az/manual/des/faa5/na-utility-expenses-and-allowances/block-4"] }],
+      },
+      AT
+    );
+    expect(other.in_flight).toEqual([]);
+    expect(inReview(other)).toBe(0);
+  });
+
+  it("keeps the PRs unknown, not none, when the collector could not read them", () => {
+    const unread = measureDocument("us-az/snap", "full", manualDoc, { nodes: faa5, modules: [], attempts: [], inFlight: null }, AT);
+    expect(unread.in_flight).toBeNull();
+    expect(inReview(unread)).toBeNull();
+    // Rows stored before the column's migration have no field at all.
+    expect(inReview({})).toBeNull();
+    // An excluded document lists none.
+    const excluded = measureDocument(
+      "us-az/snap",
+      "full",
+      { ...manualDoc, scope: "excluded", reason: "Out of scope" },
+      { nodes: faa5, modules: [], attempts: [], inFlight: [open(2266, "block-4")] },
+      AT
+    );
+    expect(excluded.in_flight).toEqual([]);
   });
 });
 
