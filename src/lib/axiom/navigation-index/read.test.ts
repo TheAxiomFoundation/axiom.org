@@ -1203,6 +1203,20 @@ describe("child pages at the HTTP boundary", () => {
     });
   });
 
+  it("reports unavailable when the second read after a 416 answers a success PostgREST never sends for a page", async () => {
+    // postgrest-js passes any 2xx through as a success with its rows; only
+    // 200 and 206 are a page PostgREST sent.
+    const row = navRow({ id: "nav-101", path: "us/statute/26/101" });
+    replies.push(
+      rangePastTheEnd(),
+      countOf(250),
+      json(203, [row], "100-100/250")
+    );
+
+    await expect(childPage(1)).rejects.toThrow(NavigationIndexUnavailableError);
+    expect(methods()).toEqual(["GET", "HEAD", "GET"]);
+  });
+
   it("answers a page past the end from the count read", async () => {
     replies.push(rangePastTheEnd(), countOf(15));
 
