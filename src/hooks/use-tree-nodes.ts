@@ -176,8 +176,13 @@ export function useTreeNodes(
       } else {
         setNodes(result.nodes);
       }
-      setLeafRule(result.leafRule ?? null);
-      setCurrentRule(result.currentRule ?? null);
+      // A later page that brings nothing (the level shrank since its first
+      // page, so the page now starts past the end) names no rules of its
+      // own; the level keeps the ones its first page named.
+      if (!append || result.nodes.length > 0) {
+        setLeafRule(result.leafRule ?? null);
+        setCurrentRule(result.currentRule ?? null);
+      }
       setHasMore(result.hasMore);
       setStateKey(cacheKey);
       pageRef.current = pageNum;
