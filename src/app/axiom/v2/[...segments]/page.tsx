@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { cache, Suspense } from "react";
 import {
@@ -26,6 +27,7 @@ import {
   BrowseView,
   BrowseUnavailable,
 } from "@/components/axiom/section/browse-view";
+import { PUBLIC_PATH_HEADER } from "@/lib/axiom/public-path";
 
 /**
  * v2 section reader — the first server-rendered surface of the app
@@ -152,12 +154,14 @@ export default async function SectionPage({
   const page =
     Number.isInteger(rawPage) && rawPage > 0 ? Math.min(rawPage, 50) : 0;
   // A page past the last child (a stale or hand-typed link) goes to the
-  // level's last page rather than an empty list. The link names the
-  // segments Next handed this page, not the ones it looked up: Next decodes
-  // a segment once and this page decodes it again, so only Next's own
-  // segments come back to the same lookup.
-  const toLastPage: (lastPage: number) => never = (lastPage) => {
-    const href = browsePageHref(segments, lastPage, query);
+  // level's last page rather than an empty list. The link names the path
+  // the browser asked for, which the proxy hands over: Next decodes each
+  // segment and drops a leading "_NEXTSEP_" from it, so a link rebuilt from
+  // segments can name another path. With no usable path the page answers
+  // 404 rather than redirect.
+  const toLastPage = async (lastPage: number): Promise<never> => {
+    const path = (await headers()).get(PUBLIC_PATH_HEADER);
+    const href = browsePageHref(path, lastPage, query);
     if (!href) notFound();
     redirect(href);
   };
@@ -172,7 +176,7 @@ export default async function SectionPage({
       return shell(<BrowseUnavailable path={decoded.join("/")} />);
     }
     if (!browse) notFound();
-    if ("lastPage" in browse) toLastPage(browse.lastPage);
+    if ("lastPage" in browse) return toLastPage(browse.lastPage);
     return shell(<BrowseView data={browse} />);
   }
 
@@ -187,7 +191,7 @@ export default async function SectionPage({
       allowDeep: true,
     }).catch(() => null);
     if (browse && browse !== "unavailable") {
-      if ("lastPage" in browse) toLastPage(browse.lastPage);
+      if ("lastPage" in browse) return toLastPage(browse.lastPage);
       if (browse.nodes.length > 0) return shell(<BrowseView data={browse} />);
     }
   }

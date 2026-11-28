@@ -18,6 +18,7 @@ import {
   isGatedCitationPath,
   withoutGatedRows,
 } from "@/lib/axiom/rulespec/index-visibility";
+import { isSameOriginPath } from "@/lib/axiom/public-path";
 
 /**
  * Data assembly for v2 browse pages — the levels above a section
@@ -295,7 +296,7 @@ function numericFirst(segments: string[], nodes: TreeNode[]): TreeNode[] {
 export const MAX_BROWSE_SEGMENTS = 3;
 
 /** A page past the end looks back this many pages at most for one that
- *  lists a child. */
+ *  lists a child, before it turns to page 0. */
 const PAST_END_CHECKS = 3;
 
 interface BrowseOptions {
@@ -330,10 +331,11 @@ export async function getBrowsePageData(
  * Where a page past the level's last child sends the reader: the last page
  * that lists a child. The index's last page can list none here, because
  * the loader drops stale rows and browseLevel drops strays and ingestion
- * plumbing, so this steps back a page at a time, a few pages at most. At
- * browse depth page 0 always renders, so it needs no check. Below title
- * level a page 0 with nothing to list falls through to the reader, so that
- * page's own answer comes back and nothing redirects.
+ * plumbing, so this steps back a page at a time, a few pages at most, and
+ * then to page 0, never to a page it did not read. At browse depth page 0
+ * always renders, so it needs no check. Below title level one more check
+ * reads page 0, and a page 0 with nothing to list falls through to the
+ * reader, so that page's own answer comes back and nothing redirects.
  */
 async function pastEndTarget(
   segments: string[],
@@ -341,7 +343,9 @@ async function pastEndTarget(
   options: BrowseOptions
 ): Promise<BrowsePageData | BrowsePastEnd | "unavailable" | null> {
   let candidate = lastPage;
-  for (let check = 0; check < PAST_END_CHECKS; check++) {
+  for (let check = 0; check <= PAST_END_CHECKS; check++) {
+    // The checks found no later page that lists a child: page 0 is next.
+    if (check === PAST_END_CHECKS) candidate = 0;
     if (candidate === 0 && !options.allowDeep) break;
     const level = await browseLevel(segments, candidate, options);
     if (level !== null && level !== "unavailable" && "nodes" in level) {
@@ -356,7 +360,7 @@ async function pastEndTarget(
       return candidate === 0 ? level : { lastPage: candidate };
     }
   }
-  return { lastPage: candidate };
+  return { lastPage: 0 };
 }
 
 async function browseLevel(
@@ -506,22 +510,20 @@ async function browseData(
 }
 
 /**
- * One page of a browse level at its bare citation path: every query
- * parameter but `page` kept as given, and `page` only past the first.
- * `segments` are the route's own parameters, which Next decoded once; each
- * is encoded once here, so Next reads the same segments back. Null when no
- * link can name the path: a browser resolves a "." or ".." segment however
- * it is escaped, and an empty segment leaves a "//" that Next redirects or
- * a trailing slash that names the level above.
+ * Another page of a browse level, at the public path the request named
+ * (the proxy hands it over, PUBLIC_PATH_HEADER): every query parameter
+ * but `page` kept as given, and `page` only past the first. The path stays
+ * as the browser sent it, so the proxy and Next's matcher hand the page the
+ * same segments again, whatever Next's decoding does to them. Null when
+ * there is no path or it is not a plain same-origin path
+ * (isSameOriginPath), so no request can point the link anywhere else.
  */
 export function browsePageHref(
-  segments: string[],
+  path: string | null,
   page: number,
   query: Record<string, string | string[] | undefined> = {}
 ): string | null {
-  if (segments.some((segment) => segment === "" || /^\.\.?$/.test(segment))) {
-    return null;
-  }
+  if (path === null || !isSameOriginPath(path)) return null;
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) {
     if (key === "page" || value === undefined) continue;
@@ -531,8 +533,7 @@ export function browsePageHref(
   }
   if (page > 0) params.set("page", String(page));
   const search = params.toString();
-  const path = segments.map(encodeURIComponent).join("/");
-  return `/${path}${search ? `?${search}` : ""}`;
+  return `${path}${search ? `?${search}` : ""}`;
 }
 
 /** Human title for a browse level: "Title 26 · Statutes · US Federal". */

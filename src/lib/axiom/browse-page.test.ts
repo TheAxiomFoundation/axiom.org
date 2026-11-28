@@ -53,6 +53,7 @@ function encodedCountRows(result: { data: unknown; error: unknown }) {
 }
 
 import {
+  browsePageHref,
   browseTitle,
   ENCODED_LIST_MAX,
   getBrowsePageData,
@@ -199,11 +200,12 @@ describe("getBrowsePageData", () => {
       expect(pagesRead()).toEqual([5, 3, 2, 1]);
     });
 
-    it("checks three pages at most", async () => {
+    it("checks three pages at most, then sends the reader to page 0", async () => {
+      // Page 5 is unread, so the redirect never names it.
       pages({ 9: pastEnd(8), 8: listing([]), 7: listing([]), 6: listing([]) });
 
       expect(await getBrowsePageData(["us", "statute", "26"], 9)).toEqual({
-        lastPage: 5,
+        lastPage: 0,
       });
       expect(pagesRead()).toEqual([9, 8, 7, 6]);
     });
@@ -248,6 +250,47 @@ describe("getBrowsePageData", () => {
         const data = await getBrowsePageData(part, 3, { allowDeep: true });
         expect(data).toMatchObject({ nodes: [], page: 0 });
         expect(data).not.toHaveProperty("lastPage");
+      });
+
+      it("sends a container to the last page that lists a child", async () => {
+        const child = section("201", "us/regulation/7/273");
+        pages({ 4: pastEnd(2), 2: listing([child]) });
+
+        expect(await getBrowsePageData(part, 4, { allowDeep: true })).toEqual({
+          lastPage: 2,
+        });
+        expect(pagesRead()).toEqual([4, 2]);
+      });
+
+      it("checks page 0 once more when three later pages list nothing", async () => {
+        // 501 children whose pages 1 to 5 hold only rows the browse drops.
+        pages({
+          6: pastEnd(5),
+          5: listing([]),
+          4: listing([plumbing]),
+          3: listing([]),
+          0: listing([section("1", "us/regulation/7/273")]),
+        });
+
+        expect(await getBrowsePageData(part, 6, { allowDeep: true })).toEqual({
+          lastPage: 0,
+        });
+        expect(pagesRead()).toEqual([6, 5, 4, 3, 0]);
+      });
+
+      it("answers as page 0 does when that check of page 0 lists nothing", async () => {
+        pages({
+          6: pastEnd(5),
+          5: listing([]),
+          4: listing([]),
+          3: listing([]),
+          0: listing([plumbing]),
+        });
+
+        const data = await getBrowsePageData(part, 6, { allowDeep: true });
+        expect(data).toMatchObject({ nodes: [], page: 0 });
+        expect(data).not.toHaveProperty("lastPage");
+        expect(pagesRead()).toEqual([6, 5, 4, 3, 0]);
       });
     });
   });
@@ -678,6 +721,49 @@ describe("getBrowsePageData", () => {
     expect(corpusFromMock).not.toHaveBeenCalled();
     // Refused before the query, not after it.
     expect(encodingsFromMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("browsePageHref", () => {
+  it("names another page of the path the request named", () => {
+    expect(browsePageHref("/us/statute/26", 2, { embed: "1", page: "9" })).toBe(
+      "/us/statute/26?embed=1&page=2"
+    );
+    expect(browsePageHref("/us/statute/26", 0, { page: "9" })).toBe(
+      "/us/statute/26"
+    );
+    // Spellings Next would decode or clean up stay as the request had them.
+    expect(browsePageHref("/us/statute/_NEXTSEP__NEXTSEP_26", 0)).toBe(
+      "/us/statute/_NEXTSEP__NEXTSEP_26"
+    );
+    expect(browsePageHref("/us/regulation/7/a%252Fb", 1)).toBe(
+      "/us/regulation/7/a%252Fb?page=1"
+    );
+  });
+
+  it.each([
+    [null],
+    [""],
+    ["us/statute/26"],
+    ["//evil.example"],
+    ["//evil.example/us/statute/26"],
+    ["/\\evil.example"],
+    ["/\\/evil.example"],
+    ["https://evil.example/us/statute/26"],
+    ["javascript:alert(1)"],
+    ["https:/evil.example"],
+    ["/us//26"],
+    ["/us/statute/26/../27"],
+    ["/us/statute/./26"],
+    ["/us/statute/%2E%2E/27"],
+    ["/us/statute/26?page=0"],
+    ["/us/statute/26#top"],
+    ["/us/stat ute/26"],
+    ["/us/statute/\t/evil.example"],
+    ["/\n/evil.example"],
+    ["/us/statute/" + String.fromCodePoint(0xe9)],
+  ])("names no page of %j, which could leave this site or the level", (path) => {
+    expect(browsePageHref(path, 1)).toBeNull();
   });
 });
 

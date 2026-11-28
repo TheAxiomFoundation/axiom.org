@@ -363,4 +363,38 @@ describe("proxy", () => {
 
     expect(response.headers.get("x-middleware-next")).toBe("1");
   });
+
+  it("hands every rewrite the path the browser asked for, over any copy it sent", () => {
+    // The v2 page names this path again when it redirects to another page
+    // of a browse level, so the value has to come from here.
+    for (const [path, expected] of [
+      ["/us/statute/26?page=1", "/us/statute/26"],
+      ["/us/statute/_NEXTSEP__NEXTSEP_26", "/us/statute/_NEXTSEP__NEXTSEP_26"],
+      ["/us/regulation/7/a%252Fb", "/us/regulation/7/a%252Fb"],
+      ["/ca/statute/act/1", "/ca/statute/act/1"],
+      ["/app", "/app"],
+      ["/encoded/il", "/encoded/il"],
+    ] as const) {
+      const response = proxy(
+        new NextRequest(`https://axiom.org${path}`, {
+          headers: {
+            host: "axiom.org",
+            cookie: "a=1",
+            "x-axiom-public-path": "//evil.example",
+          },
+        })
+      );
+      expect(response.headers.get("x-middleware-rewrite"), path).not.toBeNull();
+      const listed = response.headers.get("x-middleware-override-headers") ?? "";
+      expect(listed.split(","), path).toEqual(
+        expect.arrayContaining(["x-axiom-public-path", "cookie", "host"])
+      );
+      expect(
+        response.headers.get("x-middleware-request-x-axiom-public-path"),
+        path
+      ).toBe(expected);
+      // The rest of the request's headers reach the page unchanged.
+      expect(response.headers.get("x-middleware-request-cookie"), path).toBe("a=1");
+    }
+  });
 });

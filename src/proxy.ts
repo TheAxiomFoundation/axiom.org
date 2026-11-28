@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { PUBLIC_PATH_HEADER } from "@/lib/axiom/public-path";
 
 const SITE_HOST = "axiom.org";
 const APP_HOST = "app.axiom-foundation.org";
@@ -99,6 +100,20 @@ function isInternalAxiomPath(pathname: string): boolean {
   return pathname === "/axiom" || pathname.startsWith("/axiom/");
 }
 
+// Every rewrite hands the page the path the browser asked for, in a
+// request header set here over any copy the request brought: a page under
+// the /axiom mount can then name that same path again (the v2 page's
+// redirect to another page of a browse level). The request's other
+// headers reach the page unchanged.
+function rewrite(
+  request: NextRequest,
+  target: Parameters<typeof NextResponse.rewrite>[0]
+) {
+  const headers = new Headers(request.headers);
+  headers.set(PUBLIC_PATH_HEADER, request.nextUrl.pathname);
+  return NextResponse.rewrite(target, { request: { headers } });
+}
+
 export function proxy(request: NextRequest) {
   const host = cleanHost(request);
   const { pathname } = request.nextUrl;
@@ -185,7 +200,7 @@ export function proxy(request: NextRequest) {
   if (pathname === "/app") {
     const target = request.nextUrl.clone();
     target.pathname = "/axiom/graph";
-    return NextResponse.rewrite(target);
+    return rewrite(request, target);
   }
 
   // Jurisdiction-rooted paths resolve on every host — localhost,
@@ -196,7 +211,7 @@ export function proxy(request: NextRequest) {
   if (APP_ROOT_PREFIX_RE.test(pathname)) {
     const target = request.nextUrl.clone();
     target.pathname = appPagePath(pathname);
-    return NextResponse.rewrite(target);
+    return rewrite(request, target);
   }
 
   // The app's bare public routes (the encoded-rules index and search)
@@ -204,7 +219,7 @@ export function proxy(request: NextRequest) {
   if (APP_BARE_ROUTE_RE.test(pathname)) {
     const target = request.nextUrl.clone();
     target.pathname = `/axiom${pathname}`;
-    return NextResponse.rewrite(target);
+    return rewrite(request, target);
   }
 
   return NextResponse.next();
