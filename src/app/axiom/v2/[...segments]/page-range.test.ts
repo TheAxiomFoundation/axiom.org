@@ -33,10 +33,11 @@ import { resolveSection, type SectionResolution } from "@/lib/axiom/section-page
 import { PAST_THE_END, STATEMENT_TIMEOUT } from "@/test/navigation-index-fake";
 import SectionPage from "./page";
 
-function visit(path: string, query: Record<string, string>) {
+function visit(path: string, query: Record<string, string | string[]>) {
   return SectionPage({
     params: Promise.resolve({ segments: path.split("/") }),
-    // Next passes every query parameter, not only the ones the page names.
+    // Next passes every query parameter, not only the ones the page names,
+    // and a repeated one as an array.
     searchParams: Promise.resolve(query as { page?: string }),
   });
 }
@@ -85,6 +86,27 @@ describe("v2 browse page past its last page", () => {
       "redirect to"
     );
     expect(redirect).toHaveBeenCalledWith("/us/regulation/7/273?page=1");
+  });
+
+  it("escapes a path segment again in the redirect", async () => {
+    // The page decodes each segment, so the link back has to encode it.
+    navigation.total = 15;
+
+    await expect(visit("us/statute/5%20App", { page: "1" })).rejects.toThrow(
+      "redirect to"
+    );
+    expect(redirect).toHaveBeenCalledWith("/us/statute/5%20App");
+  });
+
+  it("keeps a repeated query parameter as one parameter per value", async () => {
+    navigation.total = 250;
+
+    await expect(
+      visit("us/statute/26", { page: "4", from: ["share", "search"] })
+    ).rejects.toThrow("redirect to");
+    expect(redirect).toHaveBeenCalledWith(
+      "/us/statute/26?from=share&from=search&page=2"
+    );
   });
 
   it("still shows the outage notice when the index fails", async () => {
