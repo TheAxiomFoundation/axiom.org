@@ -273,9 +273,20 @@ export async function getNavigationIndexChildren({
       return { rows: [], total: counted.count, hasMore: false };
     }
     // Rows landed between the two reads, so the page exists now: read it
-    // once more, and take any failure this time as the index failing.
+    // once more, and take anything but a page PostgREST sent this time as
+    // the index failing.
     result = await readPage();
-    if (!result || result.error) throw new NavigationIndexUnavailableError();
+    if (!result || !isSentPage(result, from)) {
+      throw new NavigationIndexUnavailableError();
+    }
+  } else if (
+    page > 0 &&
+    !(Array.isArray(result.data) && result.data.length > 0) &&
+    !isSentPage(result, from)
+  ) {
+    // A later page with no rows names the level's last page, so it too has
+    // to be a page PostgREST sent. Page 0 keeps its answer.
+    throw new NavigationIndexUnavailableError();
   }
 
   const rows = (result.data ?? []) as NavigationNodeRow[];
@@ -292,6 +303,26 @@ export async function getNavigationIndexChildren({
 // of */* (no total) as NaN.
 function isRowCount(count: number | null): count is number {
   return Number.isSafeInteger(count) && (count as number) >= 0;
+}
+
+/**
+ * A page PostgREST sent: 200 or 206 with an array of rows, and, when the
+ * array is empty, an exact count that ends at or before the page's first
+ * row. postgrest-js hands an HTTP 404 back as a success with no error (204
+ * with no data for an empty body, 200 with no count for an array body), so
+ * a missing error alone proves nothing.
+ */
+function isSentPage(
+  result: { error: unknown; status: number; data: unknown; count: number | null },
+  from: number
+): boolean {
+  if (result.error || (result.status !== 200 && result.status !== 206)) {
+    return false;
+  }
+  if (!Array.isArray(result.data)) return false;
+  return (
+    result.data.length > 0 || (isRowCount(result.count) && result.count <= from)
+  );
 }
 
 /** The last page of a level with `total` children; 0 when it has none. */

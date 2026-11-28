@@ -15,6 +15,9 @@ export interface FakeNavigationIndex {
    *  range). Without it a page read answers with the children in range,
    *  and with PAST_THE_END when the range starts past the last child. */
   childPage?: FakeAnswer | null;
+  /** Answers for the next child-page reads, one each, in order; once
+   *  they run out, page reads answer as above. */
+  childPages?: FakeAnswer[];
   /** Paths with no node of their own; every other path has a node with
    *  children. */
   missing?: string[];
@@ -38,6 +41,15 @@ export const PAST_THE_END: FakeAnswer = {
     hint: null,
     message: "Requested range not satisfiable",
   },
+};
+
+/** What postgrest-js hands back for an HTTP 404 with an empty body: a
+ *  success-shaped 204 with no data, no count and no error. */
+export const EMPTY_404: FakeAnswer = {
+  data: null,
+  count: null,
+  status: 204,
+  error: null,
 };
 
 /** A statement timeout, which PostgREST answers with a 500. */
@@ -174,6 +186,8 @@ export function fakeNavigationCorpus(index: FakeNavigationIndex) {
 
     const range = argsOf(calls, "range") as [number, number] | undefined;
     if (!range) return ok([]);
+    const queued = index.childPages?.shift();
+    if (queued) return queued;
     if (index.childPage) return index.childPage;
     const [from, to] = range;
     if (from > 0 && from >= total) return PAST_THE_END;

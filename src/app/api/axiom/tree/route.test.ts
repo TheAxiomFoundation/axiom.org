@@ -21,7 +21,11 @@ vi.mock("@/lib/axiom/rulespec/repo-listing", async (importOriginal) => ({
   listEncodedFiles: vi.fn(async () => []),
 }));
 
-import { STATEMENT_TIMEOUT } from "@/test/navigation-index-fake";
+import {
+  EMPTY_404,
+  PAST_THE_END,
+  STATEMENT_TIMEOUT,
+} from "@/test/navigation-index-fake";
 import { GET } from "./route";
 
 const levelPage = (segments: string, page: number) =>
@@ -40,6 +44,7 @@ describe("GET /api/axiom/tree", () => {
   beforeEach(() => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     navigation.childPage = null;
+    navigation.childPages = [];
     navigation.total = 15;
     navigation.missing = [];
     navigation.stale = [];
@@ -92,6 +97,20 @@ describe("GET /api/axiom/tree", () => {
     expect(response.status).toBe(503);
     expect(await response.json()).toEqual({
       error: "Navigation data is temporarily unavailable.",
+    });
+  });
+
+  it.each([
+    ["a later page", [EMPTY_404]],
+    ["the second read after a 416", [PAST_THE_END, EMPTY_404]],
+  ])("answers 503 when %s comes back as an empty 404", async (_, answers) => {
+    // postgrest-js hands an empty 404 back as a 204 with no rows.
+    navigation.total = 250;
+    navigation.childPages = [...answers];
+
+    expect(await answer(await levelPage("statute/26", 1))).toEqual({
+      status: 503,
+      body: { error: "Navigation data is temporarily unavailable." },
     });
   });
 });
