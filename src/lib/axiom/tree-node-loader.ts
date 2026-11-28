@@ -18,6 +18,7 @@ import {
   getProvisionCoveredDocTypes,
   getProvisionForNavigationNode,
   getResolvableNavigationNodeIds,
+  lastNavigationPage,
   navigationDocTypeToTreeNode,
   navigationRowToTreeNode,
   NavigationIndexMissingError,
@@ -39,6 +40,9 @@ export interface TreeNodeLoadResult {
   currentRule?: Rule | null;
   leafRule?: Rule | null;
   encodedPaths?: Set<string>;
+  /** Only when the requested page starts past the level's last child:
+   *  that level's last page (0 when it has no children). */
+  lastPage?: number;
 }
 
 /**
@@ -106,6 +110,29 @@ export async function loadTreeNodes({
     encodedOnly,
     page,
   });
+  // A stale or hand-typed page past the last child lists nothing. While the
+  // level has children, it names the level's last page and reads nothing
+  // more. A level with none has only page 0, so the rest of this answers as
+  // page 0 would: it throws and falls back where page 0 does, and names
+  // page 0 only where page 0 finds the level (its node, a sparse prefix or
+  // encodings).
+  const pastEnd = (lastPage: number): TreeNodeLoadResult => ({
+    nodes: [],
+    hasMore: false,
+    lastPage,
+    encodedPaths: existingEncodedPaths,
+  });
+  let emptyPastEnd = false;
+  if (page > 0 && childResult.rows.length === 0) {
+    const lastPage = lastNavigationPage(childResult.total);
+    if (lastPage < page) {
+      if (childResult.total > 0) return pastEnd(lastPage);
+      emptyPastEnd = true;
+    }
+  }
+  const answeredPage = emptyPastEnd ? 0 : page;
+  const levelFound = (result: TreeNodeLoadResult) =>
+    emptyPastEnd ? pastEnd(0) : result;
   let encodedFilesPromise: Promise<EncodedFile[]> | null =
     childResult.rows.length > 0 ? listEncodedFiles(dbJurisdictionId) : null;
   const getEncodedFiles = async () => {
@@ -121,11 +148,11 @@ export async function loadTreeNodes({
     : childResult.rows;
   const indexRows = await filterNavigableRows(navigationRows, encodedFiles);
   const rulespecOnly =
-    page === 0 && (encodedOnly || indexRows.length === 0)
+    answeredPage === 0 && (encodedOnly || indexRows.length === 0)
       ? await loadRulespecOnlyTreeNodes(
           dbJurisdictionId,
           segs,
-          page,
+          answeredPage,
           getEncodedFiles
         )
       : null;
@@ -136,7 +163,7 @@ export async function loadTreeNodes({
       rulespecOnly?.nodes
     );
     if (nodes.length === 0) {
-      if (page > 0 || childResult.rows.length > 0) {
+      if (answeredPage > 0 || childResult.rows.length > 0) {
         return {
           nodes: [],
           hasMore: false,
@@ -154,11 +181,11 @@ export async function loadTreeNodes({
         `Navigation index has no rows for ${dbJurisdictionId}/${docType}.`
       );
     }
-    return {
+    return levelFound({
       nodes,
       hasMore: childResult.hasMore,
       encodedPaths: existingEncodedPaths,
-    };
+    });
   }
 
   const currentPath = navigationPath(dbJurisdictionId, segs);
@@ -173,8 +200,8 @@ export async function loadTreeNodes({
         segs,
         encodedOnly,
       });
-      if (sparsePrefix) return sparsePrefix;
-      if (rulespecOnly) return rulespecOnly;
+      if (sparsePrefix) return levelFound(sparsePrefix);
+      if (rulespecOnly) return levelFound(rulespecOnly);
       if (!encodedOnly) {
         const nearestProvision = await getNearestProvisionForMissingNode(
           currentPath,
@@ -196,10 +223,10 @@ export async function loadTreeNodes({
     if (rulespecOnly) {
       const files = await getEncodedFiles();
       if (rulespecOnly.nodes.length > 0) {
-        return {
+        return levelFound({
           ...rulespecOnly,
           currentRule: await getOptionalProvisionForNode(currentNode, files),
-        };
+        });
       }
       // The synthesised rulespec leaf is a stand-in for encodings with
       // no corpus backing. When the navigation node resolves to a real
@@ -209,33 +236,33 @@ export async function loadTreeNodes({
       // stub). requireProvisionForNode falls back to the synthesised
       // rule itself when no provision exists, preserving the
       // rulespec-only behaviour.
-      return {
+      return levelFound({
         ...rulespecOnly,
         leafRule: await requireProvisionForNode(currentNode, files),
-      };
+      });
     }
     if (currentNode.has_children) {
       const rule = await getOptionalProvisionForNode(
         currentNode,
         await getEncodedFiles()
       );
-      return {
+      return levelFound({
         nodes: [],
         hasMore: false,
         currentRule: rule,
         encodedPaths: existingEncodedPaths,
-      };
+      });
     }
     const rule = await getOptionalNavigationLeaf(
       currentNode,
       await getEncodedFiles()
     );
-    return {
+    return levelFound({
       nodes: [],
       hasMore: false,
       leafRule: rule ?? null,
       encodedPaths: existingEncodedPaths,
-    };
+    });
   }
 
   const currentRule = currentNode

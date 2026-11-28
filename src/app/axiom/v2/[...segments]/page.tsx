@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { headers } from "next/headers";
+import { notFound, redirect } from "next/navigation";
 import { cache, Suspense } from "react";
 import {
   buildLegislationJsonLd,
@@ -17,6 +18,7 @@ import {
 import { SectionReader } from "@/components/axiom/section/section-reader";
 import { SectionSkeleton } from "@/components/axiom/section/section-skeleton";
 import {
+  browsePageHref,
   browseTitle,
   getBrowsePageData,
   MAX_BROWSE_SEGMENTS,
@@ -25,6 +27,7 @@ import {
   BrowseView,
   BrowseUnavailable,
 } from "@/components/axiom/section/browse-view";
+import { PUBLIC_PATH_HEADER } from "@/lib/axiom/public-path";
 
 /**
  * v2 section reader — the first server-rendered surface of the app
@@ -150,6 +153,19 @@ export default async function SectionPage({
   const rawPage = Number(query?.page ?? "0");
   const page =
     Number.isInteger(rawPage) && rawPage > 0 ? Math.min(rawPage, 50) : 0;
+  // A page past the last child (a stale or hand-typed link) goes to an
+  // earlier page that lists a child, or to page 0 (getBrowsePageData),
+  // rather than an empty list. The link names the path
+  // the browser asked for, which the proxy hands over: Next decodes each
+  // segment and drops a leading "_NEXTSEP_" from it, so a link rebuilt from
+  // segments can name another path. With no usable path the page answers
+  // 404 rather than redirect.
+  const toLastPage = async (lastPage: number): Promise<never> => {
+    const path = (await headers()).get(PUBLIC_PATH_HEADER);
+    const href = browsePageHref(path, lastPage, query);
+    if (!href) notFound();
+    redirect(href);
+  };
 
   // Browse depth (jurisdiction / doc type / title) renders the list
   // view; section depth and deeper renders the reader.
@@ -161,6 +177,7 @@ export default async function SectionPage({
       return shell(<BrowseUnavailable path={decoded.join("/")} />);
     }
     if (!browse) notFound();
+    if ("lastPage" in browse) return toLastPage(browse.lastPage);
     return shell(<BrowseView data={browse} />);
   }
 
@@ -174,8 +191,9 @@ export default async function SectionPage({
     const browse = await getBrowsePageData(decoded, page, {
       allowDeep: true,
     }).catch(() => null);
-    if (browse && browse !== "unavailable" && browse.nodes.length > 0) {
-      return shell(<BrowseView data={browse} />);
+    if (browse && browse !== "unavailable") {
+      if ("lastPage" in browse) return toLastPage(browse.lastPage);
+      if (browse.nodes.length > 0) return shell(<BrowseView data={browse} />);
     }
   }
   if (!resolution) notFound();

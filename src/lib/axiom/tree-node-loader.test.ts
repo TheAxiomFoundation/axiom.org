@@ -828,11 +828,13 @@ describe("loadTreeNodes", () => {
   });
 
   it("does not use RuleSpec-only fallback for later top-level pagination pages", async () => {
+    // A later page the count still reaches; one past the end of a level
+    // with no children at all answers as page 0 (below).
     mockGetNavigationIndexNode.mockResolvedValue(null);
     mockGetNavigationIndexChildren.mockResolvedValue({
       rows: [],
       hasMore: false,
-      total: 0,
+      total: 150,
     });
 
     const result = await loadTreeNodes({
@@ -845,6 +847,186 @@ describe("loadTreeNodes", () => {
 
     expect(result.nodes).toEqual([]);
     expect(mockListEncodedFiles).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    // children, requested page, the level's last page
+    [["statute", "26"], 15, 1, 0],
+    [["statute", "26"], 100, 1, 0],
+    [["statute", "26"], 101, 2, 1],
+    [["statute", "26"], 250, 5, 2],
+    [["statute"], 54, 2, 0],
+  ])(
+    "names the last page when %j has %i children and page %i starts past them",
+    async (ruleSegments, total, page, lastPage) => {
+      mockGetNavigationIndexNode.mockResolvedValue(
+        navRow({
+          jurisdiction: "us",
+          doc_type: "statute",
+          path: "us/statute",
+          segment: "statute",
+          has_children: true,
+        })
+      );
+      mockGetNavigationIndexChildren.mockResolvedValue({
+        rows: [],
+        hasMore: false,
+        total,
+      });
+
+      const result = await loadTreeNodes({
+        dbJurisdictionId: "us",
+        ruleSegments,
+        hasCitationPaths: true,
+        encodedOnly: false,
+        page,
+      });
+
+      expect(result).toEqual({ nodes: [], hasMore: false, lastPage });
+      // Only the scope root: a page past the end reads nothing more.
+      expect(mockGetNavigationIndexNode).toHaveBeenCalledTimes(1);
+      expect(mockListEncodedFiles).not.toHaveBeenCalled();
+    }
+  );
+
+  it("keeps an empty page that the count still reaches as an ordinary page", async () => {
+    // Rows can land between the page read and the count; such a page is
+    // not past the end, so it names no last page to send a reader to.
+    mockGetNavigationIndexNode.mockResolvedValue(null);
+    mockGetNavigationIndexChildren.mockResolvedValue({
+      rows: [],
+      hasMore: false,
+      total: 101,
+    });
+
+    const result = await loadTreeNodes({
+      dbJurisdictionId: "us",
+      ruleSegments: ["policy"],
+      hasCitationPaths: true,
+      encodedOnly: false,
+      page: 1,
+    });
+
+    expect(result.nodes).toEqual([]);
+    expect(result).not.toHaveProperty("lastPage");
+  });
+
+  it("never names a last page for a later page that lists children", async () => {
+    // A page whose answer carried no count falls back to its row count,
+    // which can sit below the page's own offset.
+    mockGetNavigationIndexNode.mockResolvedValue(navRow());
+    mockGetNavigationIndexChildren.mockResolvedValue({
+      rows: [navRow({ id: "nav-201", segment: "201", path: "us/statute/26/201" })],
+      hasMore: false,
+      total: 1,
+    });
+
+    const result = await loadTreeNodes({
+      dbJurisdictionId: "us",
+      ruleSegments: ["statute", "26"],
+      hasCitationPaths: true,
+      encodedOnly: false,
+      page: 2,
+    });
+
+    expect(result).not.toHaveProperty("lastPage");
+    expect(result.nodes.map((node) => node.segment)).toEqual(["201"]);
+  });
+
+  describe("with no children at all, past page 0", () => {
+    const scopeRoot = navRow({
+      jurisdiction: "us",
+      doc_type: "statute",
+      path: "us/statute",
+      segment: "statute",
+      has_children: true,
+    });
+    const load = (ruleSegments: string[], page: number) =>
+      loadTreeNodes({
+        dbJurisdictionId: "us",
+        ruleSegments,
+        hasCitationPaths: true,
+        encodedOnly: false,
+        page,
+      });
+
+    beforeEach(() => {
+      mockGetNavigationIndexChildren.mockResolvedValue({
+        rows: [],
+        hasMore: false,
+        total: 0,
+      });
+      // Only the doc type's scope root has a node.
+      mockGetNavigationIndexNode.mockImplementation(async (path: string) =>
+        path === "us/statute" ? scopeRoot : null
+      );
+    });
+
+    it("names page 0 when page 0 finds the level's node", async () => {
+      mockGetNavigationIndexNode.mockResolvedValue(scopeRoot);
+
+      expect(await load(["statute", "27"], 3)).toEqual({
+        nodes: [],
+        hasMore: false,
+        lastPage: 0,
+      });
+    });
+
+    it("names page 0 when page 0 finds a sparse prefix", async () => {
+      mockGetNavigationIndexPrefixRows.mockResolvedValue([
+        navRow({ jurisdiction: "us", path: "us/statute/27/a/1", segment: "1" }),
+      ]);
+
+      expect(await load(["statute", "27"], 3)).toEqual({
+        nodes: [],
+        hasMore: false,
+        lastPage: 0,
+      });
+    });
+
+    it.each([[["statute"]], [["statute", "27"]]])(
+      "names page 0 when page 0 under %j finds encodings",
+      async (ruleSegments) => {
+        mockListEncodedFiles.mockResolvedValue([
+          {
+            citationPath: "us/statute/27/1",
+            filePath: "statutes/27/1.yaml",
+            bucket: "statutes",
+          },
+        ]);
+
+        expect(await load(ruleSegments, 3)).toEqual({
+          nodes: [],
+          hasMore: false,
+          lastPage: 0,
+        });
+      }
+    );
+
+    it.each([[["statute"]], [["statute", "nonexistent"]]])(
+      "throws for a missing level %j past page 0 as at page 0",
+      async (ruleSegments) => {
+        if (ruleSegments.length === 1) mockGetNavigationIndexNode.mockResolvedValue(null);
+        await expect(load(ruleSegments, 0)).rejects.toThrow(
+          NavigationIndexMissingError
+        );
+        await expect(load(ruleSegments, 3)).rejects.toThrow(
+          NavigationIndexMissingError
+        );
+      }
+    );
+
+    it("answers with the nearest provision past page 0 as at page 0", async () => {
+      mockGetProvisionByCitationPath.mockImplementation(async (path: string) =>
+        path === "us/statute/26/3241"
+          ? { id: "section-3241", body: "(b) Tax rate schedule", citation_path: path }
+          : null
+      );
+
+      const first = await load(["statute", "26", "3241", "b"], 0);
+      expect(first.currentRule?.citation_path).toBe("us/statute/26/3241");
+      expect(await load(["statute", "26", "3241", "b"], 3)).toEqual(first);
+    });
   });
 
   it("loads top-level doc_type children from an explicit scope root when present", async () => {

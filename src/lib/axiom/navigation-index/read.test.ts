@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createClient } from "@supabase/supabase-js";
 
 const { mockFrom, builders } = vi.hoisted(() => ({
   mockFrom: vi.fn(),
@@ -25,11 +26,17 @@ import {
   NavigationIndexUnavailableError,
 } from "./read";
 import type { NavigationNodeRow } from "./types";
+import {
+  EMPTY_404,
+  PAST_THE_END,
+  STATEMENT_TIMEOUT,
+} from "@/test/navigation-index-fake";
 
 type QueryResult = {
   data?: unknown;
   count?: number | null;
   error?: unknown;
+  status?: number;
 };
 
 class QueryBuilder implements PromiseLike<QueryResult> {
@@ -447,7 +454,8 @@ describe("navigation index read helpers", () => {
     // Siblings can share a sort_key (segments 1 and 01 with no ordinal),
     // and the index has shipped two rows for one path, so path and then id
     // break ties and each row lands on one page whatever the query plan.
-    const builder = enqueue({ data: [], count: 0 });
+    // PostgREST's answer to a page that starts exactly at the count.
+    const builder = enqueue({ data: [], count: 200, status: 206, error: null });
 
     await getNavigationIndexChildren({
       jurisdiction: "us",
@@ -516,6 +524,278 @@ describe("navigation index read helpers", () => {
     });
 
     expect(calls(builder, "is")).toContainEqual(["parent_path", null]);
+  });
+
+  it.each([["us/statute/26"], [null]])(
+    "answers a page past the last child of %s with no rows and the count",
+    async (parentPath) => {
+      const page = enqueue(PAST_THE_END);
+      const count = enqueue({ data: null, count: 15, status: 200, error: null });
+
+      await expect(
+        getNavigationIndexChildren({
+          jurisdiction: "us",
+          docType: "statute",
+          parentPath,
+          encodedOnly: true,
+          page: 1,
+        })
+      ).resolves.toEqual({ rows: [], total: 15, hasMore: false });
+
+      expect(calls(page, "range")).toEqual([[100, 199]]);
+      // The count asks about the same children, with no range.
+      expect(mockFrom).toHaveBeenNthCalledWith(2, "current_navigation_nodes");
+      expect(calls(count, "select")).toEqual([
+        ["*", { count: "exact", head: true }],
+      ]);
+      for (const method of ["eq", "is", "or"]) {
+        expect(calls(count, method)).toEqual(calls(page, method));
+      }
+      expect(calls(count, "range")).toEqual([]);
+    }
+  );
+
+  it.each([
+    ["a statement timeout", STATEMENT_TIMEOUT],
+    // The past-end case is the status, never the message.
+    ["a 500 that quotes the range message", { ...PAST_THE_END, status: 500 }],
+  ])("still reports %s on a child page as unavailable", async (_, answer) => {
+    enqueue(answer);
+
+    await expect(
+      getNavigationIndexChildren({
+        jurisdiction: "us",
+        docType: "statute",
+        parentPath: "us/statute/26",
+        encodedOnly: false,
+        page: 1,
+      })
+    ).rejects.toThrow(NavigationIndexUnavailableError);
+    expect(mockFrom).toHaveBeenCalledTimes(1);
+  });
+
+  it("still reports a child page that never answers as unavailable", async () => {
+    vi.useFakeTimers();
+    enqueue(
+      new Promise<QueryResult>(() => {
+        /* never resolves */
+      })
+    );
+
+    const settled = expect(
+      getNavigationIndexChildren({
+        jurisdiction: "us",
+        docType: "statute",
+        parentPath: "us/statute/26",
+        encodedOnly: false,
+        page: 1,
+      })
+    ).rejects.toThrow(NavigationIndexUnavailableError);
+    await vi.advanceTimersByTimeAsync(5000);
+    await settled;
+  });
+
+  const pageOne = () =>
+    getNavigationIndexChildren({
+      jurisdiction: "us",
+      docType: "statute",
+      parentPath: "us/statute/26",
+      encodedOnly: false,
+      page: 1,
+    });
+
+  /** The count after the 416 ran, as a count-only read. */
+  const expectCountRead = (count: QueryBuilder) => {
+    expect(mockFrom).toHaveBeenCalledTimes(2);
+    expect(calls(count, "select")).toEqual([
+      ["*", { count: "exact", head: true }],
+    ]);
+  };
+
+  it.each([
+    ["without a count", null],
+    ["with a count", 15],
+  ])(
+    "reports unavailable when the count after a 416 fails %s",
+    async (_, total) => {
+      enqueue(PAST_THE_END);
+      const count = enqueue({
+        data: null,
+        count: total,
+        status: 500,
+        error: { message: "statement timeout" },
+      });
+
+      await expect(pageOne()).rejects.toThrow(NavigationIndexUnavailableError);
+      expectCountRead(count);
+    }
+  );
+
+  it("reports unavailable when the count after a 416 never answers", async () => {
+    vi.useFakeTimers();
+    enqueue(PAST_THE_END);
+    const count = enqueue(
+      new Promise<QueryResult>(() => {
+        /* never resolves */
+      })
+    );
+
+    const settled = expect(pageOne()).rejects.toThrow(
+      NavigationIndexUnavailableError
+    );
+    await vi.advanceTimersByTimeAsync(5000);
+    await settled;
+    expectCountRead(count);
+  });
+
+  it.each([
+    ["without a count", null],
+    // postgrest-js reads a Content-Range of */* as NaN.
+    ["with an unknown total (*/*)", Number.NaN],
+    ["with a negative count", -1],
+    ["with a fractional count", 1.5],
+  ])(
+    "reports unavailable when the count after a 416 answers %s",
+    async (_, total) => {
+      enqueue(PAST_THE_END);
+      const count = enqueue({ data: null, count: total, status: 200, error: null });
+
+      await expect(pageOne()).rejects.toThrow(NavigationIndexUnavailableError);
+      expectCountRead(count);
+    }
+  );
+
+  it("answers a page that starts exactly at the count as past the end", async () => {
+    enqueue(PAST_THE_END);
+    enqueue({ data: null, count: 100, status: 200, error: null });
+
+    await expect(pageOne()).resolves.toEqual({
+      rows: [],
+      total: 100,
+      hasMore: false,
+    });
+    expect(mockFrom).toHaveBeenCalledTimes(2);
+  });
+
+  it("reads the page once more when the count shows rows landed after the 416", async () => {
+    const rows = [navRow({ id: "nav-101", path: "us/statute/26/101" })];
+    enqueue(PAST_THE_END);
+    enqueue({ data: null, count: 250, status: 200, error: null });
+    const again = enqueue({ data: rows, count: 250, status: 206, error: null });
+
+    await expect(pageOne()).resolves.toEqual({
+      rows,
+      total: 250,
+      hasMore: true,
+    });
+    expect(mockFrom).toHaveBeenCalledTimes(3);
+    expect(calls(again, "range")).toEqual([[100, 199]]);
+    expect(calls(again, "select")).toEqual([
+      ["*", { count: "exact", head: false }],
+    ]);
+  });
+
+  it("reads the page once more when the new count ends inside it", async () => {
+    const rows = [navRow({ id: "nav-150", path: "us/statute/26/150" })];
+    enqueue(PAST_THE_END);
+    enqueue({ data: null, count: 150, status: 200, error: null });
+    const again = enqueue({ data: rows, count: 150, status: 206, error: null });
+
+    await expect(pageOne()).resolves.toEqual({
+      rows,
+      total: 150,
+      hasMore: false,
+    });
+    expect(mockFrom).toHaveBeenCalledTimes(3);
+    expect(calls(again, "range")).toEqual([[100, 199]]);
+  });
+
+  it.each([
+    ["fails", STATEMENT_TIMEOUT],
+    ["starts past the end again", PAST_THE_END],
+  ])(
+    "reports unavailable when that second read %s",
+    async (_, answer) => {
+      enqueue(PAST_THE_END);
+      enqueue({ data: null, count: 250, status: 200, error: null });
+      enqueue(answer);
+      // A third read would find no answer queued.
+      mockFrom.mockImplementation(() => {
+        throw new Error("read again");
+      });
+
+      await expect(pageOne()).rejects.toThrow(NavigationIndexUnavailableError);
+      expect(mockFrom).toHaveBeenCalledTimes(3);
+    }
+  );
+
+  // postgrest-js turns a 404 with an array body into 200 with that array
+  // and no count. EMPTY_404 is its answer to a 404 with no body.
+  const ARRAY_404 = { data: [], count: null, error: null, status: 200 };
+  // An exact count that reaches into the page, with no rows in it.
+  const ROWS_MISSING = { data: [], count: 150, error: null, status: 206 };
+
+  it.each([
+    ["an empty 404", EMPTY_404],
+    ["a 404 with an empty array", ARRAY_404],
+    ["no rows under a count that reaches the page", ROWS_MISSING],
+  ])("reports unavailable when that second read answers %s", async (_, answer) => {
+    enqueue(PAST_THE_END);
+    enqueue({ data: null, count: 250, status: 200, error: null });
+    enqueue(answer);
+
+    await expect(pageOne()).rejects.toThrow(NavigationIndexUnavailableError);
+    expect(mockFrom).toHaveBeenCalledTimes(3);
+  });
+
+  it("answers past the end when that second read finds the level ends at the page", async () => {
+    enqueue(PAST_THE_END);
+    enqueue({ data: null, count: 250, status: 200, error: null });
+    enqueue({ data: [], count: 100, error: null, status: 206 });
+
+    await expect(pageOne()).resolves.toEqual({
+      rows: [],
+      total: 100,
+      hasMore: false,
+    });
+  });
+
+  it.each([
+    ["an empty 404", EMPTY_404],
+    ["a 404 with an empty array", ARRAY_404],
+    ["no rows under a count that reaches the page", ROWS_MISSING],
+  ])("reports unavailable when a later page answers %s", async (_, answer) => {
+    enqueue(answer);
+
+    await expect(pageOne()).rejects.toThrow(NavigationIndexUnavailableError);
+    expect(mockFrom).toHaveBeenCalledTimes(1);
+  });
+
+  it("answers a later page that starts exactly at the count with no rows", async () => {
+    enqueue({ data: [], count: 100, error: null, status: 206 });
+
+    await expect(pageOne()).resolves.toEqual({
+      rows: [],
+      total: 100,
+      hasMore: false,
+    });
+  });
+
+  it.each([
+    ["an empty 404", EMPTY_404],
+    ["a 404 with an empty array", ARRAY_404],
+  ])("still answers page 0 from %s as an empty level", async (_, answer) => {
+    enqueue(answer);
+
+    await expect(
+      getNavigationIndexChildren({
+        jurisdiction: "us",
+        docType: "statute",
+        parentPath: "us/statute/26",
+        encodedOnly: false,
+        page: 0,
+      })
+    ).resolves.toEqual({ rows: [], total: 0, hasMore: false });
   });
 
   it("loads a single navigation node by path", async () => {
@@ -806,5 +1086,179 @@ describe("navigation index read helpers", () => {
         }),
       })
     );
+  });
+});
+
+// The same reads through the installed client over a stubbed fetch, so
+// postgrest-js turns each HTTP answer into a result the way it does in
+// production.
+describe("child pages at the HTTP boundary", () => {
+  const sent: Array<{ method: string; url: URL }> = [];
+  const replies: Response[] = [];
+  const client = createClient("https://placeholder.supabase.co", "placeholder-key", {
+    auth: {
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+      persistSession: false,
+      storageKey: "read-test-http-boundary",
+    },
+    db: { schema: "corpus" },
+    global: {
+      fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+        sent.push({ method: init?.method ?? "GET", url: new URL(String(input)) });
+        const reply = replies.shift();
+        if (!reply) throw new Error("no reply queued");
+        return reply;
+      },
+    },
+  });
+
+  const json = (status: number, body: unknown, contentRange?: string) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        ...(contentRange ? { "content-range": contentRange } : {}),
+      },
+    });
+  // PostgREST's 416 for a range past the last row. postgrest-js keeps
+  // none of its Content-Range.
+  const rangePastTheEnd = () =>
+    json(
+      416,
+      {
+        code: "PGRST103",
+        details: null,
+        hint: null,
+        message: "Requested range not satisfiable",
+      },
+      "*/250"
+    );
+  const countOf = (total: number) =>
+    new Response(null, { status: 200, headers: { "content-range": `*/${total}` } });
+  const emptyNotFound = () => new Response("", { status: 404 });
+
+  const childPage = (page: number) =>
+    getNavigationIndexChildren({
+      jurisdiction: "us",
+      docType: "statute",
+      parentPath: "us/statute/26",
+      encodedOnly: false,
+      page,
+    });
+  const methods = () => sent.map((request) => request.method);
+
+  beforeEach(() => {
+    sent.length = 0;
+    replies.length = 0;
+    mockFrom.mockImplementation((table: string) => client.from(table));
+  });
+
+  it("hands back an empty 404 as a 204 with no data, count or error", async () => {
+    replies.push(emptyNotFound());
+
+    const result = await client
+      .from("current_navigation_nodes")
+      .select("*", { count: "exact" })
+      .range(100, 199);
+
+    expect(result).toMatchObject({
+      status: 204,
+      error: null,
+      data: null,
+      count: null,
+    });
+  });
+
+  it("reports unavailable when the second read after a 416 is an empty 404", async () => {
+    replies.push(rangePastTheEnd(), countOf(250), emptyNotFound());
+
+    await expect(childPage(1)).rejects.toThrow(NavigationIndexUnavailableError);
+    expect(methods()).toEqual(["GET", "HEAD", "GET"]);
+    for (const read of [sent[0], sent[2]]) {
+      expect(read.url.searchParams.get("offset")).toBe("100");
+      expect(read.url.searchParams.get("limit")).toBe("100");
+    }
+  });
+
+  it("reports unavailable when the second read after a 416 is a 404 with an empty array", async () => {
+    replies.push(rangePastTheEnd(), countOf(250), json(404, []));
+
+    await expect(childPage(1)).rejects.toThrow(NavigationIndexUnavailableError);
+    expect(methods()).toEqual(["GET", "HEAD", "GET"]);
+  });
+
+  it("takes a second read after a 416 that lists the page", async () => {
+    const row = navRow({ id: "nav-101", path: "us/statute/26/101" });
+    replies.push(
+      rangePastTheEnd(),
+      countOf(250),
+      json(206, [row], "100-100/250")
+    );
+
+    await expect(childPage(1)).resolves.toEqual({
+      rows: [row],
+      total: 250,
+      hasMore: true,
+    });
+  });
+
+  it("reports unavailable when the second read after a 416 answers a success PostgREST never sends for a page", async () => {
+    // postgrest-js passes any 2xx through as a success with its rows; only
+    // 200 and 206 are a page PostgREST sent.
+    const row = navRow({ id: "nav-101", path: "us/statute/26/101" });
+    replies.push(
+      rangePastTheEnd(),
+      countOf(250),
+      json(203, [row], "100-100/250")
+    );
+
+    await expect(childPage(1)).rejects.toThrow(NavigationIndexUnavailableError);
+    expect(methods()).toEqual(["GET", "HEAD", "GET"]);
+  });
+
+  it("answers a page past the end from the count read", async () => {
+    replies.push(rangePastTheEnd(), countOf(15));
+
+    await expect(childPage(1)).resolves.toEqual({
+      rows: [],
+      total: 15,
+      hasMore: false,
+    });
+    expect(methods()).toEqual(["GET", "HEAD"]);
+  });
+
+  it("reports unavailable when the count read fails, whatever Content-Range it carries", async () => {
+    // The client keeps a count only from a successful answer, so a failed
+    // count read arrives with an error and no count.
+    replies.push(
+      rangePastTheEnd(),
+      new Response(null, { status: 500, headers: { "content-range": "*/250" } })
+    );
+
+    await expect(childPage(1)).rejects.toThrow(NavigationIndexUnavailableError);
+    expect(methods()).toEqual(["GET", "HEAD"]);
+  });
+
+  it.each([[1], [2]])(
+    "reports unavailable when page %i is an empty 404",
+    async (page) => {
+      replies.push(emptyNotFound());
+
+      await expect(childPage(page)).rejects.toThrow(
+        NavigationIndexUnavailableError
+      );
+      expect(methods()).toEqual(["GET"]);
+    }
+  );
+
+  it("still answers page 0 from an empty 404 as an empty level", async () => {
+    replies.push(emptyNotFound());
+
+    await expect(childPage(0)).resolves.toEqual({
+      rows: [],
+      total: 0,
+      hasMore: false,
+    });
   });
 });

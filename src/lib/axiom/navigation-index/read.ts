@@ -224,30 +224,70 @@ export async function getNavigationIndexChildren({
   const from = page * NAVIGATION_PAGE_SIZE;
   const to = from + NAVIGATION_PAGE_SIZE - 1;
 
+  // The page and, past the end, its count read the same children.
+  const children = (head: boolean) => {
+    let query = supabaseCorpus
+      .from(NAVIGATION_NODES_VIEW)
+      .select("*", { count: "exact", head })
+      .eq("jurisdiction", jurisdiction)
+      .eq("doc_type", docType);
+
+    query =
+      parentPath === null
+        ? query.is("parent_path", null)
+        : query.eq("parent_path", parentPath);
+
+    if (encodedOnly) {
+      query = query.or("has_rulespec.eq.true,encoded_descendant_count.gt.0");
+    }
+    return query;
+  };
+
   // Siblings can share a sort_key, so path and then id break ties and give
   // every row one page whatever plan the database picks.
-  let query = supabaseCorpus
-    .from(NAVIGATION_NODES_VIEW)
-    .select("*", { count: "exact" })
-    .eq("jurisdiction", jurisdiction)
-    .eq("doc_type", docType)
-    .order("sort_key")
-    .order("path")
-    .order("id")
-    .range(from, to);
-
-  query =
-    parentPath === null
-      ? query.is("parent_path", null)
-      : query.eq("parent_path", parentPath);
-
-  if (encodedOnly) {
-    query = query.or("has_rulespec.eq.true,encoded_descendant_count.gt.0");
-  }
-
-  const result = await withTimeout(query, NAVIGATION_QUERY_TIMEOUT_MS);
+  const readPage = () =>
+    withTimeout(
+      children(false)
+        .order("sort_key")
+        .order("path")
+        .order("id")
+        .range(from, to),
+      NAVIGATION_QUERY_TIMEOUT_MS
+    );
+  let result = await readPage();
   if (!result) throw new NavigationIndexUnavailableError();
-  if (result.error) throw new NavigationIndexUnavailableError();
+  if (result.error) {
+    // With an exact count, PostgREST answers a range that starts past the
+    // last row with 416 (a stale or hand-typed ?page=). postgrest-js reads
+    // the count only from a successful answer, so ask for it on its own.
+    // Every other error is still the index failing.
+    if (result.status !== 416) throw new NavigationIndexUnavailableError();
+    const counted = await withTimeout(
+      children(true),
+      NAVIGATION_QUERY_TIMEOUT_MS
+    );
+    if (!counted || counted.error || !isRowCount(counted.count)) {
+      throw new NavigationIndexUnavailableError();
+    }
+    if (counted.count <= from) {
+      return { rows: [], total: counted.count, hasMore: false };
+    }
+    // Rows landed between the two reads, so the page exists now: read it
+    // once more, and take anything but a page PostgREST sent this time as
+    // the index failing.
+    result = await readPage();
+    if (!result || !isSentPage(result, from)) {
+      throw new NavigationIndexUnavailableError();
+    }
+  } else if (
+    page > 0 &&
+    !(Array.isArray(result.data) && result.data.length > 0) &&
+    !isSentPage(result, from)
+  ) {
+    // A later page with no rows names the level's last page, so it too has
+    // to be a page PostgREST sent. Page 0 keeps its answer.
+    throw new NavigationIndexUnavailableError();
+  }
 
   const rows = (result.data ?? []) as NavigationNodeRow[];
   const total = result.count ?? rows.length;
@@ -257,6 +297,37 @@ export async function getNavigationIndexChildren({
     total,
     hasMore: (page + 1) * NAVIGATION_PAGE_SIZE < total,
   };
+}
+
+// A row count PostgREST actually sent. postgrest-js reads a Content-Range
+// of */* (no total) as NaN.
+function isRowCount(count: number | null): count is number {
+  return Number.isSafeInteger(count) && (count as number) >= 0;
+}
+
+/**
+ * A page PostgREST sent: 200 or 206 with an array of rows, and, when the
+ * array is empty, an exact count that ends at or before the page's first
+ * row. postgrest-js hands an HTTP 404 back as a success with no error (204
+ * with no data for an empty body, 200 with no count for an array body), so
+ * a missing error alone proves nothing.
+ */
+function isSentPage(
+  result: { error: unknown; status: number; data: unknown; count: number | null },
+  from: number
+): boolean {
+  if (result.error || (result.status !== 200 && result.status !== 206)) {
+    return false;
+  }
+  if (!Array.isArray(result.data)) return false;
+  return (
+    result.data.length > 0 || (isRowCount(result.count) && result.count <= from)
+  );
+}
+
+/** The last page of a level with `total` children; 0 when it has none. */
+export function lastNavigationPage(total: number): number {
+  return Math.max(0, Math.ceil(total / NAVIGATION_PAGE_SIZE) - 1);
 }
 
 export async function getNavigationIndexNode(

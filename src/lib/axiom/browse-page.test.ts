@@ -53,6 +53,7 @@ function encodedCountRows(result: { data: unknown; error: unknown }) {
 }
 
 import {
+  browsePageHref,
   browseTitle,
   ENCODED_LIST_MAX,
   getBrowsePageData,
@@ -134,6 +135,164 @@ describe("getBrowsePageData", () => {
   it("reports backend failures as unavailable, not nonexistence", async () => {
     loadTreeNodesMock.mockRejectedValue(new Error("db down"));
     expect(await getBrowsePageData(["us"])).toBe("unavailable");
+  });
+
+  describe("past the last page", () => {
+    const section = (segment: string, prefix = "us/statute/26") => ({
+      segment,
+      label: `Section ${segment}`,
+      hasChildren: false,
+      nodeType: "section",
+      rule: { citation_path: `${prefix}/${segment}` },
+    });
+    // Ingestion plumbing the browse page never lists.
+    const plumbing = {
+      segment: "release-scope-us-statute-2026-05-10",
+      label: "release scope us statute 2026 05 10",
+      hasChildren: false,
+      nodeType: "section",
+      rule: { citation_path: "us/statute/26/release-scope-us-statute-2026-05-10" },
+    };
+    const listing = (nodes: object[]) => ({ nodes, hasMore: false });
+    const pastEnd = (lastPage: number) => ({ nodes: [], hasMore: false, lastPage });
+    /** The loader's answer for each page; any other page fails. */
+    const pages = (answers: Record<number, object>) =>
+      loadTreeNodesMock.mockImplementation(async ({ page }: { page: number }) => {
+        if (!(page in answers)) throw new Error(`page ${page} read`);
+        return answers[page];
+      });
+    const pagesRead = () =>
+      loadTreeNodesMock.mock.calls.map(([params]) => params.page);
+
+    it("hands a page past the end its last page, not an empty level", async () => {
+      pages({ 7: pastEnd(2), 2: listing([section("201")]) });
+
+      expect(await getBrowsePageData(["us", "statute", "26"], 7)).toEqual({
+        lastPage: 2,
+      });
+      expect(pagesRead()).toEqual([7, 2]);
+      // Nothing else is read for a page the route sends elsewhere.
+      expect(encodingsFromMock).not.toHaveBeenCalled();
+    });
+
+    it("steps back past a last page the browse filters empty", async () => {
+      // 101 children: page 1 holds only the 101st, and it is plumbing.
+      pages({ 2: pastEnd(1), 1: listing([plumbing]) });
+
+      expect(await getBrowsePageData(["us", "statute", "26"], 2)).toEqual({
+        lastPage: 0,
+      });
+      // Page 0 of a browse level always renders, so it needs no check.
+      expect(pagesRead()).toEqual([2, 1]);
+    });
+
+    it("stops at the nearest earlier page that lists a child", async () => {
+      pages({
+        5: pastEnd(3),
+        3: listing([plumbing]),
+        2: listing([]),
+        1: listing([section("101")]),
+      });
+
+      expect(await getBrowsePageData(["us", "statute", "26"], 5)).toEqual({
+        lastPage: 1,
+      });
+      expect(pagesRead()).toEqual([5, 3, 2, 1]);
+    });
+
+    it("checks three pages at most, then sends the reader to page 0", async () => {
+      // Page 5 is unread, so the redirect never names it.
+      pages({ 9: pastEnd(8), 8: listing([]), 7: listing([]), 6: listing([]) });
+
+      expect(await getBrowsePageData(["us", "statute", "26"], 9)).toEqual({
+        lastPage: 0,
+      });
+      expect(pagesRead()).toEqual([9, 8, 7, 6]);
+    });
+
+    it("leaves a page it cannot check to answer for itself", async () => {
+      pages({ 4: pastEnd(2) });
+
+      expect(await getBrowsePageData(["us", "statute", "26"], 4)).toEqual({
+        lastPage: 2,
+      });
+      expect(pagesRead()).toEqual([4, 2]);
+    });
+
+    it("follows a level that shrank again between reads", async () => {
+      pages({ 6: pastEnd(4), 4: pastEnd(1), 1: listing([section("101")]) });
+
+      expect(await getBrowsePageData(["us", "statute", "26"], 6)).toEqual({
+        lastPage: 1,
+      });
+      expect(pagesRead()).toEqual([6, 4, 1]);
+    });
+
+    describe("below title level", () => {
+      const part = ["us", "regulation", "7", "273"];
+
+      it("sends a container to a page 0 that lists a child", async () => {
+        pages({
+          3: pastEnd(0),
+          0: listing([section("1", "us/regulation/7/273")]),
+        });
+
+        expect(await getBrowsePageData(part, 3, { allowDeep: true })).toEqual({
+          lastPage: 0,
+        });
+        expect(pagesRead()).toEqual([3, 0]);
+      });
+
+      it("answers as page 0 does when page 0 lists nothing", async () => {
+        // The route then falls through to the reader, as it does at page 0.
+        pages({ 3: pastEnd(0), 0: listing([plumbing]) });
+
+        const data = await getBrowsePageData(part, 3, { allowDeep: true });
+        expect(data).toMatchObject({ nodes: [], page: 0 });
+        expect(data).not.toHaveProperty("lastPage");
+      });
+
+      it("sends a container to the last page that lists a child", async () => {
+        const child = section("201", "us/regulation/7/273");
+        pages({ 4: pastEnd(2), 2: listing([child]) });
+
+        expect(await getBrowsePageData(part, 4, { allowDeep: true })).toEqual({
+          lastPage: 2,
+        });
+        expect(pagesRead()).toEqual([4, 2]);
+      });
+
+      it("checks page 0 once more when three later pages list nothing", async () => {
+        // 501 children whose pages 1 to 5 hold only rows the browse drops.
+        pages({
+          6: pastEnd(5),
+          5: listing([]),
+          4: listing([plumbing]),
+          3: listing([]),
+          0: listing([section("1", "us/regulation/7/273")]),
+        });
+
+        expect(await getBrowsePageData(part, 6, { allowDeep: true })).toEqual({
+          lastPage: 0,
+        });
+        expect(pagesRead()).toEqual([6, 5, 4, 3, 0]);
+      });
+
+      it("answers as page 0 does when that check of page 0 lists nothing", async () => {
+        pages({
+          6: pastEnd(5),
+          5: listing([]),
+          4: listing([]),
+          3: listing([]),
+          0: listing([plumbing]),
+        });
+
+        const data = await getBrowsePageData(part, 6, { allowDeep: true });
+        expect(data).toMatchObject({ nodes: [], page: 0 });
+        expect(data).not.toHaveProperty("lastPage");
+        expect(pagesRead()).toEqual([6, 5, 4, 3, 0]);
+      });
+    });
   });
 
   // #132: the served US regulation scopes are targeted slices (7 CFR 273,
@@ -562,6 +721,49 @@ describe("getBrowsePageData", () => {
     expect(corpusFromMock).not.toHaveBeenCalled();
     // Refused before the query, not after it.
     expect(encodingsFromMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("browsePageHref", () => {
+  it("names another page of the path the request named", () => {
+    expect(browsePageHref("/us/statute/26", 2, { embed: "1", page: "9" })).toBe(
+      "/us/statute/26?embed=1&page=2"
+    );
+    expect(browsePageHref("/us/statute/26", 0, { page: "9" })).toBe(
+      "/us/statute/26"
+    );
+    // Spellings Next would decode or clean up stay as the request had them.
+    expect(browsePageHref("/us/statute/_NEXTSEP__NEXTSEP_26", 0)).toBe(
+      "/us/statute/_NEXTSEP__NEXTSEP_26"
+    );
+    expect(browsePageHref("/us/regulation/7/a%252Fb", 1)).toBe(
+      "/us/regulation/7/a%252Fb?page=1"
+    );
+  });
+
+  it.each([
+    [null],
+    [""],
+    ["us/statute/26"],
+    ["//evil.example"],
+    ["//evil.example/us/statute/26"],
+    ["/\\evil.example"],
+    ["/\\/evil.example"],
+    ["https://evil.example/us/statute/26"],
+    ["javascript:alert(1)"],
+    ["https:/evil.example"],
+    ["/us//26"],
+    ["/us/statute/26/../27"],
+    ["/us/statute/./26"],
+    ["/us/statute/%2E%2E/27"],
+    ["/us/statute/26?page=0"],
+    ["/us/statute/26#top"],
+    ["/us/stat ute/26"],
+    ["/us/statute/\t/evil.example"],
+    ["/\n/evil.example"],
+    ["/us/statute/" + String.fromCodePoint(0xe9)],
+  ])("names no page of %j, which could leave this site or the level", (path) => {
+    expect(browsePageHref(path, 1)).toBeNull();
   });
 });
 

@@ -254,4 +254,36 @@ describe("useTreeNodes", () => {
     expect(result.current.nodes).toEqual([...page0Nodes, ...page1Nodes]);
     expect(result.current.hasMore).toBe(false);
   });
+
+  it("keeps the level's rules when a later page brings nothing", async () => {
+    // The level shrank between its first page and Load more: the later
+    // page answers past the end, with no nodes and no rules of its own.
+    const page0Nodes = [makeNode({ segment: "1", label: "One" })];
+    const currentRule = { id: "current", heading: "Title 26" };
+    const leafRule = { id: "leaf", heading: "Leaf" };
+    mockLoadTreeNodes
+      .mockResolvedValueOnce({
+        nodes: page0Nodes,
+        hasMore: true,
+        currentRule,
+        leafRule,
+      })
+      .mockResolvedValueOnce({ nodes: [], hasMore: false });
+
+    const { result } = renderHook(() =>
+      useTreeNodes("us", ["statute", "26"], true)
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => {
+      result.current.loadMore();
+    });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(mockLoadTreeNodes).toHaveBeenCalledTimes(2);
+    expect(result.current.nodes).toEqual(page0Nodes);
+    expect(result.current.currentRule).toEqual(currentRule);
+    expect(result.current.leafRule).toEqual(leafRule);
+    expect(result.current.hasMore).toBe(false);
+  });
 });
