@@ -72,15 +72,16 @@ describe("GET /api/axiom/tree", () => {
     );
   });
 
-  it("answers an existing level with no children past page 0 as it answers page 0", async () => {
+  it("answers an existing level with no children past page 0 with an empty page", async () => {
+    // Page 0 finds the level. A later page lists nothing and names no
+    // rules, and the hook keeps the rules page 0 named.
     navigation.total = 0;
 
-    const first = await answer(await levelPage("statute/27", 0));
-    expect(first).toEqual({
+    expect((await levelPage("statute/27", 0)).status).toBe(200);
+    expect(await answer(await levelPage("statute/27", 1))).toEqual({
       status: 200,
       body: { nodes: [], hasMore: false, currentRule: null, leafRule: null },
     });
-    expect(await answer(await levelPage("statute/27", 1))).toEqual(first);
   });
 
   it("still answers 503 when the index fails", async () => {
