@@ -689,6 +689,21 @@ describe("navigation index read helpers", () => {
     ]);
   });
 
+  it("reads the page once more when the new count ends inside it", async () => {
+    const rows = [navRow({ id: "nav-150", path: "us/statute/26/150" })];
+    enqueue(PAST_THE_END);
+    enqueue({ data: null, count: 150, status: 200, error: null });
+    const again = enqueue({ data: rows, count: 150, status: 206, error: null });
+
+    await expect(pageOne()).resolves.toEqual({
+      rows,
+      total: 150,
+      hasMore: false,
+    });
+    expect(mockFrom).toHaveBeenCalledTimes(3);
+    expect(calls(again, "range")).toEqual([[100, 199]]);
+  });
+
   it.each([
     ["fails", STATEMENT_TIMEOUT],
     ["starts past the end again", PAST_THE_END],
